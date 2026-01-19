@@ -1,0 +1,8 @@
+{
+  "silence_rms_min": 0.005,
+  "silence_seconds": 2.0,
+  "clip_threshold": 0.98,
+  "clip_frames": 3,
+  "noise_dynamic_min": 0.02,
+  "noise_frames": 10
+}

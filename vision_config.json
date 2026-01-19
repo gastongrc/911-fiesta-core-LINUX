@@ -1,0 +1,145 @@
+{
+  "system": {
+    "enabled": true
+  },
+  "haze": {
+    "enabled": true,
+    "threshold": 35,
+    "smooth_factor": 0.2,
+    "baseline_frames": 30,
+    "entry_threshold": 0.4,
+    "exit_threshold": 0.3,
+    "smooth_alpha": 0.25,
+    "lock_time": 0.25,
+    "fire_duration": 3.0,
+    "cooldown_min": 60,
+    "cooldown_max": 60,
+    "threshold_low": 30,
+    "threshold_med": 50,
+    "threshold_high": 70,
+    "target_density": "HIGH"
+  },
+  "zones": {
+    "dshotkey_center": [
+      0.42,
+      0.28,
+      0.58,
+      0.7
+    ],
+    "dancer_left": [
+      0.1,
+      0.28,
+      0.38,
+      0.7
+    ],
+    "dancer_right": [
+      0.62,
+      0.28,
+      0.9,
+      0.7
+    ]
+  },
+  "camera_dj_index": 1,
+  "camera_index": 2,
+  "camera_artist_index": 2,
+  "tracking": {
+    "enabled": false,
+    "zones_horizontal": 8,
+    "cooldown": 0.5,
+    "smoothing": 3
+  },
+  "vision": {
+    "enabled": true,
+    "ip_only": true
+  },
+  "cameras": {
+    "haze": {
+      "type": "mjpeg",
+      "enabled": true,
+      "host": "192.168.1.110",
+      "path": "/axis-cgi/mjpg/video.cgi?fps=10",
+      "username": "root",
+      "password": "root",
+      "fps_target": 11,
+      "timeout_s": 5.0,
+      "reconnect_s": 2.0
+    },
+    "dj": {
+      "type": "mjpeg",
+      "enabled": true,
+      "host": "192.168.1.110",
+      "path": "/axis-cgi/mjpg/video.cgi?fps=10",
+      "username": "root",
+      "password": "root",
+      "fps_target": 10,
+      "timeout_s": 5.0,
+      "reconnect_s": 2.0
+    },
+    "artist": {
+      "type": "mjpeg",
+      "enabled": true,
+      "host": "192.168.1.110",
+      "path": "/axis-cgi/mjpg/video.cgi?fps=10",
+      "username": "root",
+      "password": "root",
+      "fps_target": 10,
+      "timeout_s": 5.0,
+      "reconnect_s": 2.0
+    }
+  },
+  "dj": {
+    "enabled": true,
+    "zones_count": 3,
+    "zones": [
+      {
+        "id": 1,
+        "name": "DJ 1",
+        "norm_x": 0.015806111696522657,
+        "norm_y": 0.023876404494382022,
+        "norm_w": 0.2160168598524763,
+        "norm_h": 0.547752808988764,
+        "x": 31,
+        "y": 17,
+        "w": 205,
+        "h": 390,
+        "width": 205,
+        "height": 390,
+        "visible": true,
+        "locked": false
+      },
+      {
+        "id": 2,
+        "name": "DJ 2",
+        "norm_x": 0.2465753424657534,
+        "norm_y": 0.02247191011235955,
+        "norm_w": 0.17597471022128555,
+        "norm_h": 0.5491573033707865,
+        "x": 250,
+        "y": 16,
+        "w": 167,
+        "h": 391,
+        "width": 167,
+        "height": 391,
+        "visible": true,
+        "locked": false
+      },
+      {
+        "id": 3,
+        "name": "DJ 3",
+        "norm_x": 0.4309799789251844,
+        "norm_y": 0.02247191011235955,
+        "norm_w": 0.21812434141201265,
+        "norm_h": 0.5519662921348315,
+        "x": 425,
+        "y": 16,
+        "w": 207,
+        "h": 393,
+        "width": 207,
+        "height": 393,
+        "visible": true,
+        "locked": false
+      }
+    ],
+    "disappear_delay": 2.0
+  }
+}

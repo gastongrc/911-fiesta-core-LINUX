@@ -1,0 +1,41 @@
+{
+  "week": {
+    "monday": [],
+    "tuesday": [
+      {
+        "from": "09:00",
+        "to": "00:00",
+        "mode": "boliche_desarrollo"
+      }
+    ],
+    "wednesday": [],
+    "thursday": [
+      {
+        "from": "22:00",
+        "to": "05:00",
+        "mode": "boliche_inicio"
+      }
+    ],
+    "friday": [
+      {
+        "from": "07:00",
+        "to": "00:00",
+        "mode": "boliche_desarrollo"
+      }
+    ],
+    "saturday": [
+      {
+        "from": "01:00",
+        "to": "00:00",
+        "mode": "boliche_desarrollo"
+      }
+    ],
+    "sunday": [
+      {
+        "from": "00:00",
+        "to": "09:00",
+        "mode": "boliche_desarrollo"
+      }
+    ]
+  }
+}
