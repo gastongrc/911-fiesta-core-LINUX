@@ -241,3 +241,87 @@ class FamilyManager:
             "disabled_families": list(self._disabled_families),
             "families": ALL_FAMILIES,
         }
+
+    # ==================== MULTI-ZONE SUPPORT (DJ) ====================
+
+    def activate_zone(self, family: str, zone_id: int, source: str = "") -> bool:
+        """
+        Activa una zona SIN matar otros cues de la familia.
+        Usar para familias multi-zona (ej: DJ).
+
+        A diferencia de activate_state(), NO mata otros cues antes de disparar.
+        Permite múltiples cues activos simultáneamente en la misma familia.
+
+        Args:
+            family: Nombre de familia (ej: DJ)
+            zone_id: ID de zona (1-5)
+            source: Origen del disparo (para logs)
+
+        Returns:
+            True si se disparó correctamente
+        """
+        family = family.upper()
+        src = f" (source={source})" if source else ""
+
+        if family not in ALL_FAMILIES:
+            print(f"[FamilyManager] REJECT: unknown family '{family}'{src}")
+            return False
+
+        if family in self._disabled_families:
+            print(f"[FamilyManager] REJECT: {family} DISABLED (gating){src}")
+            return False
+
+        cue_id = get_cue_for_state(family, zone_id)
+        if cue_id is None:
+            print(f"[FamilyManager] REJECT: no cue for zone {zone_id} in {family}{src}")
+            return False
+
+        # Verificar controller
+        if not self._cue_engine and not self._av:
+            print(f"[FamilyManager] REJECT: no controller connected{src}")
+            return False
+
+        # Fire el cue SIN matar otros (multi-zona)
+        fire_meta = {"family": family, "zone": zone_id}
+        fire_source = source or f"family_{family.lower()}"
+
+        if self._cue_engine:
+            self._cue_engine.fire(cue_id, source=fire_source, meta=fire_meta)
+        elif self._av:
+            self._av.fire_cue(cue_id)
+
+        print(f"[FamilyManager] *** FIRE C{cue_id} *** {family}:{zone_id}{src}")
+        return True
+
+    def deactivate_zone(self, family: str, zone_id: int, source: str = "") -> bool:
+        """
+        Desactiva solo el cue de una zona específica (NO toda la familia).
+        Usar para familias multi-zona (ej: DJ).
+
+        Args:
+            family: Nombre de familia (ej: DJ)
+            zone_id: ID de zona (1-5)
+            source: Origen del kill (para logs)
+
+        Returns:
+            True si se mató correctamente
+        """
+        family = family.upper()
+        src = f" (source={source})" if source else ""
+
+        if family not in ALL_FAMILIES:
+            return False
+
+        cue_id = get_cue_for_state(family, zone_id)
+        if cue_id is None:
+            print(f"[FamilyManager] REJECT: no cue for zone {zone_id} in {family}{src}")
+            return False
+
+        # Kill solo este cue (NO toda la familia)
+        if self._cue_engine:
+            self._cue_engine.kill_pool_centralized([cue_id], source=f"family_{family.lower()}_zone_off")
+        elif self._av:
+            self._av.kill_cue(cue_id)
+
+        print(f"[FamilyManager] *** KILL C{cue_id} *** {family}:{zone_id}{src}")
+        return True

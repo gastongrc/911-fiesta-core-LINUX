@@ -299,7 +299,7 @@ class VisionDJEngine:
         event = CueEvent(zone_id, "ON", zone.cue_id)
         self._enqueue_event(event)
 
-        print(f"[VISION_DJ] ON ZONE={zone_id} C{zone.cue_id}")
+        print(f"[VisionDJEngine] DJ ON zone={zone_id} C{zone.cue_id} (detected=True)")
 
         if self._on_state_change:
             try:
@@ -320,13 +320,17 @@ class VisionDJEngine:
         if not state.active:
             return None  # Already OFF
 
+        # Calculate time since last detection for logging
+        now = time.time()
+        last_seen_age = now - state.last_seen_ts if state.last_seen_ts > 0 else 0.0
+
         state.active = False
         state.detected = False
 
         if zone and zone.cue_id:
             event = CueEvent(zone_id, "OFF", zone.cue_id)
             self._enqueue_event(event)
-            print(f"[VISION_DJ] OFF ZONE={zone_id} C{zone.cue_id}")
+            print(f"[VisionDJEngine] DJ OFF zone={zone_id} C{zone.cue_id} (last_seen_age={last_seen_age:.1f}s)")
 
             if self._on_state_change:
                 try:
@@ -354,6 +358,10 @@ class VisionDJEngine:
         Process pending cue events via FamilyManager.
         Should be called from main thread tick (non-blocking).
 
+        V7 FIX: Uses activate_zone/deactivate_zone for per-zone ON/OFF.
+        - ON fires only this zone's cue (no kill of other zones)
+        - OFF kills only this zone's cue (not entire family)
+
         Returns:
             Number of events processed
         """
@@ -369,10 +377,11 @@ class VisionDJEngine:
 
             try:
                 if event.event_type == "ON":
-                    self._family_manager.activate_state(FAMILIA_DJ, event.zone_id)
+                    # V7: Fire only this zone's cue, don't kill other zones
+                    self._family_manager.activate_zone(FAMILIA_DJ, event.zone_id, source="vision_dj")
                 elif event.event_type == "OFF":
-                    # Deactivate specific zone
-                    self._family_manager.deactivate_family(FAMILIA_DJ)
+                    # V7: Kill only this zone's cue, not entire family
+                    self._family_manager.deactivate_zone(FAMILIA_DJ, event.zone_id, source="vision_dj")
                 processed += 1
             except Exception as e:
                 print(f"[VisionDJEngine] ERROR processing cue event: {e}")
