@@ -89,7 +89,7 @@
   },
   "dj": {
     "enabled": true,
-    "zones_count": 3,
+    "zones_count": 5,
     "zones": [
       {
         "id": 1,
@@ -136,6 +136,38 @@
         "h": 393,
         "width": 207,
         "height": 393,
+        "visible": true,
+        "locked": false
+      },
+      {
+        "id": 4,
+        "name": "DJ 4",
+        "norm_x": 0.6575,
+        "norm_y": 0.02247191011235955,
+        "norm_w": 0.17,
+        "norm_h": 0.55,
+        "x": 630,
+        "y": 16,
+        "w": 163,
+        "h": 391,
+        "width": 163,
+        "height": 391,
+        "visible": true,
+        "locked": false
+      },
+      {
+        "id": 5,
+        "name": "DJ 5",
+        "norm_x": 0.835,
+        "norm_y": 0.02247191011235955,
+        "norm_w": 0.15,
+        "norm_h": 0.55,
+        "x": 800,
+        "y": 16,
+        "w": 144,
+        "h": 391,
+        "width": 144,
+        "height": 391,
         "visible": true,
         "locked": false
       }
