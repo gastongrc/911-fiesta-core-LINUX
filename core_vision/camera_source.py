@@ -482,7 +482,17 @@ class RTSPSource(CameraSource):
     - Queue maxsize=1 with drop policy (latest frame only)
     - TCP transport for reliability
     - Automatic reconnection with exponential backoff
+
+    Phase 6.12: Thread-safe reconnection (fixes async_lock crash)
+    - stop() only signals, never touches _cap
+    - _cap is released ONLY inside capture thread
+    - request_reconnect() for soft reconnection without stop
     """
+
+    # Consecutive errors threshold before triggering reconnect
+    RECONNECT_ERROR_THRESHOLD = 30
+    # Max frame age (seconds) before considering stall
+    STALL_TIMEOUT = 5.0
 
     def __init__(
         self,
@@ -517,8 +527,9 @@ class RTSPSource(CameraSource):
         self.connect_timeout = timeout_s
         self.reconnect_s = reconnect_s
 
-        # Estado interno
+        # Estado interno - eventos para señalización thread-safe
         self._stop_event = threading.Event()
+        self._reconnect_event = threading.Event()  # Phase 6.12: soft reconnect signal
         self._cap: Optional[cv2.VideoCapture] = None
         self._thread: Optional[threading.Thread] = None
         self._opened = False
@@ -537,12 +548,12 @@ class RTSPSource(CameraSource):
         self._decode_ms_avg = 0.0
         self._decode_samples = 0
         self._read_errors = 0
+        self._reconnect_count = 0
 
         # Detección de stall
         self._stall_detected = False
 
-        # Contador de reconexiones para backoff
-        self._reconnect_count = 0
+        # Backoff config
         self._max_reconnect_backoff = 10.0
 
     def start(self) -> bool:
@@ -588,29 +599,56 @@ class RTSPSource(CameraSource):
         return self._opened
 
     def stop(self) -> None:
-        """Detiene el thread de captura de forma robusta."""
+        """
+        Detiene el thread de captura de forma robusta.
+
+        Phase 6.12: Thread-safe stop - NEVER touches _cap directly.
+        Only signals stop and waits for thread to cleanup internally.
+        This prevents FFmpeg async_lock assertion failures.
+        """
         print(f"[RTSPSource] STOPPING: {self._safe_url()}")
 
-        # Señalar stop
+        # Señalar stop - el thread liberará _cap internamente
         self._stop_event.set()
 
-        # Cerrar captura
-        if self._cap:
-            try:
-                self._cap.release()
-            except Exception as e:
-                print(f"[RTSPSource] Error releasing capture: {e}")
-            self._cap = None
+        # CRITICAL: NO tocar _cap aquí - causa crash async_lock
+        # El thread se encarga de liberar _cap antes de terminar
 
-        # Join thread
+        # Join thread con timeout generoso
         if self._thread:
-            self._thread.join(timeout=1.0)
+            self._thread.join(timeout=2.0)
             if self._thread.is_alive():
-                print(f"[RTSPSource] WARNING: thread no murió en 1s")
+                print(f"[RTSPSource] WARNING: thread no murió en 2s (will be orphaned)")
             self._thread = None
 
         self._opened = False
         print(f"[RTSPSource] STOPPED: {self._safe_url()}")
+
+    def request_reconnect(self) -> None:
+        """
+        Solicita reconexión sin detener el source.
+
+        Phase 6.12: Soft reconnect - solo setea evento.
+        El thread de captura detectará el evento y reconectará
+        liberando _cap internamente (thread-safe).
+
+        Usar esto en lugar de stop()+start() cuando hay errores de lectura.
+        """
+        if not self._thread or not self._thread.is_alive():
+            print(f"[RTSPSource] request_reconnect ignored (thread not running)")
+            return
+
+        print(f"[RTSPSource] Reconnect requested: {self._safe_url()}")
+        self._reconnect_event.set()
+
+    def supports_reconnect(self) -> bool:
+        """
+        Indica si este source soporta reconexión soft.
+
+        Phase 6.12: CameraLoop debe usar request_reconnect() en lugar
+        de stop() cuando esta función retorna True.
+        """
+        return True
 
     def read(self) -> Tuple[bool, Optional[np.ndarray]]:
         """
@@ -679,7 +717,14 @@ class RTSPSource(CameraSource):
         return self.url
 
     def _capture_loop(self):
-        """Thread principal de captura RTSP."""
+        """
+        Thread principal de captura RTSP.
+
+        Phase 6.12: Thread-safe lifecycle
+        - _cap se crea y libera SOLO dentro de este thread
+        - Maneja _reconnect_event para soft reconnect
+        - Cleanup garantizado antes de salir
+        """
         print(f"[RTSPSource] Thread started: {threading.current_thread().name}")
 
         while not self._stop_event.is_set():
@@ -689,25 +734,62 @@ class RTSPSource(CameraSource):
                 if not self._stop_event.is_set():
                     print(f"[RTSPSource] Error en capture loop: {e}")
 
-            # Reconectar con backoff
+            # Cleanup _cap DENTRO del thread (thread-safe)
+            self._release_capture_internal()
+
+            # Check if reconnect was requested vs natural disconnect
+            reconnect_requested = self._reconnect_event.is_set()
+            if reconnect_requested:
+                self._reconnect_event.clear()
+                print(f"[RTSPSource] Reconnect event handled")
+
+            # Reconectar con backoff (si no estamos parando)
             if not self._stop_event.is_set():
                 self._opened = False
                 self._reconnect_count += 1
 
-                backoff = min(
-                    self.reconnect_s * (1.5 ** min(self._reconnect_count, 5)),
-                    self._max_reconnect_backoff
-                )
+                # Backoff más corto si fue request_reconnect()
+                if reconnect_requested:
+                    backoff = 0.5  # Reconexión rápida si fue solicitada
+                else:
+                    backoff = min(
+                        self.reconnect_s * (1.5 ** min(self._reconnect_count, 5)),
+                        self._max_reconnect_backoff
+                    )
+
                 print(f"[RTSPSource] Reconnecting in {backoff:.1f}s (attempt {self._reconnect_count})...")
 
                 if self._stop_event.wait(timeout=backoff):
                     break
 
+        # Cleanup final DENTRO del thread
+        self._release_capture_internal()
         self._opened = False
         print(f"[RTSPSource] Thread exiting: {threading.current_thread().name}")
 
+    def _release_capture_internal(self):
+        """
+        Libera VideoCapture de forma segura DENTRO del thread.
+
+        Phase 6.12: Este método SOLO debe llamarse desde el thread de captura.
+        Nunca desde stop() o código externo.
+        """
+        if self._cap is not None:
+            try:
+                self._cap.release()
+            except Exception as e:
+                print(f"[RTSPSource] Error releasing capture (internal): {e}")
+            self._cap = None
+
     def _connect_and_stream(self):
-        """Conecta al stream RTSP y captura frames."""
+        """
+        Conecta al stream RTSP y captura frames.
+
+        Phase 6.12: Thread-safe streaming
+        - NO libera _cap aquí (lo hace _capture_loop)
+        - Verifica _reconnect_event para soft reconnect
+        - Sale limpiamente si se detecta stop o reconnect
+        """
         if self._stop_event.is_set():
             return
 
@@ -730,9 +812,7 @@ class RTSPSource(CameraSource):
 
         if not self._cap.isOpened():
             print(f"[RTSPSource] Failed to open: {self._safe_url()}")
-            if self._cap:
-                self._cap.release()
-                self._cap = None
+            # NO liberar aquí - _capture_loop lo hace con _release_capture_internal()
             return
 
         # Obtener info del stream
@@ -753,9 +833,14 @@ class RTSPSource(CameraSource):
         last_frame_time = 0
 
         consecutive_errors = 0
-        max_consecutive_errors = 30  # ~1 segundo a 30fps
 
-        while not self._stop_event.is_set() and self._cap and self._cap.isOpened():
+        # Main capture loop - sale si: stop, reconnect, o errores consecutivos
+        while not self._stop_event.is_set() and not self._reconnect_event.is_set():
+            # Verificar que cap sigue válido
+            if self._cap is None or not self._cap.isOpened():
+                print(f"[RTSPSource] Capture became invalid, exiting stream loop")
+                break
+
             try:
                 # Rate limiting
                 now = time.time()
@@ -764,8 +849,8 @@ class RTSPSource(CameraSource):
                     ret = self._cap.grab()
                     if not ret:
                         consecutive_errors += 1
-                        if consecutive_errors >= max_consecutive_errors:
-                            print(f"[RTSPSource] Too many grab errors, reconnecting...")
+                        if consecutive_errors >= self.RECONNECT_ERROR_THRESHOLD:
+                            print(f"[RTSPSource] Too many grab errors ({consecutive_errors}), will reconnect...")
                             break
                     continue
 
@@ -777,9 +862,10 @@ class RTSPSource(CameraSource):
                 if not ret or frame is None:
                     consecutive_errors += 1
                     self._read_errors += 1
-                    if consecutive_errors >= max_consecutive_errors:
-                        print(f"[RTSPSource] Too many read errors ({consecutive_errors}), reconnecting...")
+                    if consecutive_errors >= self.RECONNECT_ERROR_THRESHOLD:
+                        print(f"[RTSPSource] Too many read errors ({consecutive_errors}), will reconnect...")
                         break
+                    # No log por cada error individual - solo cuando umbral
                     continue
 
                 consecutive_errors = 0
@@ -814,19 +900,15 @@ class RTSPSource(CameraSource):
                 self._update_fps()
 
             except Exception as e:
-                if not self._stop_event.is_set():
+                if not self._stop_event.is_set() and not self._reconnect_event.is_set():
                     print(f"[RTSPSource] Read error: {e}")
                     consecutive_errors += 1
-                    if consecutive_errors >= max_consecutive_errors:
+                    if consecutive_errors >= self.RECONNECT_ERROR_THRESHOLD:
                         break
 
-        # Cleanup
-        if self._cap:
-            try:
-                self._cap.release()
-            except:
-                pass
-            self._cap = None
+        # NO cleanup aquí - _capture_loop lo hace con _release_capture_internal()
+        # Esto es crítico para evitar el crash de async_lock
+        self._opened = False
 
     def _update_fps(self):
         """Actualiza el contador de FPS."""

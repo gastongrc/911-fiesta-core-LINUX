@@ -1,8 +1,13 @@
 """
-CameraLoop PRO - Phase 6.10
+CameraLoop PRO - Phase 6.12
 Loop de captura de cámara con procesamiento de todos los detectores
 Soporta: MJPEG (IP cameras only) - USB REMOVED
 Orquestador: HazeDetector → DJDetector → ArtistTracker
+
+Phase 6.12: RTSP thread-safe reconnection
+- No llama stop() en errores de lectura para RTSP
+- Deja que RTSPSource maneje reconexión internamente
+- Previene crash de FFmpeg async_lock
 """
 import time
 import threading
@@ -196,10 +201,20 @@ class CameraLoop:
             ret, frame = self._read_frame()
 
             if not ret or frame is None:
-                print("[CameraLoop] Error leyendo frame, reconectando...")
-                self._close_source()
-                time.sleep(0.5)
-                continue
+                # Phase 6.12: Para fuentes RTSP, NO llamar stop() en errores de lectura
+                # Esto causa crash de async_lock en FFmpeg
+                # En su lugar, dejar que el source maneje la reconexión internamente
+                if self.source and hasattr(self.source, 'supports_reconnect') and self.source.supports_reconnect():
+                    # RTSP source maneja reconexión internamente
+                    # Solo esperar un poco y reintentar lectura
+                    time.sleep(0.1)
+                    continue
+                else:
+                    # MJPEG u otras fuentes: comportamiento anterior
+                    print("[CameraLoop] Error leyendo frame, reconectando...")
+                    self._close_source()
+                    time.sleep(0.5)
+                    continue
 
             # FPS measurement
             self._update_fps()
