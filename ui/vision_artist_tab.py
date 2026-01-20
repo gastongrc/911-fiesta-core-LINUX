@@ -1,116 +1,119 @@
 """
-VisionArtistTab - Tab independiente para Artist Tracker PRO
-Preview + LayeredZoneEditor PRO 8 zonas + controles completos + LEDs de cues
+VisionArtistTab V9 - Tab for Artist Detector with YOLO ROI Detection
+Preview + LayeredZoneEditor PRO + Debug Overlay + TEST FIRE buttons
 
-Phase 6.10: USB removed - camera combo removed
+Phase V9: YOLO-based ROI-only detection, 8-zone support (C72-C79)
+Replaces old VisionArtistTab with HOG-based detection
 """
 import cv2
 import numpy as np
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QComboBox, QGroupBox, QSpinBox, QDoubleSpinBox, QCheckBox,
-    QFrame, QGridLayout
+    QGroupBox, QDoubleSpinBox, QCheckBox, QFrame, QGridLayout,
+    QListWidget, QListWidgetItem, QScrollArea
 )
-from PySide6.QtCore import Qt, QTimer, QRect, QPoint, Signal, QSize
-from PySide6.QtGui import QImage, QPixmap, QColor, QPainter, QPen, QBrush, QFont
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QPainter, QPen, QBrush, QFont
 
 from .layered_zone_editor import LayeredZoneEditor
 
 
 class LEDIndicator(QWidget):
-    """Widget LED indicator para mostrar estados."""
+    """Widget LED indicator for showing states."""
 
     def __init__(self, color=QColor(128, 128, 128), size=16, parent=None):
         super().__init__(parent)
-        from PySide6.QtCore import QSize
-        from PySide6.QtGui import QPainter, QBrush, QPen
-
         self.color = color
-        self.size = size
+        self.led_size = size
         self.is_on = False
-        self.setFixedSize(QSize(size, size))
-        self.QPainter = QPainter
-        self.QBrush = QBrush
-        self.QPen = QPen
+        self.setFixedSize(size, size)
 
     def set_on(self, on):
-        """Enciende/apaga el LED."""
+        """Turn LED on/off."""
         self.is_on = on
         self.update()
 
     def paintEvent(self, event):
-        """Dibuja el LED."""
-        painter = self.QPainter(self)
-        painter.setRenderHint(self.QPainter.Antialiasing)
+        """Draw the LED."""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
 
         if self.is_on:
             color = self.color
         else:
             color = QColor(60, 60, 60)
 
-        painter.setBrush(self.QBrush(color))
-        painter.setPen(self.QPen(QColor(40, 40, 40), 1))
-        painter.drawEllipse(2, 2, self.size - 4, self.size - 4)
+        painter.setBrush(QBrush(color))
+        painter.setPen(QPen(QColor(40, 40, 40), 1))
+        painter.drawEllipse(2, 2, self.led_size - 4, self.led_size - 4)
 
 
 class VisionArtistTab(QWidget):
     """
-    Tab independiente para Artist Tracker PRO.
+    V9 Vision Artist Tab with YOLO ROI Detection.
 
-    Incluye:
-    - Preview de cámara Artist con 8 zonas horizontales
-    - LEDs de cues (CUE_TRACK_1..8)
-    - Controles de configuración (Cooldown, Smoothing)
-    - Modo calendario (ARTISTA/TEATRO/BOLICHE/OFF)
-    - Selector de cámara independiente
-    - FPS display
+    Features:
+    - Preview with debug overlay (ROI rect, zone_id, detected, conf, infer_ms, fps)
+    - Zone visibility toggle (visible=False => immediate OFF)
+    - TEST FIRE buttons per zone (C72-C79)
+    - Performance metrics display
+    - Multi-zone status (8 zones)
+    - Same UX as VisionDJTab
     """
 
     def __init__(self, vision_manager, parent=None):
         super().__init__(parent)
         self.vision_manager = vision_manager
+        self._debug_overlay_enabled = True
+        self._last_frame = None
+        self._zone_states = {}  # zone_id -> {detected, conf, active}
+
         self._build_ui()
 
-        # Timer para actualizar UI
+        # Timer for UI updates
         self.update_timer = QTimer(self)
         self.update_timer.setInterval(250)  # 4 FPS
         self.update_timer.timeout.connect(self._update_state)
         self.update_timer.start()
 
-        # Conectar callback de frames (cuando esté implementado)
+        # Connect frame callback
         try:
             self.vision_manager.set_ui_callback_artist(self.update_frame)
         except AttributeError:
-            print("[VisionArtistTab] Warning: set_ui_callback_artist() no disponible aún")
+            print("[VisionArtistTab] Warning: set_ui_callback_artist() not available")
+
+        # Load existing zones
+        self._load_zones()
 
     def _build_ui(self):
-        """Construye la interfaz del tab."""
+        """Build the UI."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
 
-        # Panel superior: Preview + Controles
+        # Top panel: Preview + Controls
         top_layout = QHBoxLayout()
 
-        # Preview (izquierda)
+        # Preview (left) - takes 2/3 of space
         top_layout.addWidget(self._build_preview_panel(), 2)
 
-        # Controles (derecha)
+        # Controls (right) - takes 1/3 of space
         top_layout.addWidget(self._build_controls_panel(), 1)
 
         layout.addLayout(top_layout)
 
+        # Bottom panel: Debug info
+        layout.addWidget(self._build_debug_panel())
+
     def _build_preview_panel(self) -> QGroupBox:
-        """Panel de preview de cámara Artist con LayeredZoneEditor PRO."""
-        group = QGroupBox("Vista Previa - Cámara Artist + LayeredZoneEditor PRO")
+        """Preview panel with LayeredZoneEditor and debug overlay."""
+        group = QGroupBox("Vista Previa - Camara Artist + YOLO ROI Detection")
         layout = QVBoxLayout(group)
 
-        # LayeredZoneEditor PRO (8 zonas horizontales para Artist)
-        # Crear 8 zonas horizontales iniciales
-        artist_zones = self._create_artist_zones()
-        self.zone_viewer = LayeredZoneEditor(zone_list=artist_zones, max_zones=8, camera_type="ARTIST")
-        self.zone_viewer.zones_changed.connect(self._on_zones_changed)
-        layout.addWidget(self.zone_viewer)
+        # LayeredZoneEditor PRO (8 zones for Artist)
+        self.zone_editor = LayeredZoneEditor(zone_list=[], max_zones=8, camera_type="ARTIST")
+        self.zone_editor.zones_changed.connect(self._on_zones_changed)
+        layout.addWidget(self.zone_editor)
 
         # Info bar
         info_layout = QHBoxLayout()
@@ -119,154 +122,136 @@ class VisionArtistTab(QWidget):
         self.fps_label.setStyleSheet("color: #27ae60; font-weight: bold;")
         info_layout.addWidget(self.fps_label)
 
+        self.infer_label = QLabel("Infer: 0ms")
+        self.infer_label.setStyleSheet("color: #3498db;")
+        info_layout.addWidget(self.infer_label)
+
+        self.dropped_label = QLabel("Dropped: 0")
+        self.dropped_label.setStyleSheet("color: #e67e22;")
+        info_layout.addWidget(self.dropped_label)
+
         info_layout.addStretch()
 
-        # NOTE: camera_combo removed (USB removed in Phase 6.10)
-        # IP cameras are configured via VisionConfigWidget
+        # Debug overlay toggle
+        self.debug_check = QCheckBox("Debug Overlay")
+        self.debug_check.setChecked(True)
+        self.debug_check.stateChanged.connect(self._on_debug_toggle)
+        info_layout.addWidget(self.debug_check)
 
         layout.addLayout(info_layout)
 
         return group
 
-    def _create_artist_zones(self):
-        """Crea 8 zonas horizontales para Artist Tracker."""
-        zones = []
-        canvas_width = 640  # Ancho por defecto
-        canvas_height = 480  # Alto por defecto
-        zone_width = canvas_width // 8
-
-        for i in range(8):
-            zones.append({
-                "id": i + 1,
-                "name": f"Artist {i + 1}",
-                "x": i * zone_width,
-                "y": 0,
-                "w": zone_width,
-                "h": canvas_height,
-                "width": zone_width,
-                "height": canvas_height,
-                "visible": True,
-                "locked": True  # Artist zones son fijas, no se pueden mover
-            })
-        return zones
-
-    def _on_zones_changed(self, zones):
-        """Callback cuando cambian las zonas."""
-        # Artist zones no cambian mucho pero guardamos por consistencia
-        pass
-
     def _build_controls_panel(self) -> QGroupBox:
-        """Panel de controles Artist Tracker."""
-        group = QGroupBox("Artist Tracker PRO")
+        """Control panel with zones, TEST FIRE, and settings."""
+        group = QGroupBox("Artist Detector V9 - YOLO (8 Zones)")
         layout = QVBoxLayout(group)
 
-        # Toggle enable
-        self.tracking_enabled_check = QCheckBox("Habilitado")
-        self.tracking_enabled_check.setChecked(False)
-        self.tracking_enabled_check.stateChanged.connect(
-            lambda: self.vision_manager.enable_module("tracking", self.tracking_enabled_check.isChecked())
-        )
-        layout.addWidget(self.tracking_enabled_check)
+        # Enable toggle
+        self.artist_enabled_check = QCheckBox("Habilitado")
+        self.artist_enabled_check.setChecked(False)
+        self.artist_enabled_check.stateChanged.connect(self._on_enabled_changed)
+        layout.addWidget(self.artist_enabled_check)
 
-        # LEDs de CUES (CUE_TRACK_1..8 = cues 70-77)
+        # Status LEDs (C72-C79) - using scroll area for 8 zones
         cues_frame = QFrame()
         cues_frame.setFrameShape(QFrame.StyledPanel)
         cues_layout = QGridLayout(cues_frame)
         cues_layout.setContentsMargins(5, 5, 5, 5)
 
-        cues_layout.addWidget(QLabel("Cues Activos:"), 0, 0, 1, 2)
+        cues_layout.addWidget(QLabel("Cues (C72-C79):"), 0, 0, 1, 4)
 
-        # 8 LEDs para CUE_TRACK_1..8
-        self.led_track_cues = []
+        # 8 LEDs for ARTIST_1..8
+        self.led_artist_cues = []
+        self.zone_visible_checks = []
+        self.test_fire_btns = []
+
         for i in range(8):
-            led = LEDIndicator(QColor(0, 255, 0), 12)
-            self.led_track_cues.append(led)
+            row = 1 + i
+            zone_id = i + 1
+            cue_id = 72 + i  # C72-C79
 
-            row = 1 + (i // 2)
-            col = (i % 2) * 2
+            # LED
+            led = LEDIndicator(QColor(255, 165, 0), 14)  # Orange for artist
+            self.led_artist_cues.append(led)
+            cues_layout.addWidget(led, row, 0)
 
-            cues_layout.addWidget(led, row, col)
-            cues_layout.addWidget(QLabel(f"T{i+1}"), row, col + 1)
+            # Label
+            cues_layout.addWidget(QLabel(f"T{zone_id} (C{cue_id})"), row, 1)
+
+            # Visible checkbox
+            visible_check = QCheckBox("Vis")
+            visible_check.setChecked(True)
+            visible_check.setToolTip(f"Toggle visibility for zone {zone_id}")
+            visible_check.stateChanged.connect(lambda state, zid=zone_id: self._on_zone_visible_changed(zid, state))
+            self.zone_visible_checks.append(visible_check)
+            cues_layout.addWidget(visible_check, row, 2)
+
+            # TEST FIRE button
+            fire_btn = QPushButton("FIRE")
+            fire_btn.setFixedWidth(50)
+            fire_btn.setStyleSheet("background-color: #e74c3c; color: white; font-size: 10px;")
+            fire_btn.setToolTip(f"Test fire C{cue_id} for zone {zone_id}")
+            fire_btn.clicked.connect(lambda checked, zid=zone_id: self._on_test_fire(zid))
+            self.test_fire_btns.append(fire_btn)
+            cues_layout.addWidget(fire_btn, row, 3)
 
         layout.addWidget(cues_frame)
 
-        # Estado actual
-        grid = QGridLayout()
+        # Status display
+        status_frame = QFrame()
+        status_frame.setFrameShape(QFrame.StyledPanel)
+        status_layout = QGridLayout(status_frame)
+        status_layout.setContentsMargins(5, 5, 5, 5)
 
-        grid.addWidget(QLabel("Detector State:"), 0, 0)
+        status_layout.addWidget(QLabel("Estado:"), 0, 0)
         self.detector_state_label = QLabel("idle")
         self.detector_state_label.setStyleSheet("font-weight: bold;")
-        grid.addWidget(self.detector_state_label, 0, 1)
+        status_layout.addWidget(self.detector_state_label, 0, 1)
 
-        grid.addWidget(QLabel("Zona Activa:"), 1, 0)
-        self.active_zone_label = QLabel("None")
-        self.active_zone_label.setStyleSheet("font-weight: bold; color: #e74c3c;")
-        grid.addWidget(self.active_zone_label, 1, 1)
+        status_layout.addWidget(QLabel("Zonas Activas:"), 1, 0)
+        self.active_zones_label = QLabel("None")
+        self.active_zones_label.setStyleSheet("font-weight: bold; color: #e67e22;")
+        status_layout.addWidget(self.active_zones_label, 1, 1)
 
-        grid.addWidget(QLabel("Cue State:"), 2, 0)
-        self.cue_state_label = QLabel("idle")
-        grid.addWidget(self.cue_state_label, 2, 1)
+        status_layout.addWidget(QLabel("YOLO:"), 2, 0)
+        self.yolo_status_label = QLabel("No disponible")
+        status_layout.addWidget(self.yolo_status_label, 2, 1)
 
-        layout.addLayout(grid)
+        status_layout.addWidget(QLabel("Degradado:"), 3, 0)
+        self.degraded_label = QLabel("No")
+        status_layout.addWidget(self.degraded_label, 3, 1)
 
-        # Separador
-        separator = QFrame()
-        separator.setFrameShape(QFrame.HLine)
-        layout.addWidget(separator)
+        layout.addWidget(status_frame)
 
-        # Modo Calendario
-        layout.addWidget(QLabel("Modo Calendario:"))
+        # Zone management
+        zone_layout = QHBoxLayout()
+        self.add_zone_btn = QPushButton("+ Zona")
+        self.add_zone_btn.clicked.connect(self._on_add_zone)
+        zone_layout.addWidget(self.add_zone_btn)
 
-        calendar_layout = QHBoxLayout()
-        self.calendar_combo = QComboBox()
-        self.calendar_combo.addItems(["OFF", "ARTISTA", "TEATRO", "BOLICHE"])
-        self.calendar_combo.setCurrentText("OFF")
-        self.calendar_combo.currentTextChanged.connect(self._on_calendar_mode_changed)
-        calendar_layout.addWidget(self.calendar_combo)
-        layout.addLayout(calendar_layout)
+        self.remove_zone_btn = QPushButton("- Zona")
+        self.remove_zone_btn.clicked.connect(self._on_remove_zone)
+        zone_layout.addWidget(self.remove_zone_btn)
 
-        self.calendar_status_label = QLabel("Artist Tracker: DESHABILITADO por calendario")
-        self.calendar_status_label.setStyleSheet("color: #e74c3c; font-size: 10px;")
-        layout.addWidget(self.calendar_status_label)
+        self.kill_all_btn = QPushButton("KILL ALL")
+        self.kill_all_btn.setStyleSheet("background-color: #2c3e50; color: white;")
+        self.kill_all_btn.clicked.connect(self._on_kill_all)
+        zone_layout.addWidget(self.kill_all_btn)
 
-        # Separador
-        separator2 = QFrame()
-        separator2.setFrameShape(QFrame.HLine)
-        layout.addWidget(separator2)
+        layout.addLayout(zone_layout)
 
-        # Configuración
-        layout.addWidget(QLabel("Configuración:"))
+        # Configuration
+        config_layout = QHBoxLayout()
+        config_layout.addWidget(QLabel("Delay (s):"))
+        self.delay_spin = QDoubleSpinBox()
+        self.delay_spin.setRange(0.5, 10.0)
+        self.delay_spin.setValue(2.0)
+        self.delay_spin.setSingleStep(0.5)
+        config_layout.addWidget(self.delay_spin)
+        layout.addLayout(config_layout)
 
-        # Cooldown
-        cooldown_layout = QHBoxLayout()
-        cooldown_layout.addWidget(QLabel("Cooldown (s):"))
-        self.cooldown_spin = QDoubleSpinBox()
-        self.cooldown_spin.setRange(0.1, 5.0)
-        self.cooldown_spin.setValue(0.5)
-        self.cooldown_spin.setSingleStep(0.1)
-        cooldown_layout.addWidget(self.cooldown_spin)
-        layout.addLayout(cooldown_layout)
-
-        # Smoothing
-        smoothing_layout = QHBoxLayout()
-        smoothing_layout.addWidget(QLabel("Smoothing:"))
-        self.smoothing_spin = QSpinBox()
-        self.smoothing_spin.setRange(1, 10)
-        self.smoothing_spin.setValue(3)
-        smoothing_layout.addWidget(self.smoothing_spin)
-        layout.addLayout(smoothing_layout)
-
-        # Zones Horizontal
-        zones_layout = QHBoxLayout()
-        zones_layout.addWidget(QLabel("Zonas Horizontales:"))
-        self.zones_spin = QSpinBox()
-        self.zones_spin.setRange(4, 16)
-        self.zones_spin.setValue(8)
-        self.zones_spin.setEnabled(False)  # Fixed to 8
-        zones_layout.addWidget(self.zones_spin)
-        layout.addLayout(zones_layout)
-
-        # Botón aplicar
+        # Apply button
         self.apply_btn = QPushButton("Aplicar Cambios")
         self.apply_btn.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold;")
         self.apply_btn.clicked.connect(self._on_apply)
@@ -276,108 +261,303 @@ class VisionArtistTab(QWidget):
 
         return group
 
+    def _build_debug_panel(self) -> QGroupBox:
+        """Debug panel with detailed metrics."""
+        group = QGroupBox("Debug Info")
+        layout = QHBoxLayout(group)
+
+        # Zone status list
+        self.zone_debug_list = QListWidget()
+        self.zone_debug_list.setMaximumHeight(80)
+        layout.addWidget(self.zone_debug_list, 2)
+
+        # Performance metrics
+        metrics_layout = QVBoxLayout()
+        self.metrics_label = QLabel("Esperando datos...")
+        self.metrics_label.setStyleSheet("font-family: monospace; font-size: 11px;")
+        metrics_layout.addWidget(self.metrics_label)
+        layout.addLayout(metrics_layout, 1)
+
+        return group
+
     def update_frame(self, frame):
-        """Callback para recibir frames de la cámara Artist."""
+        """Callback to receive frames from Artist camera."""
         if frame is None:
             return
 
+        self._last_frame = frame.copy()
+
         try:
-            # Actualizar el zone viewer con el frame
-            self.zone_viewer.set_frame(frame)
+            # Draw debug overlay if enabled
+            if self._debug_overlay_enabled:
+                frame = self._draw_debug_overlay(frame)
+
+            # Update the ZoneEditor with the frame
+            self.zone_editor.set_frame(frame)
         except Exception as e:
-            print(f"[VisionArtistTab] Error actualizando frame: {e}")
+            print(f"[VisionArtistTab] Error updating frame: {e}")
+
+    def _draw_debug_overlay(self, frame):
+        """Draw debug overlay on frame: ROI rects, zone info."""
+        try:
+            artist_detector = self.vision_manager.get_artist_detector()
+            if not artist_detector:
+                return frame
+
+            state = artist_detector.get_state()
+            zones = state.get("zones", [])
+            active_zones = state.get("active_zones", [])
+
+            for zone in zones:
+                zone_id = zone.get("id", 0)
+                x = zone.get("x", 0)
+                y = zone.get("y", 0)
+                w = zone.get("width", zone.get("w", 100))
+                h = zone.get("height", zone.get("h", 100))
+                visible = zone.get("visible", True)
+
+                # Get zone state from engine
+                engine = artist_detector.get_engine()
+                engine_state = engine.get_state()
+                zone_info = engine_state.get("zones", {}).get(zone_id, {})
+
+                detected = zone_info.get("detected", False)
+                conf = zone_info.get("conf", 0.0)
+                active = zone_id in active_zones
+
+                # Color: orange if active, yellow if detected, red if not visible, gray otherwise
+                if not visible:
+                    color = (128, 128, 128)  # Gray
+                    text_color = (128, 128, 128)
+                elif active:
+                    color = (0, 165, 255)  # Orange (BGR)
+                    text_color = (0, 165, 255)
+                elif detected:
+                    color = (0, 255, 255)  # Yellow
+                    text_color = (0, 255, 255)
+                else:
+                    color = (0, 0, 255)  # Red
+                    text_color = (255, 255, 255)
+
+                # Draw ROI rectangle
+                cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
+
+                # Draw zone info text
+                status_str = "ON" if active else ("DET" if detected else "OFF")
+                text = f"T{zone_id} {status_str} {conf:.2f}"
+                cv2.putText(frame, text, (x + 5, y + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, text_color, 1)
+
+                # Store for debug list
+                self._zone_states[zone_id] = {
+                    "detected": detected,
+                    "conf": conf,
+                    "active": active,
+                    "visible": visible,
+                }
+
+            # Draw global metrics in corner
+            metrics = artist_detector.get_metrics()
+            infer_ms = metrics.get("infer_ms_avg", 0)
+            fps_real = metrics.get("fps_real", 0)
+            dropped = metrics.get("dropped_frames", 0)
+
+            info_text = f"FPS:{fps_real:.1f} Infer:{infer_ms:.0f}ms Drop:{dropped}"
+            cv2.putText(frame, info_text, (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
+        except Exception as e:
+            print(f"[VisionArtistTab] Debug overlay error: {e}")
+
+        return frame
 
     def _update_state(self):
-        """Actualiza el estado de los controles."""
+        """Update UI state."""
         try:
             state = self.vision_manager.get_state()
             tracking_state = state.get("tracking", {})
 
-            # FPS
-            fps = state.get("system", {}).get("fps", 0.0)
-            self.fps_label.setText(f"FPS: {fps:.1f}")
+            # Get detector directly for more detailed state
+            artist_detector = self.vision_manager.get_artist_detector()
+            if artist_detector:
+                detector_state = artist_detector.get_state()
+                metrics = artist_detector.get_metrics()
 
-            # Estado detector
-            detector_state = tracking_state.get("detector_state", "idle")
-            active_zone = tracking_state.get("zone", None)
-            cue_state = tracking_state.get("cue_state", "idle")
+                # FPS and metrics
+                fps_real = metrics.get("fps_real", 0)
+                infer_ms = metrics.get("infer_ms_avg", 0)
+                dropped = metrics.get("dropped_frames", 0)
 
-            self.detector_state_label.setText(detector_state)
-            self.active_zone_label.setText(str(active_zone) if active_zone else "None")
-            self.cue_state_label.setText(cue_state)
+                self.fps_label.setText(f"FPS: {fps_real:.1f}")
+                self.infer_label.setText(f"Infer: {infer_ms:.0f}ms")
+                self.dropped_label.setText(f"Dropped: {dropped}")
 
-            # Nota: LayeredZoneEditor maneja la selección de zona internamente
-            # No necesita set_active_zone() - la selección es interactiva
+                # Detector state
+                state_str = detector_state.get("state", "idle")
+                self.detector_state_label.setText(state_str)
 
-            # LEDs de cues (verificar Avolites)
-            self._update_cue_leds()
+                # Color based on state
+                if state_str == "active":
+                    self.detector_state_label.setStyleSheet("font-weight: bold; color: #e67e22;")
+                elif state_str == "disabled":
+                    self.detector_state_label.setStyleSheet("font-weight: bold; color: #7f8c8d;")
+                else:
+                    self.detector_state_label.setStyleSheet("font-weight: bold; color: #3498db;")
 
-            # Actualizar estado de calendario
-            self._update_calendar_status()
+                # Active zones
+                active_zones = detector_state.get("active_zones", [])
+                if active_zones:
+                    self.active_zones_label.setText(", ".join(str(z) for z in active_zones))
+                else:
+                    self.active_zones_label.setText("None")
 
-        except Exception as e:
-            print(f"[VisionArtistTab] Error actualizando estado: {e}")
+                # YOLO status
+                yolo_available = detector_state.get("detector_available", False)
+                self.yolo_status_label.setText("OK" if yolo_available else "No disponible")
+                self.yolo_status_label.setStyleSheet("color: #27ae60;" if yolo_available else "color: #e74c3c;")
 
-    def _update_cue_leds(self):
-        """Actualiza LEDs de cues según estado de Avolites."""
-        try:
-            if hasattr(self.vision_manager, 'cue_engine') and self.vision_manager.cue_engine:
-                av = self.vision_manager.cue_engine.av
-                # CUE_TRACK_1..8 = cues 70-77
+                # Degraded status
+                degraded = detector_state.get("degraded", False)
+                self.degraded_label.setText("SI" if degraded else "No")
+                self.degraded_label.setStyleSheet("color: #e74c3c; font-weight: bold;" if degraded else "")
+
+                # Update LEDs based on active zones
                 for i in range(8):
-                    cue_id = 70 + i
-                    self.led_track_cues[i].set_on(av.is_active(cue_id))
+                    zone_id = i + 1
+                    self.led_artist_cues[i].set_on(zone_id in active_zones)
+
+                # Update debug list
+                self._update_zone_debug_list(detector_state)
+
+                # Update metrics label
+                health = artist_detector.get_health()
+                engine_health = health.get("engine", {})
+                self.metrics_label.setText(
+                    f"Tick: {engine_health.get('tick_count', 0)}\n"
+                    f"Errors: {engine_health.get('consecutive_errors', 0)}\n"
+                    f"Watchdog: {'TRIGGERED' if engine_health.get('watchdog_triggered') else 'OK'}"
+                )
+
+            # Update enabled checkbox
+            self.artist_enabled_check.blockSignals(True)
+            self.artist_enabled_check.setChecked(tracking_state.get("enabled", False))
+            self.artist_enabled_check.blockSignals(False)
+
+        except Exception as e:
+            print(f"[VisionArtistTab] Error updating state: {e}")
+
+    def _update_zone_debug_list(self, detector_state):
+        """Update zone debug list."""
+        self.zone_debug_list.clear()
+        zones = detector_state.get("zones", [])
+        zones_state = self._zone_states
+
+        for zone in zones:
+            zone_id = zone.get("id", 0)
+            info = zones_state.get(zone_id, {})
+            detected = info.get("detected", False)
+            conf = info.get("conf", 0.0)
+            active = info.get("active", False)
+            visible = info.get("visible", True)
+
+            status = "ON" if active else ("DET" if detected else "OFF")
+            vis_str = "" if visible else " [HIDDEN]"
+            item = QListWidgetItem(f"Zone {zone_id}: {status} conf={conf:.2f}{vis_str}")
+
+            if active:
+                item.setForeground(QColor(230, 126, 34))  # Orange
+            elif detected:
+                item.setForeground(QColor(241, 196, 15))  # Yellow
+            elif not visible:
+                item.setForeground(QColor(127, 140, 141))  # Gray
             else:
-                for led in self.led_track_cues:
-                    led.set_on(False)
-        except Exception as e:
-            pass
+                item.setForeground(QColor(52, 152, 219))  # Blue
 
-    def _update_calendar_status(self):
-        """Actualiza el estado del calendario."""
+            self.zone_debug_list.addItem(item)
+
+    def _load_zones(self):
+        """Load zones from config."""
         try:
-            calendar_mode = self.vision_manager.get_calendar_mode()
-            self.calendar_combo.setCurrentText(calendar_mode)
-
-            if calendar_mode == "ARTISTA":
-                self.calendar_status_label.setText("Artist Tracker: HABILITADO por calendario")
-                self.calendar_status_label.setStyleSheet("color: #2ecc71; font-size: 10px;")
-            else:
-                self.calendar_status_label.setText(f"Artist Tracker: DESHABILITADO (modo: {calendar_mode})")
-                self.calendar_status_label.setStyleSheet("color: #e74c3c; font-size: 10px;")
+            config = self.vision_manager.get_config()
+            zones = config.get_artist_zones()
+            self.zone_editor.set_zones(zones)
         except Exception as e:
-            pass
+            print(f"[VisionArtistTab] Error loading zones: {e}")
 
-    # NOTE: _on_camera_changed removed (USB removed in Phase 6.10)
+    def _on_zones_changed(self, zones):
+        """Callback when zones change."""
+        pass  # Updates handled by timer
 
-    def _on_calendar_mode_changed(self, mode):
-        """Callback cuando cambia el modo de calendario."""
+    def _on_add_zone(self):
+        """Add a new zone."""
+        self.zone_editor.add_zone()
+
+    def _on_remove_zone(self):
+        """Remove selected zone."""
+        # LayeredZoneEditor handles removal via layer panel
+        pass
+
+    def _on_enabled_changed(self):
+        """Handle enable/disable toggle."""
+        enabled = self.artist_enabled_check.isChecked()
+        self.vision_manager.enable_module("artist", enabled)
+
+    def _on_zone_visible_changed(self, zone_id: int, state: int):
+        """Handle zone visibility toggle."""
+        visible = state == Qt.Checked
         try:
-            self.vision_manager.set_calendar_mode(mode)
-            print(f"[VisionArtistTab] Modo calendario cambiado a {mode}")
+            artist_detector = self.vision_manager.get_artist_detector()
+            if artist_detector:
+                artist_detector.set_zone_visible(zone_id, visible)
+                print(f"[VisionArtistTab] Zone {zone_id} visible={visible}")
         except Exception as e:
-            print(f"[VisionArtistTab] Error cambiando modo calendario: {e}")
+            print(f"[VisionArtistTab] Error setting zone visibility: {e}")
+
+    def _on_test_fire(self, zone_id: int):
+        """Test fire a zone cue."""
+        try:
+            artist_detector = self.vision_manager.get_artist_detector()
+            if artist_detector:
+                result = artist_detector._test_fire_zone(zone_id)
+                print(f"[VisionArtistTab] TEST FIRE Zone {zone_id}: {result}")
+        except Exception as e:
+            print(f"[VisionArtistTab] Error test firing: {e}")
+
+    def _on_kill_all(self):
+        """Kill all Artist cues."""
+        try:
+            artist_detector = self.vision_manager.get_artist_detector()
+            if artist_detector:
+                result = artist_detector._test_fire_zone(1, force_off=True)
+                print(f"[VisionArtistTab] KILL ALL: {result}")
+        except Exception as e:
+            print(f"[VisionArtistTab] Error killing all: {e}")
+
+    def _on_debug_toggle(self, state):
+        """Toggle debug overlay."""
+        self._debug_overlay_enabled = state == Qt.Checked
 
     def _on_apply(self):
-        """Aplica cambios de configuración."""
+        """Apply configuration changes."""
         try:
-            artist_tracker = self.vision_manager.get_artist_tracker()
+            # Update zones in ArtistDetector
+            zones = self.zone_editor.get_zones()
+            self.vision_manager.set_artist_zones(zones)
 
-            # Actualizar cooldown y smoothing
-            artist_tracker.cooldown = self.cooldown_spin.value()
-            artist_tracker.smoothing_frames = self.smoothing_spin.value()
+            # Update delay
+            artist_detector = self.vision_manager.get_artist_detector()
+            if artist_detector:
+                artist_detector.set_disappear_delay(self.delay_spin.value())
 
-            # Guardar en config JSON
+            # Save to config JSON
             config = self.vision_manager.get_config()
-            tracking_config = config.get_tracking_config()
-            tracking_config["cooldown"] = self.cooldown_spin.value()
-            tracking_config["smoothing"] = self.smoothing_spin.value()
-            tracking_config["zones_horizontal"] = self.zones_spin.value()
+            artist_config = config.get_artist_config()
+            artist_config["zones"] = zones
+            artist_config["zones_count"] = len(zones)
+            artist_config["disappear_delay"] = self.delay_spin.value()
 
-            config.set("tracking", tracking_config)
+            config.set("artist", artist_config)
             config.save()
 
-            print(f"[VisionArtistTab] Configuración aplicada")
+            print(f"[VisionArtistTab] Configuration applied ({len(zones)} zones)")
 
         except Exception as e:
-            print(f"[VisionArtistTab] Error aplicando config: {e}")
+            print(f"[VisionArtistTab] Error applying config: {e}")
