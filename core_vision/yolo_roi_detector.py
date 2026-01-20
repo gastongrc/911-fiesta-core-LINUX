@@ -178,9 +178,10 @@ class YoloRoiDetector:
             self._zones.clear()
             for zone in zones:
                 zone_id = zone.get("id")
-                if zone_id and 1 <= zone_id <= 5:
+                # Support zones 1-10 (DJ uses 1-5, Artist uses 1-8)
+                if zone_id and 1 <= zone_id <= 10:
                     self._zones[zone_id] = zone
-            print(f"[YoloRoiDetector] {len(self._zones)} zones configured")
+            print(f"[YoloRoiDetector] {len(self._zones)} zones configured (ids={list(self._zones.keys())})")
 
     def get_visible_zones(self) -> List[int]:
         """Get list of visible zone IDs."""

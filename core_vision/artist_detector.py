@@ -87,7 +87,12 @@ class ArtistDetector:
         self.vision_state.set_tracking_enabled(self.enabled)
         self.vision_state.set_artist_zones_count(len(self.zones))
 
-        print(f"[ArtistDetector] V9 initialized: {len(self.zones)} zones, enabled={self.enabled}, YOLO={self._detector_available}")
+        # Log zone IDs for verification
+        zone_ids = [z.get("id") for z in self.zones]
+        print(f"[ArtistDetector] V9 initialized: zones={len(self.zones)} ids={zone_ids}, enabled={self.enabled}, YOLO={self._detector_available}")
+
+        # Periodic log state
+        self._last_visible_log_ts = 0.0
 
     def _on_zone_detection(self, zone_id: int, detected: bool, conf: float) -> None:
         """
@@ -99,6 +104,14 @@ class ArtistDetector:
             conf: Detection confidence
         """
         self._engine.update_detection(zone_id, detected, conf)
+
+    def _log_visible_zones(self, visible_zones: list) -> None:
+        """Log visible zones periodically (every 30 seconds)."""
+        import time
+        now = time.time()
+        if now - self._last_visible_log_ts >= 30.0:
+            self._last_visible_log_ts = now
+            print(f"[ArtistDetector] processing visible_zones={len(visible_zones)} ids={visible_zones}")
 
     def process_frame(self, frame) -> Dict[str, Any]:
         """
@@ -124,6 +137,9 @@ class ArtistDetector:
         if not visible_zones:
             # No visible zones - no processing needed
             return self.get_state()
+
+        # Log visible zones periodically (every 30s)
+        self._log_visible_zones(visible_zones)
 
         # Run YOLO detection on visible zones with safety wrapper
         try:
