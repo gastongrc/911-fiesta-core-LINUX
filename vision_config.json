@@ -173,5 +173,110 @@
       }
     ],
     "disappear_delay": 2.0
+  },
+  "artist": {
+    "enabled": false,
+    "zones_count": 8,
+    "zones": [
+      {
+        "id": 1,
+        "name": "Artist 1",
+        "x": 0,
+        "y": 50,
+        "w": 80,
+        "h": 380,
+        "width": 80,
+        "height": 380,
+        "visible": true,
+        "locked": false
+      },
+      {
+        "id": 2,
+        "name": "Artist 2",
+        "x": 80,
+        "y": 50,
+        "w": 80,
+        "h": 380,
+        "width": 80,
+        "height": 380,
+        "visible": true,
+        "locked": false
+      },
+      {
+        "id": 3,
+        "name": "Artist 3",
+        "x": 160,
+        "y": 50,
+        "w": 80,
+        "h": 380,
+        "width": 80,
+        "height": 380,
+        "visible": true,
+        "locked": false
+      },
+      {
+        "id": 4,
+        "name": "Artist 4",
+        "x": 240,
+        "y": 50,
+        "w": 80,
+        "h": 380,
+        "width": 80,
+        "height": 380,
+        "visible": true,
+        "locked": false
+      },
+      {
+        "id": 5,
+        "name": "Artist 5",
+        "x": 320,
+        "y": 50,
+        "w": 80,
+        "h": 380,
+        "width": 80,
+        "height": 380,
+        "visible": true,
+        "locked": false
+      },
+      {
+        "id": 6,
+        "name": "Artist 6",
+        "x": 400,
+        "y": 50,
+        "w": 80,
+        "h": 380,
+        "width": 80,
+        "height": 380,
+        "visible": true,
+        "locked": false
+      },
+      {
+        "id": 7,
+        "name": "Artist 7",
+        "x": 480,
+        "y": 50,
+        "w": 80,
+        "h": 380,
+        "width": 80,
+        "height": 380,
+        "visible": true,
+        "locked": false
+      },
+      {
+        "id": 8,
+        "name": "Artist 8",
+        "x": 560,
+        "y": 50,
+        "w": 80,
+        "h": 380,
+        "width": 80,
+        "height": 380,
+        "visible": true,
+        "locked": false
+      }
+    ],
+    "disappear_delay": 2.0,
+    "conf_threshold": 0.35,
+    "target_fps": 6.0
   }
 }

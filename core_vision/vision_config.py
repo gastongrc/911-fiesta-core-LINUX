@@ -349,6 +349,39 @@ class VisionConfig:
         self.data["tracking"]["enabled"] = enabled
         self.save()
 
+    # ----- ARTIST (V9) -----
+
+    def get_artist_config(self) -> Dict[str, Any]:
+        """Obtiene configuración completa del Artist detector V9."""
+        return self.data.get("artist", {
+            "enabled": False,
+            "zones_count": 8,
+            "zones": [],
+            "disappear_delay": 2.0,
+            "conf_threshold": 0.35,
+            "target_fps": 6.0,
+        })
+
+    def set_artist_enabled(self, enabled: bool):
+        """Habilita/deshabilita Artist detector y guarda."""
+        if "artist" not in self.data:
+            self.data["artist"] = self.get_artist_config()
+        self.data["artist"]["enabled"] = enabled
+        self.save()
+
+    def set_artist_zones(self, zones: List[Dict[str, Any]]):
+        """Establece zonas de Artist y guarda."""
+        if "artist" not in self.data:
+            self.data["artist"] = self.get_artist_config()
+        self.data["artist"]["zones"] = zones
+        self.data["artist"]["zones_count"] = len(zones)
+        self.save()
+
+    def get_artist_zones(self) -> List[Dict[str, Any]]:
+        """Obtiene zonas de Artist configuradas."""
+        artist_config = self.get_artist_config()
+        return artist_config.get("zones", [])
+
     # ----- CALIBRATION -----
 
     def get_calibration(self) -> Dict[str, Any]:

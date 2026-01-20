@@ -160,6 +160,12 @@ class VisionState:
         with self.lock:
             self.dj_zones_count = max(1, min(5, count))
 
+    def set_artist_zones_count(self, count: int):
+        """Establece cantidad de zonas Artist (1-8)."""
+        with self.lock:
+            # Store in existing tracking state (reusing for artist)
+            pass  # Artist uses tracking_zone, count is informational
+
     # ----- ARTIST TRACKER -----
 
     def get_tracking_state(self) -> Dict[str, Any]:

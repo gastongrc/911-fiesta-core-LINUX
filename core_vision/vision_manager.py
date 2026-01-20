@@ -1,9 +1,11 @@
 """
-VisionManager PRO - Phase 6.10
+VisionManager PRO - Phase 6.10 + V9 Artist
 Manager centralizado del Vision System PRO
-Coordina: VisionConfig, VisionState, HazeDetector, DJDetector, ArtistTracker, CameraLoop
+Coordina: VisionConfig, VisionState, HazeDetector, DJDetector, ArtistDetector, CameraLoop
 Soporta: IP cameras (MJPEG Axis) only - USB REMOVED
 Integración con CueEngine para disparar cues
+
+V9 Artist: ArtistTracker replaced with ArtistDetector (YOLO-based, 8 zones, non-blocking)
 """
 import threading
 import hashlib
@@ -12,8 +14,8 @@ from typing import Optional, Callable, Any, Dict
 from .vision_config import VisionConfig
 from .vision_state import VisionState
 from .camera_haze import HazeDetector
-from .dj_detector import DJDetector  # STUB V9 - real impl in vision_dj_engine.py
-from .camera_tracking import ArtistTracker
+from .dj_detector import DJDetector  # V9 DJ detector
+from .artist_detector import ArtistDetector  # V9 Artist detector (replaces ArtistTracker)
 from .camera_loop import CameraLoop
 from .camera_source import CameraSource, create_source_from_config
 
@@ -70,7 +72,10 @@ class VisionManager:
         # Detectores (sin CueEngine inicialmente)
         self.haze_detector = HazeDetector(self.config, self.vision_state, cue_engine=None)
         self.dj_detector = DJDetector(self.config, self.vision_state, cue_engine=None)
-        self.artist_tracker = ArtistTracker(self.config, self.vision_state, cue_engine=None)
+        # V9: ArtistDetector replaces ArtistTracker (YOLO-based, 8 zones, non-blocking)
+        self.artist_detector = ArtistDetector(self.config, self.vision_state, cue_engine=None)
+        # Legacy alias for backward compatibility
+        self.artist_tracker = self.artist_detector
 
         # MULTICÁMARA v6.10: 3 CameraLoops con MJPEGSource (IP only, USB removed)
         self._ip_only = True  # Always true (USB removed)
@@ -106,7 +111,7 @@ class VisionManager:
             self.vision_state,
             haze_detector=None,
             dj_detector=None,
-            artist_tracker=self.artist_tracker,
+            artist_tracker=self.artist_detector,  # V9: Using ArtistDetector
             source=source_artist,
             camera_name="artist"
         )
@@ -143,7 +148,7 @@ class VisionManager:
         self.cue_engine = cue_engine
         self.haze_detector.set_cue_engine(cue_engine)
         self.dj_detector.set_cue_engine(cue_engine)
-        self.artist_tracker.set_cue_engine(cue_engine)
+        self.artist_detector.set_cue_engine(cue_engine)
         print("[VisionManager] CueEngine conectado a todos los detectores (legacy)")
 
     def set_family_manager(self, family_manager):
@@ -156,7 +161,7 @@ class VisionManager:
         """
         self.haze_detector.set_family_manager(family_manager)
         self.dj_detector.set_family_manager(family_manager)
-        self.artist_tracker.set_family_manager(family_manager)
+        self.artist_detector.set_family_manager(family_manager)
         print("[VisionManager] FamilyManager conectado a todos los detectores (canonical cues)")
 
     def _create_camera_source(self, camera_name: str) -> Optional[CameraSource]:
@@ -495,7 +500,8 @@ class VisionManager:
         module_map = {
             "haze": (self.haze_detector, self.vision_state.set_haze_enabled),
             "dj": (self.dj_detector, self.vision_state.set_dj_enabled),
-            "tracking": (self.artist_tracker, self.vision_state.set_tracking_enabled),
+            "tracking": (self.artist_detector, self.vision_state.set_tracking_enabled),
+            "artist": (self.artist_detector, self.vision_state.set_tracking_enabled),
         }
 
         if canonical_name not in module_map:
@@ -666,9 +672,13 @@ class VisionManager:
         """Obtiene referencia al DJDetector."""
         return self.dj_detector
 
-    def get_artist_tracker(self) -> ArtistTracker:
-        """Obtiene referencia al ArtistTracker."""
-        return self.artist_tracker
+    def get_artist_tracker(self) -> ArtistDetector:
+        """Obtiene referencia al ArtistDetector (legacy alias)."""
+        return self.artist_detector
+
+    def get_artist_detector(self) -> ArtistDetector:
+        """Obtiene referencia al ArtistDetector V9."""
+        return self.artist_detector
 
     def get_camera_loop(self) -> CameraLoop:
         """Obtiene referencia al CameraLoop."""
@@ -710,7 +720,8 @@ class VisionManager:
 
     def set_calendar_mode(self, mode: str):
         """
-        Establece el modo de calendario para control de Artist Tracker.
+        Establece el modo de calendario para control de Artist Detector.
+        NOTE: V9 ArtistDetector no usa calendar gating, pero mantenemos API.
 
         Args:
             mode: Modo del calendario ("ARTISTA", "TEATRO", "BOLICHE", "OFF")
@@ -718,8 +729,9 @@ class VisionManager:
         self.mode_calendar = mode
         self.mode_show_artist = (mode == "ARTISTA")
 
-        # Actualizar flag en ArtistTracker
-        self.artist_tracker.set_mode_show_artist(self.mode_show_artist)
+        # V9: ArtistDetector no necesita calendar gating, pero llamamos por compatibilidad
+        if hasattr(self.artist_detector, 'set_mode_show_artist'):
+            self.artist_detector.set_mode_show_artist(self.mode_show_artist)
 
         print(f"[VisionManager] Modo calendario: {mode}, mode_show_artist={self.mode_show_artist}")
 
@@ -748,7 +760,18 @@ class VisionManager:
             "modules": {
                 "haze": self.haze_detector.get_state(),
                 "dj": self.dj_detector.get_state(),
-                "tracking": self.artist_tracker.get_state(),
+                "artist": self.artist_detector.get_state(),
             },
             "state": self.get_state(),
         }
+
+    # ===== ARTIST ZONES MANAGEMENT =====
+
+    def set_artist_zones(self, zones):
+        """
+        Establece zonas de Artist.
+
+        Args:
+            zones: Lista de zonas [{id, x, y, width, height}]
+        """
+        self.artist_detector.set_zones(zones)
