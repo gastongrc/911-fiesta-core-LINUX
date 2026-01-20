@@ -843,6 +843,38 @@ class RTSPSource(CameraSource):
             self._fps_start_time = time.time()
 
 
+def validate_camera_url(url: str) -> Tuple[bool, str]:
+    """
+    Valida que una URL de cámara no tenga protocolos mixtos u otros errores.
+    Phase 6.11: Prevenir errores comunes de configuración.
+
+    Args:
+        url: URL a validar
+
+    Returns:
+        tuple: (is_valid, error_message)
+    """
+    if not url:
+        return False, "URL vacía"
+
+    url_lower = url.lower()
+
+    # Check for mixed protocols (most common user error)
+    if url_lower.startswith("http://") or url_lower.startswith("https://"):
+        if "rtsp://" in url_lower:
+            return False, "INVALID URL: mixed protocols (http + rtsp). Use RTSP protocol selector."
+
+    if url_lower.startswith("rtsp://"):
+        if "http://" in url_lower or "https://" in url_lower:
+            return False, "INVALID URL: mixed protocols (rtsp + http). Check URL format."
+
+    # Check for common typos in IP
+    if "192.160." in url:
+        print(f"[CameraSource] WARNING: URL contains 192.160 - possible typo for 192.168?")
+
+    return True, ""
+
+
 def detect_source_type(url: str, explicit_type: Optional[str] = None) -> str:
     """
     Auto-detecta el tipo de fuente basado en URL.
@@ -924,6 +956,12 @@ def create_source_from_config(config: Dict[str, Any]) -> CameraSource:
 
     if not url:
         raise ValueError("No URL provided in config")
+
+    # Phase 6.11: Validar URL antes de crear source
+    is_valid, error_msg = validate_camera_url(url)
+    if not is_valid:
+        print(f"[CameraSource] URL VALIDATION FAILED: {error_msg}")
+        raise ValueError(error_msg)
 
     # Auto-detectar o usar tipo explícito
     explicit_type = config.get("type", "auto")
