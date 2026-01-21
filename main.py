@@ -1,5 +1,53 @@
 # main.py - 911 Fiesta v4.12 - SETTERS DINÁMICOS (UI) + ENGINE SIEMPRE CORRE
-# ============================================================================
+# =============================================================================
+# CRITICAL: OpenMP fix MUST run BEFORE any import of numpy/torch/cv2/pyav/etc.
+# Fixes Windows "OMP: Error #15: libiomp5md.dll already initialized" crash.
+# =============================================================================
+import os as _os
+import sys as _sys
+
+# --- OpenMP Duplicate Runtime Protection (Windows/Conda) ---
+_os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+_os.environ.setdefault("OMP_NUM_THREADS", "1")
+_os.environ.setdefault("MKL_NUM_THREADS", "1")
+_os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+
+# --- Conda PATH priority (Windows DLL search fix) ---
+_conda_prefix = _os.environ.get("CONDA_PREFIX")
+_conda_path_prepended = False
+if _sys.platform == "win32" and _conda_prefix:
+    _conda_lib_bin = _os.path.join(_conda_prefix, "Library", "bin")
+    if _os.path.isdir(_conda_lib_bin):
+        _current_path = _os.environ.get("PATH", "")
+        if _conda_lib_bin.lower() not in _current_path.lower():
+            _os.environ["PATH"] = _conda_lib_bin + _os.pathsep + _current_path
+            _conda_path_prepended = True
+        # Python 3.8+: explicit DLL directory registration
+        if hasattr(_os, "add_dll_directory"):
+            try:
+                _os.add_dll_directory(_conda_lib_bin)
+            except OSError:
+                pass
+
+# --- Boot logs (once per session) ---
+if _os.environ.get("_911_OMP_BOOT_LOGGED") != "1":
+    _os.environ["_911_OMP_BOOT_LOGGED"] = "1"
+    print(f"[BOOT] KMP_DUPLICATE_LIB_OK={_os.environ.get('KMP_DUPLICATE_LIB_OK')}")
+    print(f"[BOOT] OMP_NUM_THREADS={_os.environ.get('OMP_NUM_THREADS')}")
+    print(f"[BOOT] MKL_NUM_THREADS={_os.environ.get('MKL_NUM_THREADS')}")
+    print(f"[BOOT] OPENBLAS_NUM_THREADS={_os.environ.get('OPENBLAS_NUM_THREADS')}")
+    print(f"[BOOT] CONDA_PREFIX={_conda_prefix or '(not set)'}")
+    if _conda_path_prepended:
+        print(f"[BOOT] PATH prepended: {_conda_lib_bin}")
+
+# Cleanup temp vars (keep namespace clean)
+del _conda_prefix, _conda_path_prepended
+if "_conda_lib_bin" in dir():
+    del _conda_lib_bin
+if "_current_path" in dir():
+    del _current_path
+
+# =============================================================================
 # FIX v4.12 - SETTERS PARA UI:
 # ✅ AvolitesController tiene set_local_interface() y set_console_ip()
 # ✅ UI puede cambiar interfaz de red y target Titan en caliente
@@ -70,10 +118,6 @@ def _bootstrap_guard():
 
 # Ejecutar bootstrap ANTES de cualquier import de PySide6
 _bootstrap_guard()
-
-os.environ.setdefault("OMP_NUM_THREADS", "1")
-os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
-os.environ.setdefault("MKL_NUM_THREADS", "1")
 
 import math, json, threading, subprocess, platform, time, collections
 import numpy as np
