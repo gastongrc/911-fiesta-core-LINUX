@@ -1,11 +1,12 @@
 """
 CameraSource - Abstracción de fuentes de cámara para 911 Fiesta
-Soporta: MJPEG (HTTP streaming) + RTSP (H.264 via OpenCV)
+Soporta: MJPEG (HTTP streaming) + RTSP (H.264 via PyAV/FFmpeg)
 
 Phase 6.7 - IP Camera Support
 Phase 6.9 - Robust stop mechanism for MJPEGSource
 Phase 6.10 - USB REMOVED, MJPEG only (ip_only mode enforced)
 Phase 6.11 - RTSP support + unified low-latency buffer (queue maxsize=1)
+Phase 6.13 - PyAV-based RTSP with VMS-grade low latency
 """
 import cv2
 import numpy as np
@@ -16,6 +17,14 @@ import requests
 from requests.exceptions import ReadTimeout, ChunkedEncodingError, ConnectionError as ReqConnectionError
 from abc import ABC, abstractmethod
 from typing import Optional, Tuple, Dict, Any
+
+# PyAV import with fallback
+try:
+    import av
+    PYAV_AVAILABLE = True
+except ImportError:
+    PYAV_AVAILABLE = False
+    print("[CameraSource] WARNING: PyAV not available, RTSP will use OpenCV fallback")
 
 
 class CameraSource(ABC):
@@ -925,6 +934,423 @@ class RTSPSource(CameraSource):
             self._fps_start_time = time.time()
 
 
+class RTSPSourcePyAV(CameraSource):
+    """
+    Fuente de cámara RTSP usando PyAV (FFmpeg bindings).
+    Optimizado para baja latencia VMS-grade con H.264/H.265 streams.
+
+    Phase 6.13: PyAV-based RTSP with VMS-grade low latency
+    - FFmpeg options: nobuffer, low_delay, minimal probesize
+    - Transport selector: UDP (default) or TCP
+    - Queue maxsize=1 with drop policy (latest frame only)
+    - Thread-safe reconnection (maintains fix from Phase 6.12)
+    - PTS-based latency estimation
+    """
+
+    # Consecutive errors threshold before triggering reconnect
+    RECONNECT_ERROR_THRESHOLD = 30
+    # Max frame age (seconds) before considering stall
+    STALL_TIMEOUT = 5.0
+
+    def __init__(
+        self,
+        url: str,
+        username: str = "",
+        password: str = "",
+        fps_target: int = 10,
+        timeout_s: float = 5.0,
+        reconnect_s: float = 2.0,
+        transport: str = "udp",
+        low_latency: bool = True
+    ):
+        """
+        Inicializa fuente RTSP con PyAV.
+
+        Args:
+            url: URL del stream RTSP
+            username: Usuario (si no está en URL)
+            password: Password (si no está en URL)
+            fps_target: FPS objetivo para rate limiting
+            timeout_s: Timeout de conexión
+            reconnect_s: Delay base entre reconexiones
+            transport: "udp" (default, lower latency) o "tcp" (more reliable)
+            low_latency: True para modo baja latencia (default)
+        """
+        # Build URL with credentials if not already present
+        if username and password and "@" not in url:
+            if url.startswith("rtsp://"):
+                url = f"rtsp://{username}:{password}@{url[7:]}"
+
+        self.url = url
+        self.username = username
+        self.password = password
+        self.fps_target = fps_target
+        self.connect_timeout = timeout_s
+        self.reconnect_s = reconnect_s
+        self.transport = transport.lower()
+        self.low_latency = low_latency
+
+        # Estado interno - eventos thread-safe
+        self._stop_event = threading.Event()
+        self._reconnect_event = threading.Event()
+        self._container = None
+        self._thread: Optional[threading.Thread] = None
+        self._opened = False
+
+        # Frame buffer - queue maxsize=1 for latest-frame-only policy
+        self._frame_queue: queue.Queue = queue.Queue(maxsize=1)
+        self._lock = threading.RLock()
+        self._last_frame: Optional[np.ndarray] = None
+        self._last_frame_ts: float = 0.0
+        self._last_pts: Optional[float] = None
+        self._frame_count = 0
+        self._actual_fps = 0.0
+        self._fps_start_time = None
+
+        # Metrics
+        self._drops = 0
+        self._decode_ms_avg = 0.0
+        self._decode_samples = 0
+        self._read_errors = 0
+        self._reconnect_count = 0
+        self._latency_est_ms = 0.0
+
+        # Stall detection
+        self._stall_detected = False
+        self._max_reconnect_backoff = 10.0
+
+    def start(self) -> bool:
+        """Inicia el thread de captura RTSP PyAV."""
+        if self._thread and self._thread.is_alive():
+            print(f"[RTSPSourcePyAV] Already running: {self._safe_url()}")
+            return True
+
+        if not self.url or not self.url.startswith("rtsp://"):
+            print(f"[RTSPSourcePyAV] Invalid URL: {self._safe_url()}")
+            return False
+
+        print(f"[RTSPSourcePyAV] STARTING: {self._safe_url()} transport={self.transport} low_latency={self.low_latency}")
+
+        # Reset state
+        self._stop_event.clear()
+        self._reconnect_event.clear()
+        self._stall_detected = False
+        self._reconnect_count = 0
+        self._opened = False
+        self._drops = 0
+        self._read_errors = 0
+
+        # Start capture thread
+        self._thread = threading.Thread(
+            target=self._capture_loop,
+            daemon=True,
+            name=f"RTSPSourcePyAV-{id(self)}"
+        )
+        self._thread.start()
+
+        # Wait for connection
+        start_wait = time.time()
+        while time.time() - start_wait < self.connect_timeout:
+            if self._stop_event.is_set():
+                return False
+            if self._opened:
+                print(f"[RTSPSourcePyAV] STARTED OK: {self._safe_url()}")
+                return True
+            time.sleep(0.1)
+
+        print(f"[RTSPSourcePyAV] Connection timeout: {self._safe_url()}")
+        return self._opened
+
+    def stop(self) -> None:
+        """
+        Detiene el thread de captura de forma thread-safe.
+        NUNCA toca _container directamente - el thread lo libera.
+        """
+        print(f"[RTSPSourcePyAV] STOPPING: {self._safe_url()}")
+        self._stop_event.set()
+
+        if self._thread:
+            self._thread.join(timeout=2.0)
+            if self._thread.is_alive():
+                print(f"[RTSPSourcePyAV] WARNING: thread didn't stop in 2s")
+            self._thread = None
+
+        self._opened = False
+        print(f"[RTSPSourcePyAV] STOPPED: {self._safe_url()}")
+
+    def read(self) -> Tuple[bool, Optional[np.ndarray]]:
+        """Lee el último frame disponible (NO bloqueante)."""
+        with self._lock:
+            if self._last_frame is None:
+                return False, None
+
+            age = time.time() - self._last_frame_ts
+            if age > self.STALL_TIMEOUT:
+                if not self._stall_detected:
+                    print(f"[RTSPSourcePyAV] Stall detected: frame age={age:.1f}s")
+                    self._stall_detected = True
+                return False, None
+
+            self._stall_detected = False
+            return True, self._last_frame.copy()
+
+    def is_opened(self) -> bool:
+        """Verifica si la fuente está conectada."""
+        return self._opened and not self._stop_event.is_set()
+
+    def get_info(self) -> Dict[str, Any]:
+        """Obtiene información de la fuente."""
+        with self._lock:
+            frame_shape = self._last_frame.shape if self._last_frame is not None else None
+
+        return {
+            "type": "rtsp-pyav",
+            "url": self._safe_url(),
+            "transport": self.transport,
+            "low_latency": self.low_latency,
+            "fps_target": self.fps_target,
+            "opened": self._opened,
+            "fps_actual": self._actual_fps,
+            "fps_read": self._actual_fps,
+            "frame_shape": frame_shape,
+            "stall_detected": self._stall_detected,
+            "drops": self._drops,
+            "decode_ms": self._decode_ms_avg,
+            "queue_len": self._frame_queue.qsize(),
+            "read_errors": self._read_errors,
+            "latency_est_ms": self._latency_est_ms,
+        }
+
+    def get_fps(self) -> float:
+        """Obtiene FPS real medido."""
+        return self._actual_fps
+
+    def request_reconnect(self) -> None:
+        """Solicita reconexión sin detener el source."""
+        if not self._thread or not self._thread.is_alive():
+            return
+        print(f"[RTSPSourcePyAV] Reconnect requested")
+        self._reconnect_event.set()
+
+    def supports_reconnect(self) -> bool:
+        """Indica soporte para reconexión soft."""
+        return True
+
+    def _safe_url(self) -> str:
+        """Retorna URL con password oculto."""
+        if "@" in self.url:
+            try:
+                prefix, rest = self.url.split("@", 1)
+                if ":" in prefix:
+                    proto_user = prefix.rsplit(":", 1)[0]
+                    return f"{proto_user}:***@{rest}"
+            except:
+                pass
+        return self.url
+
+    def _get_ffmpeg_options(self) -> Dict[str, str]:
+        """Construye opciones FFmpeg para baja latencia."""
+        options = {
+            "rtsp_transport": self.transport,
+            "stimeout": str(int(self.connect_timeout * 1000000)),  # microseconds
+        }
+
+        if self.low_latency:
+            options.update({
+                "fflags": "nobuffer",
+                "flags": "low_delay",
+                "analyzeduration": "0",
+                "probesize": "32768",  # 32KB - minimal but safe
+                "max_delay": "0",
+                "reorder_queue_size": "0",
+            })
+
+        return options
+
+    def _capture_loop(self):
+        """Thread principal de captura RTSP PyAV."""
+        print(f"[RTSPSourcePyAV] Thread started: {threading.current_thread().name}")
+
+        while not self._stop_event.is_set():
+            try:
+                self._connect_and_stream()
+            except Exception as e:
+                if not self._stop_event.is_set():
+                    print(f"[RTSPSourcePyAV] Capture loop error: {e}")
+
+            # Cleanup container INSIDE thread (thread-safe)
+            self._release_container_internal()
+
+            reconnect_requested = self._reconnect_event.is_set()
+            if reconnect_requested:
+                self._reconnect_event.clear()
+
+            if not self._stop_event.is_set():
+                self._opened = False
+                self._reconnect_count += 1
+
+                backoff = 0.5 if reconnect_requested else min(
+                    self.reconnect_s * (1.5 ** min(self._reconnect_count, 5)),
+                    self._max_reconnect_backoff
+                )
+                print(f"[RTSPSourcePyAV] Reconnecting in {backoff:.1f}s (attempt {self._reconnect_count})...")
+
+                if self._stop_event.wait(timeout=backoff):
+                    break
+
+        self._release_container_internal()
+        self._opened = False
+        print(f"[RTSPSourcePyAV] Thread exiting")
+
+    def _release_container_internal(self):
+        """Libera container PyAV de forma segura DENTRO del thread."""
+        if self._container is not None:
+            try:
+                self._container.close()
+            except Exception as e:
+                print(f"[RTSPSourcePyAV] Error closing container: {e}")
+            self._container = None
+
+    def _connect_and_stream(self):
+        """Conecta al stream RTSP y captura frames."""
+        if self._stop_event.is_set():
+            return
+
+        print(f"[RTSPSourcePyAV] Connecting to {self._safe_url()}...")
+
+        options = self._get_ffmpeg_options()
+        print(f"[RTSPSourcePyAV] FFmpeg options: {options}")
+
+        try:
+            self._container = av.open(
+                self.url,
+                options=options,
+                timeout=(self.connect_timeout, None)
+            )
+        except Exception as e:
+            print(f"[RTSPSourcePyAV] Failed to open: {e}")
+            return
+
+        # Find video stream
+        video_stream = None
+        for stream in self._container.streams:
+            if stream.type == 'video':
+                video_stream = stream
+                break
+
+        if not video_stream:
+            print(f"[RTSPSourcePyAV] No video stream found")
+            return
+
+        # Configure for low latency decoding
+        video_stream.thread_type = "AUTO"
+
+        width = video_stream.codec_context.width
+        height = video_stream.codec_context.height
+        codec_name = video_stream.codec_context.name
+        print(f"[RTSPSourcePyAV] Connected! {width}x{height} codec={codec_name}")
+
+        self._opened = True
+        self._reconnect_count = 0
+        self._frame_count = 0
+        self._fps_start_time = time.time()
+
+        # Frame interval for rate limiting
+        frame_interval = 1.0 / self.fps_target if self.fps_target > 0 else 0
+        last_frame_time = 0
+        consecutive_errors = 0
+
+        try:
+            for packet in self._container.demux(video_stream):
+                if self._stop_event.is_set() or self._reconnect_event.is_set():
+                    break
+
+                try:
+                    for frame in packet.decode():
+                        if self._stop_event.is_set() or self._reconnect_event.is_set():
+                            break
+
+                        now = time.time()
+
+                        # Rate limiting
+                        if frame_interval > 0 and (now - last_frame_time) < frame_interval:
+                            continue
+
+                        # Convert to numpy BGR
+                        decode_start = time.perf_counter()
+                        img = frame.to_ndarray(format='bgr24')
+                        decode_ms = (time.perf_counter() - decode_start) * 1000
+
+                        # Update metrics
+                        if self._decode_samples == 0:
+                            self._decode_ms_avg = decode_ms
+                        else:
+                            self._decode_ms_avg = 0.9 * self._decode_ms_avg + 0.1 * decode_ms
+                        self._decode_samples += 1
+
+                        # Estimate latency from PTS
+                        if frame.pts is not None and video_stream.time_base:
+                            pts_seconds = float(frame.pts * video_stream.time_base)
+                            # Simple latency estimation (stream time vs wall clock)
+                            # This is approximate since we don't have NTP sync
+                            self._last_pts = pts_seconds
+
+                        # Store frame
+                        with self._lock:
+                            self._last_frame = img
+                            self._last_frame_ts = now
+
+                        # Queue with drop
+                        try:
+                            self._frame_queue.put_nowait(img)
+                        except queue.Full:
+                            try:
+                                self._frame_queue.get_nowait()
+                                self._drops += 1
+                            except queue.Empty:
+                                pass
+                            try:
+                                self._frame_queue.put_nowait(img)
+                            except queue.Full:
+                                pass
+
+                        last_frame_time = now
+                        self._update_fps()
+                        consecutive_errors = 0
+
+                except av.error.EOFError:
+                    print(f"[RTSPSourcePyAV] EOF reached")
+                    break
+                except Exception as e:
+                    if not self._stop_event.is_set():
+                        consecutive_errors += 1
+                        self._read_errors += 1
+                        if consecutive_errors >= self.RECONNECT_ERROR_THRESHOLD:
+                            print(f"[RTSPSourcePyAV] Too many errors ({consecutive_errors}), will reconnect")
+                            break
+
+        except av.error.ExitError:
+            if not self._stop_event.is_set():
+                print(f"[RTSPSourcePyAV] Stream terminated")
+        except Exception as e:
+            if not self._stop_event.is_set():
+                print(f"[RTSPSourcePyAV] Stream error: {e}")
+
+        self._opened = False
+
+    def _update_fps(self):
+        """Actualiza el contador de FPS."""
+        self._frame_count += 1
+        if self._fps_start_time is None:
+            self._fps_start_time = time.time()
+
+        elapsed = time.time() - self._fps_start_time
+        if elapsed >= 1.0:
+            self._actual_fps = self._frame_count / elapsed
+            self._frame_count = 0
+            self._fps_start_time = time.time()
+
+
 def validate_camera_url(url: str) -> Tuple[bool, str]:
     """
     Valida que una URL de cámara no tenga protocolos mixtos u otros errores.
@@ -999,6 +1425,7 @@ def create_source_from_config(config: Dict[str, Any]) -> CameraSource:
     Soporta MJPEG (HTTP) y RTSP (H.264) con auto-detección.
 
     Phase 6.11: Soporte dual MJPEG + RTSP
+    Phase 6.13: PyAV-based RTSP con baja latencia VMS-grade
 
     Args:
         config: Dict con parámetros de cámara:
@@ -1012,9 +1439,11 @@ def create_source_from_config(config: Dict[str, Any]) -> CameraSource:
             - fps_target: FPS objetivo
             - timeout_s: Timeout de conexión
             - reconnect_s: Delay entre reconexiones
+            - transport: "udp" | "tcp" (default "udp", solo RTSP)
+            - low_latency: bool (default True, solo RTSP)
 
     Returns:
-        CameraSource: Instancia de MJPEGSource o RTSPSource
+        CameraSource: Instancia de MJPEGSource, RTSPSourcePyAV o RTSPSource
 
     Raises:
         ValueError: Si no hay URL válida o tipo no soportado
@@ -1061,7 +1490,20 @@ def create_source_from_config(config: Dict[str, Any]) -> CameraSource:
     }
 
     if source_type == "rtsp":
-        return RTSPSource(**common_params)
+        # Phase 6.13: Usar PyAV si está disponible para baja latencia
+        transport = config.get("transport", "udp").lower()
+        low_latency = config.get("low_latency", True)
+
+        if PYAV_AVAILABLE:
+            print(f"[CameraSource] Using PyAV (low-latency mode) transport={transport} low_latency={low_latency}")
+            return RTSPSourcePyAV(
+                **common_params,
+                transport=transport,
+                low_latency=low_latency
+            )
+        else:
+            print(f"[CameraSource] PyAV not available, using OpenCV fallback")
+            return RTSPSource(**common_params)
     elif source_type == "mjpeg":
         return MJPEGSource(**common_params)
     else:

@@ -151,6 +151,24 @@ class CameraConfigPanel(QWidget):
         self.txt_username_rtsp.setStyleSheet(input_style)
         rtsp_layout.addWidget(self.txt_username_rtsp, 2, 3)
 
+        # Row 3: Transport and Low Latency options
+        rtsp_layout.addWidget(QLabel("Transport:"), 3, 0)
+        self.combo_transport = QComboBox()
+        self.combo_transport.addItem("UDP (baja latencia)", "udp")
+        self.combo_transport.addItem("TCP (más estable)", "tcp")
+        self.combo_transport.setStyleSheet(
+            "QComboBox{background:#333; color:#ccc; border:1px solid #555; padding:4px; border-radius:3px;}"
+        )
+        self.combo_transport.setFixedWidth(140)
+        rtsp_layout.addWidget(self.combo_transport, 3, 1)
+
+        # Low Latency checkbox
+        self.chk_low_latency = QCheckBox("Low Latency Mode")
+        self.chk_low_latency.setChecked(True)
+        self.chk_low_latency.setStyleSheet("color:#ccc;")
+        self.chk_low_latency.setToolTip("Activa opciones FFmpeg para mínima latencia (nobuffer, low_delay)")
+        rtsp_layout.addWidget(self.chk_low_latency, 3, 2, 1, 2)
+
         self.stacked_fields.addWidget(rtsp_widget)
 
         layout.addWidget(self.stacked_fields)
@@ -220,7 +238,7 @@ class CameraConfigPanel(QWidget):
         protocol = self.get_protocol()
 
         if protocol == "rtsp":
-            # RTSP config
+            # RTSP config with low-latency options
             return {
                 "type": "rtsp",
                 "enabled": self.chk_enabled.isChecked(),
@@ -231,7 +249,9 @@ class CameraConfigPanel(QWidget):
                 "password": "",  # Password usually embedded in URL
                 "fps_target": self.spin_fps.value(),
                 "timeout_s": self.spin_timeout.value(),
-                "reconnect_s": 2.0
+                "reconnect_s": 2.0,
+                "transport": self.combo_transport.currentData(),
+                "low_latency": self.chk_low_latency.isChecked()
             }
         else:
             # MJPEG config (default)
@@ -267,6 +287,14 @@ class CameraConfigPanel(QWidget):
             self.combo_preferred.setCurrentIndex(idx)
 
             self.txt_username_rtsp.setText(config.get("username", ""))
+
+            # Transport selector (Phase 6.13)
+            transport = config.get("transport", "udp").lower()
+            transport_idx = 0 if transport == "udp" else 1
+            self.combo_transport.setCurrentIndex(transport_idx)
+
+            # Low latency checkbox (Phase 6.13)
+            self.chk_low_latency.setChecked(config.get("low_latency", True))
         else:
             self.combo_protocol.setCurrentIndex(0)  # MJPEG
             self.stacked_fields.setCurrentIndex(0)

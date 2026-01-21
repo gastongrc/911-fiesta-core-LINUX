@@ -96,7 +96,9 @@
       "password": "12345",
       "fps_target": 10,
       "timeout_s": 5.0,
-      "reconnect_s": 2.0
+      "reconnect_s": 2.0,
+      "transport": "udp",
+      "low_latency": true
     }
   },
   "dj": {
