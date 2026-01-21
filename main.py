@@ -71,9 +71,25 @@ def _bootstrap_guard():
 # Ejecutar bootstrap ANTES de cualquier import de PySide6
 _bootstrap_guard()
 
+# =============================================================================
+# OPENMP DUPLICATE RUNTIME PROTECTION (Windows crash fix)
+# =============================================================================
+# Prevents: "OMP: Error #15: Initializing libiomp5md.dll, but found already initialized"
+# This happens when both conda and Intel Shared Libraries provide the same DLL.
+# KMP_DUPLICATE_LIB_OK allows the process to continue despite the duplicate.
+# Thread caps reduce contention and improve stability.
+# =============================================================================
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
+
+# Log OpenMP settings at boot (only once)
+if os.environ.get("_911_BOOT_LOGGED") == "1" and not os.environ.get("_911_OMP_LOGGED"):
+    os.environ["_911_OMP_LOGGED"] = "1"
+    print(f"[BOOT] KMP_DUPLICATE_LIB_OK={os.environ.get('KMP_DUPLICATE_LIB_OK')}")
+    print(f"[BOOT] OMP_NUM_THREADS={os.environ.get('OMP_NUM_THREADS')}")
+    print(f"[BOOT] MKL_NUM_THREADS={os.environ.get('MKL_NUM_THREADS')}")
 
 import math, json, threading, subprocess, platform, time, collections
 import numpy as np
