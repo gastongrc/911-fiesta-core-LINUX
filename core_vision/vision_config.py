@@ -1,7 +1,12 @@
 """
-VisionConfig PRO - Phase 6.10
+VisionConfig PRO - Phase 6.11
 Persistencia JSON para configuración del Vision System
-Soporta: IP cameras (MJPEG Axis) only - USB REMOVED
+Soporta: IP cameras (MJPEG Axis + RTSP H.264) - USB REMOVED
+
+Phase 6.11: Soporte dual MJPEG + RTSP
+- MJPEG: host + path -> http://host/path (Axis cameras)
+- RTSP: url_main/url_sub -> rtsp://... (generic IP cameras)
+- Auto-detección de protocolo basada en URL
 """
 import json
 import os
@@ -106,20 +111,41 @@ class VisionConfig:
             print("[VisionConfig] WARNING: no cameras section in config")
             return
 
-        print("[VisionConfig] === CAMERAS STATUS (MJPEG only) ===")
+        print("[VisionConfig] === CAMERAS STATUS (MJPEG + RTSP) ===")
 
-        for cam_name in ["haze", "dj", "artist"]:
+        # Iterar sobre todas las cámaras configuradas
+        all_cameras = list(self.data["cameras"].keys())
+        for cam_name in all_cameras:
             cam = self.data["cameras"].get(cam_name, {})
             cam_type = cam.get("type", "mjpeg")
             enabled = cam.get("enabled", False)
-            host = cam.get("host", "0.0.0.0")
 
-            configured = self.is_camera_configured(cam_name)
-            # Validate host para posibles warnings
-            is_valid, warning = self.validate_host(host, cam_name)
+            # Determinar endpoint según tipo
+            if cam_type == "rtsp" or cam.get("url_main") or cam.get("url_sub"):
+                url_sub = cam.get("url_sub", "")
+                url_main = cam.get("url_main", "")
+                preferred = cam.get("preferred", "sub")
+                endpoint = url_sub if (preferred == "sub" and url_sub) else (url_main or url_sub or "N/A")
+                # Ocultar credenciales en log
+                if "@" in endpoint:
+                    try:
+                        proto, rest = endpoint.split("://", 1)
+                        if "@" in rest:
+                            creds, host_part = rest.split("@", 1)
+                            endpoint = f"{proto}://***@{host_part}"
+                    except:
+                        pass
+                configured = bool(url_main or url_sub)
+            else:
+                # MJPEG mode
+                host = cam.get("host", "0.0.0.0")
+                endpoint = host
+                configured = self.is_camera_configured(cam_name)
+                # Validate host para posibles warnings
+                self.validate_host(host, cam_name)
 
             status = "READY" if (configured and enabled) else ("NOT_CONFIGURED" if not configured else "DISABLED")
-            print(f"[VisionConfig] camera {cam_name}: type={cam_type} host={host} enabled={enabled} configured={configured} -> {status}")
+            print(f"[VisionConfig] camera {cam_name}: type={cam_type} endpoint={endpoint} enabled={enabled} -> {status}")
 
         print("[VisionConfig] === END CAMERAS STATUS ===")
 
@@ -187,20 +213,29 @@ class VisionConfig:
 
     def is_camera_configured(self, camera_name: str) -> bool:
         """
-        Verifica si una cámara tiene host válido configurado.
+        Verifica si una cámara tiene configuración válida.
+        Phase 6.11: Soporta MJPEG (host) y RTSP (url_main/url_sub).
 
         Args:
-            camera_name: Nombre de cámara ("haze", "dj", "artist")
+            camera_name: Nombre de cámara ("haze", "dj", "artist", "generic_2k", etc.)
 
         Returns:
-            bool: True si host es válido (no vacío ni 0.0.0.0)
+            bool: True si tiene configuración válida
         """
         if "cameras" not in self.data:
             return False
 
         cam = self.data["cameras"].get(camera_name, {})
+        cam_type = cam.get("type", "mjpeg").lower()
 
-        # Solo MJPEG soportado - verificar host válido
+        # RTSP mode: verificar url_main o url_sub
+        if cam_type == "rtsp" or cam.get("url_main") or cam.get("url_sub"):
+            url = cam.get("url", "")
+            url_main = cam.get("url_main", "")
+            url_sub = cam.get("url_sub", "")
+            return bool(url or url_main or url_sub)
+
+        # MJPEG mode: verificar host válido
         host = cam.get("host", "")
         is_valid, _ = self.validate_host(host, camera_name)
         return is_valid
@@ -397,18 +432,23 @@ class VisionConfig:
         self.data["calibration"]["last_calibration"] = time.time()
         self.save()
 
-    # ----- CAMERA SOURCES (v6.8) -----
+    # ----- CAMERA SOURCES (v6.8 + v6.11 RTSP) -----
 
     def get_camera_source_config(self, camera_name: str) -> Optional[Dict[str, Any]]:
         """
-        Obtiene configuración de fuente de cámara MJPEG.
-        Construye URL completa desde host+path.
+        Obtiene configuración de fuente de cámara (MJPEG o RTSP).
+        Phase 6.11: Soporte dual MJPEG + RTSP con url_main/url_sub.
+
+        Formatos soportados:
+        1. MJPEG clásico: host + path -> http://host/path
+        2. RTSP con url directa: url o url_main/url_sub
+        3. Auto-detección de tipo basada en URL
 
         Args:
-            camera_name: Nombre de cámara ("haze", "dj", "artist")
+            camera_name: Nombre de cámara ("haze", "dj", "artist", "generic_2k", etc.)
 
         Returns:
-            dict: Configuración de fuente lista para crear MJPEGSource, o None si no configurada
+            dict: Configuración de fuente lista para create_source_from_config(), o None si no configurada
         """
         # Verificar si hay estructura cameras
         if "cameras" not in self.data:
@@ -420,8 +460,33 @@ class VisionConfig:
         if not cam.get("enabled", False):
             return None
 
-        # Solo MJPEG soportado (USB removed)
-        # Verificar host válido con detección de typos
+        cam_type = cam.get("type", "mjpeg").lower()
+
+        # --- RTSP mode: usar url_main/url_sub directamente ---
+        if cam_type == "rtsp" or cam.get("url_main") or cam.get("url_sub"):
+            url = cam.get("url", "")
+            url_main = cam.get("url_main", "")
+            url_sub = cam.get("url_sub", "")
+
+            # Si no hay URL directa, requiere al menos una de main/sub
+            if not url and not url_main and not url_sub:
+                print(f"[VisionConfig] {camera_name}: RTSP sin URL válida")
+                return None
+
+            return {
+                "type": cam_type if cam_type in ("rtsp", "mjpeg") else "auto",
+                "url": url,
+                "url_main": url_main,
+                "url_sub": url_sub,
+                "preferred": cam.get("preferred", "sub"),
+                "username": cam.get("username", ""),
+                "password": cam.get("password", ""),
+                "fps_target": cam.get("fps_target", 10),
+                "timeout_s": cam.get("timeout_s", 5.0),
+                "reconnect_s": cam.get("reconnect_s", 2.0)
+            }
+
+        # --- MJPEG mode: construir URL desde host + path ---
         host = cam.get("host", "")
         is_valid, warning = self.validate_host(host, camera_name)
         if not is_valid:

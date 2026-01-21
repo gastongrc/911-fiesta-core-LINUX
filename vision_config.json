@@ -85,6 +85,20 @@
       "fps_target": 10,
       "timeout_s": 5.0,
       "reconnect_s": 2.0
+    },
+    "generic_2k": {
+      "type": "rtsp",
+      "enabled": false,
+      "url_main": "rtsp://admin:12345@192.168.1.64:554/Streaming/Channels/101",
+      "url_sub": "rtsp://admin:12345@192.168.1.64:554/Streaming/Channels/102",
+      "preferred": "sub",
+      "username": "admin",
+      "password": "12345",
+      "fps_target": 10,
+      "timeout_s": 5.0,
+      "reconnect_s": 2.0,
+      "transport": "udp",
+      "low_latency": true
     }
   },
   "dj": {

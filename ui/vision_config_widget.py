@@ -1,12 +1,17 @@
 """
 VisionConfigWidget - Widget de configuración IP para Vision System PRO
-Panel de configuración de cámaras IP MJPEG (Axis M1011)
-Reemplaza los combos USB por campos Host/Path/Credenciales
+Panel de configuración de cámaras IP: MJPEG (Axis) + RTSP (H.264)
+Phase 6.11: Soporte dual protocolo con selector UI
+
+Soporta:
+- MJPEG: Host + Path -> http://host/path (Axis cameras)
+- RTSP: url_main + url_sub -> rtsp://... (generic IP cameras)
 """
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QLineEdit, QPushButton, QGroupBox, QCheckBox, QSpinBox,
-    QDoubleSpinBox, QGridLayout, QMessageBox
+    QDoubleSpinBox, QGridLayout, QMessageBox, QComboBox,
+    QStackedWidget
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont
@@ -15,16 +20,20 @@ import threading
 
 
 class CameraConfigPanel(QWidget):
-    """Panel de configuración para una cámara IP individual."""
+    """
+    Panel de configuración para una cámara IP individual.
+    Phase 6.11: Soporte dual MJPEG + RTSP con selector de protocolo.
+    """
 
     def __init__(self, camera_name: str, icon: str, parent=None):
         super().__init__(parent)
         self.camera_name = camera_name
         self.icon = icon
         self._build_ui()
+        self._connect_protocol_change()
 
     def _build_ui(self):
-        """Construye la UI del panel de cámara."""
+        """Construye la UI del panel de cámara con soporte dual protocolo."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(4)
@@ -43,61 +52,149 @@ class CameraConfigPanel(QWidget):
 
         layout.addLayout(header)
 
-        # Grid de campos
-        grid = QGridLayout()
-        grid.setSpacing(4)
+        # === PROTOCOL SELECTOR ===
+        proto_layout = QHBoxLayout()
+        proto_layout.addWidget(QLabel("Protocolo:"))
+
+        self.combo_protocol = QComboBox()
+        self.combo_protocol.addItem("MJPEG (HTTP)", "mjpeg")
+        self.combo_protocol.addItem("RTSP (H.264)", "rtsp")
+        self.combo_protocol.setStyleSheet(
+            "QComboBox{background:#333; color:#ccc; border:1px solid #555; padding:4px; border-radius:3px;}"
+            "QComboBox::drop-down{border:none;}"
+            "QComboBox QAbstractItemView{background:#333; color:#ccc; selection-background-color:#3498db;}"
+        )
+        self.combo_protocol.setFixedWidth(120)
+        proto_layout.addWidget(self.combo_protocol)
+        proto_layout.addStretch()
+
+        layout.addLayout(proto_layout)
 
         # Style común para inputs
         input_style = "QLineEdit{background:#333; color:#ccc; border:1px solid #555; padding:4px; border-radius:3px;}"
         spin_style = "QSpinBox,QDoubleSpinBox{background:#333; color:#ccc; border:1px solid #555; padding:2px; border-radius:3px;}"
 
+        # === STACKED WIDGET FOR PROTOCOL-SPECIFIC FIELDS ===
+        self.stacked_fields = QStackedWidget()
+
+        # --- PAGE 0: MJPEG FIELDS ---
+        mjpeg_widget = QWidget()
+        mjpeg_layout = QGridLayout(mjpeg_widget)
+        mjpeg_layout.setSpacing(4)
+        mjpeg_layout.setContentsMargins(0, 0, 0, 0)
+
         # Host/IP
-        grid.addWidget(QLabel("Host:"), 0, 0)
+        mjpeg_layout.addWidget(QLabel("Host:"), 0, 0)
         self.txt_host = QLineEdit()
         self.txt_host.setPlaceholderText("192.168.0.100")
         self.txt_host.setStyleSheet(input_style)
-        grid.addWidget(self.txt_host, 0, 1, 1, 3)
+        mjpeg_layout.addWidget(self.txt_host, 0, 1, 1, 3)
 
         # Path
-        grid.addWidget(QLabel("Path:"), 1, 0)
+        mjpeg_layout.addWidget(QLabel("Path:"), 1, 0)
         self.txt_path = QLineEdit()
         self.txt_path.setText("/axis-cgi/mjpg/video.cgi?fps=10")
         self.txt_path.setStyleSheet(input_style)
-        grid.addWidget(self.txt_path, 1, 1, 1, 3)
+        mjpeg_layout.addWidget(self.txt_path, 1, 1, 1, 3)
 
-        # Username / Password en una fila
-        grid.addWidget(QLabel("User:"), 2, 0)
-        self.txt_username = QLineEdit()
-        self.txt_username.setText("root")
-        self.txt_username.setStyleSheet(input_style)
-        grid.addWidget(self.txt_username, 2, 1)
+        # Username / Password MJPEG
+        mjpeg_layout.addWidget(QLabel("User:"), 2, 0)
+        self.txt_username_mjpeg = QLineEdit()
+        self.txt_username_mjpeg.setText("root")
+        self.txt_username_mjpeg.setStyleSheet(input_style)
+        mjpeg_layout.addWidget(self.txt_username_mjpeg, 2, 1)
 
-        grid.addWidget(QLabel("Pass:"), 2, 2)
-        self.txt_password = QLineEdit()
-        self.txt_password.setText("root")
-        self.txt_password.setEchoMode(QLineEdit.Password)
-        self.txt_password.setStyleSheet(input_style)
-        grid.addWidget(self.txt_password, 2, 3)
+        mjpeg_layout.addWidget(QLabel("Pass:"), 2, 2)
+        self.txt_password_mjpeg = QLineEdit()
+        self.txt_password_mjpeg.setText("root")
+        self.txt_password_mjpeg.setEchoMode(QLineEdit.Password)
+        self.txt_password_mjpeg.setStyleSheet(input_style)
+        mjpeg_layout.addWidget(self.txt_password_mjpeg, 2, 3)
 
-        # FPS / Timeout / Reconnect en una fila
-        grid.addWidget(QLabel("FPS:"), 3, 0)
+        self.stacked_fields.addWidget(mjpeg_widget)
+
+        # --- PAGE 1: RTSP FIELDS ---
+        rtsp_widget = QWidget()
+        rtsp_layout = QGridLayout(rtsp_widget)
+        rtsp_layout.setSpacing(4)
+        rtsp_layout.setContentsMargins(0, 0, 0, 0)
+
+        # URL Main (Channel 101)
+        rtsp_layout.addWidget(QLabel("URL Main:"), 0, 0)
+        self.txt_url_main = QLineEdit()
+        self.txt_url_main.setPlaceholderText("rtsp://admin:12345@192.168.1.64:554/Streaming/Channels/101")
+        self.txt_url_main.setStyleSheet(input_style)
+        rtsp_layout.addWidget(self.txt_url_main, 0, 1, 1, 3)
+
+        # URL Sub (Channel 102)
+        rtsp_layout.addWidget(QLabel("URL Sub:"), 1, 0)
+        self.txt_url_sub = QLineEdit()
+        self.txt_url_sub.setPlaceholderText("rtsp://admin:12345@192.168.1.64:554/Streaming/Channels/102")
+        self.txt_url_sub.setStyleSheet(input_style)
+        rtsp_layout.addWidget(self.txt_url_sub, 1, 1, 1, 3)
+
+        # Preferred stream selector
+        rtsp_layout.addWidget(QLabel("Preferido:"), 2, 0)
+        self.combo_preferred = QComboBox()
+        self.combo_preferred.addItem("Substream (720p)", "sub")
+        self.combo_preferred.addItem("Mainstream (Full)", "main")
+        self.combo_preferred.setStyleSheet(
+            "QComboBox{background:#333; color:#ccc; border:1px solid #555; padding:4px; border-radius:3px;}"
+        )
+        self.combo_preferred.setFixedWidth(140)
+        rtsp_layout.addWidget(self.combo_preferred, 2, 1)
+
+        # Username / Password RTSP (opcional, si no embebidos en URL)
+        rtsp_layout.addWidget(QLabel("User:"), 2, 2)
+        self.txt_username_rtsp = QLineEdit()
+        self.txt_username_rtsp.setPlaceholderText("(si no en URL)")
+        self.txt_username_rtsp.setStyleSheet(input_style)
+        rtsp_layout.addWidget(self.txt_username_rtsp, 2, 3)
+
+        # Row 3: Transport and Low Latency options
+        rtsp_layout.addWidget(QLabel("Transport:"), 3, 0)
+        self.combo_transport = QComboBox()
+        self.combo_transport.addItem("UDP (baja latencia)", "udp")
+        self.combo_transport.addItem("TCP (más estable)", "tcp")
+        self.combo_transport.setStyleSheet(
+            "QComboBox{background:#333; color:#ccc; border:1px solid #555; padding:4px; border-radius:3px;}"
+        )
+        self.combo_transport.setFixedWidth(140)
+        rtsp_layout.addWidget(self.combo_transport, 3, 1)
+
+        # Low Latency checkbox
+        self.chk_low_latency = QCheckBox("Low Latency Mode")
+        self.chk_low_latency.setChecked(True)
+        self.chk_low_latency.setStyleSheet("color:#ccc;")
+        self.chk_low_latency.setToolTip("Activa opciones FFmpeg para mínima latencia (nobuffer, low_delay)")
+        rtsp_layout.addWidget(self.chk_low_latency, 3, 2, 1, 2)
+
+        self.stacked_fields.addWidget(rtsp_widget)
+
+        layout.addWidget(self.stacked_fields)
+
+        # === COMMON FIELDS (FPS / Timeout) ===
+        common_grid = QGridLayout()
+        common_grid.setSpacing(4)
+
+        common_grid.addWidget(QLabel("FPS:"), 0, 0)
         self.spin_fps = QSpinBox()
         self.spin_fps.setRange(1, 30)
         self.spin_fps.setValue(10)
         self.spin_fps.setStyleSheet(spin_style)
         self.spin_fps.setFixedWidth(50)
-        grid.addWidget(self.spin_fps, 3, 1)
+        common_grid.addWidget(self.spin_fps, 0, 1)
 
-        grid.addWidget(QLabel("Timeout:"), 3, 2)
+        common_grid.addWidget(QLabel("Timeout:"), 0, 2)
         self.spin_timeout = QDoubleSpinBox()
         self.spin_timeout.setRange(1.0, 30.0)
         self.spin_timeout.setValue(5.0)
         self.spin_timeout.setSuffix("s")
         self.spin_timeout.setStyleSheet(spin_style)
         self.spin_timeout.setFixedWidth(70)
-        grid.addWidget(self.spin_timeout, 3, 3)
+        common_grid.addWidget(self.spin_timeout, 0, 3)
 
-        layout.addLayout(grid)
+        layout.addLayout(common_grid)
 
         # Botón Test
         self.btn_test = QPushButton("Test")
@@ -109,29 +206,108 @@ class CameraConfigPanel(QWidget):
         self.btn_test.setFixedWidth(60)
         layout.addWidget(self.btn_test, alignment=Qt.AlignRight)
 
+    def _connect_protocol_change(self):
+        """Conecta el cambio de protocolo para mostrar/ocultar campos."""
+        self.combo_protocol.currentIndexChanged.connect(self._on_protocol_changed)
+        # Auto-detect RTSP when pasting URL
+        self.txt_host.textChanged.connect(self._auto_detect_protocol)
+        self.txt_url_main.textChanged.connect(self._auto_detect_protocol)
+        self.txt_url_sub.textChanged.connect(self._auto_detect_protocol)
+
+    def _on_protocol_changed(self, index: int):
+        """Cambia los campos visibles según el protocolo seleccionado."""
+        self.stacked_fields.setCurrentIndex(index)
+
+    def _auto_detect_protocol(self, text: str):
+        """Auto-detecta RTSP si el usuario pega una URL rtsp://."""
+        if text.lower().startswith("rtsp://"):
+            # Si está en campo MJPEG host, cambiar a RTSP
+            if self.combo_protocol.currentData() == "mjpeg":
+                self.combo_protocol.setCurrentIndex(1)  # RTSP
+                # Mover el texto al campo correcto
+                if self.sender() == self.txt_host:
+                    self.txt_url_main.setText(text)
+                    self.txt_host.clear()
+
+    def get_protocol(self) -> str:
+        """Obtiene el protocolo seleccionado."""
+        return self.combo_protocol.currentData()
+
     def get_config(self) -> dict:
         """Obtiene la configuración actual del panel."""
-        host = self.txt_host.text().strip()
-        return {
-            "type": "mjpeg",
-            "enabled": self.chk_enabled.isChecked(),
-            "host": host if host else "0.0.0.0",
-            "path": self.txt_path.text().strip() or "/axis-cgi/mjpg/video.cgi?fps=10",
-            "username": self.txt_username.text().strip(),
-            "password": self.txt_password.text(),
-            "fps_target": self.spin_fps.value(),
-            "timeout_s": self.spin_timeout.value(),
-            "reconnect_s": 2.0
-        }
+        protocol = self.get_protocol()
+
+        if protocol == "rtsp":
+            # RTSP config with low-latency options
+            return {
+                "type": "rtsp",
+                "enabled": self.chk_enabled.isChecked(),
+                "url_main": self.txt_url_main.text().strip(),
+                "url_sub": self.txt_url_sub.text().strip(),
+                "preferred": self.combo_preferred.currentData(),
+                "username": self.txt_username_rtsp.text().strip(),
+                "password": "",  # Password usually embedded in URL
+                "fps_target": self.spin_fps.value(),
+                "timeout_s": self.spin_timeout.value(),
+                "reconnect_s": 2.0,
+                "transport": self.combo_transport.currentData(),
+                "low_latency": self.chk_low_latency.isChecked()
+            }
+        else:
+            # MJPEG config (default)
+            host = self.txt_host.text().strip()
+            return {
+                "type": "mjpeg",
+                "enabled": self.chk_enabled.isChecked(),
+                "host": host if host else "0.0.0.0",
+                "path": self.txt_path.text().strip() or "/axis-cgi/mjpg/video.cgi?fps=10",
+                "username": self.txt_username_mjpeg.text().strip(),
+                "password": self.txt_password_mjpeg.text(),
+                "fps_target": self.spin_fps.value(),
+                "timeout_s": self.spin_timeout.value(),
+                "reconnect_s": 2.0
+            }
 
     def set_config(self, config: dict):
         """Establece la configuración en el panel."""
+        cam_type = config.get("type", "mjpeg").lower()
+
+        # Set protocol selector
+        if cam_type == "rtsp" or config.get("url_main") or config.get("url_sub"):
+            self.combo_protocol.setCurrentIndex(1)  # RTSP
+            self.stacked_fields.setCurrentIndex(1)
+
+            # Set RTSP fields
+            self.txt_url_main.setText(config.get("url_main", ""))
+            self.txt_url_sub.setText(config.get("url_sub", ""))
+
+            # Preferred stream
+            preferred = config.get("preferred", "sub")
+            idx = 0 if preferred == "sub" else 1
+            self.combo_preferred.setCurrentIndex(idx)
+
+            self.txt_username_rtsp.setText(config.get("username", ""))
+
+            # Transport selector (Phase 6.13)
+            transport = config.get("transport", "udp").lower()
+            transport_idx = 0 if transport == "udp" else 1
+            self.combo_transport.setCurrentIndex(transport_idx)
+
+            # Low latency checkbox (Phase 6.13)
+            self.chk_low_latency.setChecked(config.get("low_latency", True))
+        else:
+            self.combo_protocol.setCurrentIndex(0)  # MJPEG
+            self.stacked_fields.setCurrentIndex(0)
+
+            # Set MJPEG fields
+            host = config.get("host", "0.0.0.0")
+            self.txt_host.setText(host if host != "0.0.0.0" else "")
+            self.txt_path.setText(config.get("path", "/axis-cgi/mjpg/video.cgi?fps=10"))
+            self.txt_username_mjpeg.setText(config.get("username", "root"))
+            self.txt_password_mjpeg.setText(config.get("password", "root"))
+
+        # Common fields
         self.chk_enabled.setChecked(config.get("enabled", False))
-        host = config.get("host", "0.0.0.0")
-        self.txt_host.setText(host if host != "0.0.0.0" else "")
-        self.txt_path.setText(config.get("path", "/axis-cgi/mjpg/video.cgi?fps=10"))
-        self.txt_username.setText(config.get("username", "root"))
-        self.txt_password.setText(config.get("password", "root"))
         self.spin_fps.setValue(config.get("fps_target", 10))
         self.spin_timeout.setValue(config.get("timeout_s", 5.0))
 
@@ -144,10 +320,10 @@ class CameraConfigPanel(QWidget):
 class VisionConfigWidget(QWidget):
     """
     Widget de configuración IP para Vision System PRO.
-    Permite configurar 3 cámaras IP MJPEG (Axis M1011).
-    Reemplaza el sistema de índices USB.
+    Permite configurar 3 cámaras IP: MJPEG (Axis) + RTSP (H.264).
 
     Phase 6.9: Safe tab changes - NO camera restart on show/hide
+    Phase 6.11: Soporte dual protocolo MJPEG + RTSP con selector UI
     """
 
     def __init__(self, vision_manager, parent=None):
@@ -201,7 +377,7 @@ class VisionConfigWidget(QWidget):
         frame_layout.setSpacing(8)
 
         # Título
-        title = QLabel("VISION PRO - CÁMARAS IP (MJPEG)")
+        title = QLabel("VISION PRO - CÁMARAS IP (MJPEG + RTSP)")
         title.setStyleSheet("font-weight:700; color:#ddd; font-size:12px;")
         frame_layout.addWidget(title)
 
@@ -357,7 +533,10 @@ class VisionConfigWidget(QWidget):
             QMessageBox.warning(self, "Error", f"Error aplicando: {e}")
 
     def _on_test(self, camera_name: str):
-        """Prueba conexión de una cámara."""
+        """
+        Prueba conexión de una cámara.
+        Phase 6.11: Soporta MJPEG y RTSP usando el factory.
+        """
         panel_map = {
             "haze": self.panel_haze,
             "dj": self.panel_dj,
@@ -368,63 +547,97 @@ class VisionConfigWidget(QWidget):
             return
 
         cam_config = panel.get_config()
-        host = cam_config.get("host", "")
+        cam_type = cam_config.get("type", "mjpeg")
 
-        if not host or host == "0.0.0.0":
-            panel.set_status("Host inválido", "#e74c3c")
-            return
+        # Validar según protocolo
+        if cam_type == "rtsp":
+            url_main = cam_config.get("url_main", "")
+            url_sub = cam_config.get("url_sub", "")
+            if not url_main and not url_sub:
+                panel.set_status("URL RTSP requerida", "#e74c3c")
+                return
 
-        # Validar posible typo en IP (192.160 vs 192.168)
-        if "192.160" in host:
-            panel.set_status("WARNING: 192.160? (typo 192.168?)", "#f39c12")
-            print(f"[VisionUI] WARNING: host {host} parece tener typo (192.160 vs 192.168)")
-            # Continuar de todos modos para que el usuario vea el error
+            # Validar formato URL
+            test_url = url_sub if cam_config.get("preferred") == "sub" and url_sub else (url_main or url_sub)
+            if not test_url.lower().startswith("rtsp://"):
+                panel.set_status("URL debe empezar con rtsp://", "#e74c3c")
+                return
+
+            # Check for mixed protocol error
+            if "http://" in test_url.lower() or "https://" in test_url.lower():
+                panel.set_status("ERROR: URL mixta (rtsp+http)", "#e74c3c")
+                print(f"[VisionUI] ERROR: Mixed protocol URL detected: {test_url}")
+                return
+
+        else:
+            # MJPEG validation
+            host = cam_config.get("host", "")
+
+            if not host or host == "0.0.0.0":
+                panel.set_status("Host inválido", "#e74c3c")
+                return
+
+            # Check for rtsp:// in host (user pasted RTSP URL in MJPEG mode)
+            if host.lower().startswith("rtsp://"):
+                panel.set_status("Usar protocolo RTSP", "#f39c12")
+                print(f"[VisionUI] WARNING: RTSP URL in MJPEG host field - switch protocol")
+                return
+
+            # Validar posible typo en IP (192.160 vs 192.168)
+            if "192.160" in host:
+                panel.set_status("WARNING: 192.160? (typo 192.168?)", "#f39c12")
+                print(f"[VisionUI] WARNING: host {host} parece tener typo (192.160 vs 192.168)")
+                # Continuar de todos modos para que el usuario vea el error
 
         panel.set_status("Conectando...", "#f39c12")
         panel.btn_test.setEnabled(False)
 
-        # Obtener valores de config
-        fps_target = cam_config.get("fps_target", 10)
-        timeout_s = cam_config.get("timeout_s", 5.0)
-
         # Test en thread separado
         def do_test():
             try:
-                from core_vision.camera_source import MJPEGSource
+                from core_vision.camera_source import create_source_from_config
 
-                # Construir URL
-                path = cam_config.get("path", "/axis-cgi/mjpg/video.cgi?fps=10")
-                if host.startswith("http://") or host.startswith("https://"):
-                    url = f"{host}{path}"
-                else:
-                    url = f"http://{host}{path}"
+                # Preparar config para factory
+                source_config = dict(cam_config)
 
-                print(f"[VisionUI] test {camera_name} -> url={url} fps={fps_target} timeout={timeout_s}s")
+                # Para MJPEG, construir URL
+                if cam_type == "mjpeg":
+                    host = cam_config.get("host", "")
+                    path = cam_config.get("path", "/axis-cgi/mjpg/video.cgi?fps=10")
+                    if host.startswith("http://") or host.startswith("https://"):
+                        url = f"{host}{path}"
+                    else:
+                        url = f"http://{host}{path}"
+                    source_config["url"] = url
 
-                source = MJPEGSource(
-                    url=url,
-                    username=cam_config.get("username", ""),
-                    password=cam_config.get("password", ""),
-                    fps_target=fps_target,
-                    timeout_s=timeout_s
-                )
+                print(f"[VisionUI] test {camera_name} -> type={cam_type} config={source_config}")
+
+                # Usar factory para crear source correcto
+                source = create_source_from_config(source_config)
 
                 if source.start():
                     # Esperar unos frames
-                    time.sleep(2)
+                    time.sleep(2.5)
                     ret, frame = source.read()
-                    fps = source.get_fps()
+                    info = source.get_info()
+                    fps = info.get("fps_read", 0.0)
+                    drops = info.get("drops", 0)
                     source.stop()
 
                     if ret and frame is not None:
                         h, w = frame.shape[:2]
-                        result = ("ok", f"OK {w}x{h} @ {fps:.1f}fps")
-                        print(f"[VisionUI] test {camera_name} OK frame={w}x{h} fps={fps:.1f}")
+                        source_type = info.get("type", cam_type).upper()
+                        result = ("ok", f"{source_type} {w}x{h} @ {fps:.1f}fps")
+                        print(f"[VisionUI] test {camera_name} OK type={source_type} frame={w}x{h} fps={fps:.1f} drops={drops}")
                     else:
                         result = ("error", "Sin frames")
                 else:
                     result = ("error", "Conexión fallida")
 
+            except ValueError as e:
+                # Factory validation error (mixed protocol, etc)
+                result = ("error", str(e)[:40])
+                print(f"[VisionUI] test {camera_name} VALIDATION ERROR: {e}")
             except Exception as e:
                 result = ("error", str(e)[:30])
                 print(f"[VisionUI] test {camera_name} ERROR: {e}")
@@ -479,7 +692,10 @@ class VisionConfigWidget(QWidget):
             print(f"[VisionConfigWidget] Error deteniendo: {e}")
 
     def update_status(self):
-        """Actualiza el estado del widget (llamado desde un timer)."""
+        """
+        Actualiza el estado del widget (llamado desde un timer).
+        Phase 6.11: Muestra métricas adicionales (drops, decode_ms).
+        """
         try:
             # Actualizar estado running
             running = self.vision_manager.is_running()
@@ -494,11 +710,19 @@ class VisionConfigWidget(QWidget):
             fps = self.vision_manager.get_fps()
             self.fps_label.setText(f"FPS: {fps:.1f}")
 
-            # Actualizar estado de cada cámara
+            # Actualizar estado de cada cámara con métricas
             for cam_name, panel in [("haze", self.panel_haze), ("dj", self.panel_dj), ("artist", self.panel_artist)]:
                 status = self.vision_manager.get_camera_status(cam_name)
                 if status["connected"]:
-                    panel.set_status(f"Conectada @ {status['fps']:.1f}fps", "#27ae60")
+                    # Mostrar tipo, FPS y drops si hay
+                    cam_type = status.get("type", "mjpeg").upper()
+                    fps_read = status.get("fps_read", status.get("fps", 0))
+                    drops = status.get("drops", 0)
+
+                    if drops > 0:
+                        panel.set_status(f"{cam_type} {fps_read:.1f}fps (d:{drops})", "#27ae60")
+                    else:
+                        panel.set_status(f"{cam_type} @ {fps_read:.1f}fps", "#27ae60")
                 elif status["enabled"] and status["configured"]:
                     panel.set_status("Conectando...", "#f39c12")
                 elif not status["configured"]:

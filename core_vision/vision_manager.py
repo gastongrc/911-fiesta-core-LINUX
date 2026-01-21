@@ -1,11 +1,12 @@
 """
-VisionManager PRO - Phase 6.10 + V9 Artist
+VisionManager PRO - Phase 6.11 + V9 Artist
 Manager centralizado del Vision System PRO
 Coordina: VisionConfig, VisionState, HazeDetector, DJDetector, ArtistDetector, CameraLoop
-Soporta: IP cameras (MJPEG Axis) only - USB REMOVED
+Soporta: IP cameras (MJPEG Axis + RTSP H.264) - USB REMOVED
 Integración con CueEngine para disparar cues
 
 V9 Artist: ArtistTracker replaced with ArtistDetector (YOLO-based, 8 zones, non-blocking)
+Phase 6.11: Soporte dual MJPEG + RTSP con baja latencia (queue maxsize=1, frame drops)
 """
 import threading
 import hashlib
@@ -312,13 +313,14 @@ class VisionManager:
 
     def get_camera_status(self, camera_name: str) -> Dict[str, Any]:
         """
-        Obtiene estado actual de una cámara.
+        Obtiene estado actual de una cámara con métricas.
+        Phase 6.11: Incluye métricas de latencia (drops, decode_ms, queue_len).
 
         Args:
             camera_name: Nombre de cámara
 
         Returns:
-            dict: Estado con configured, enabled, connected, fps, etc.
+            dict: Estado con configured, enabled, connected, fps, metrics, etc.
         """
         cam_config = self.config.data.get("cameras", {}).get(camera_name, {})
 
@@ -333,20 +335,56 @@ class VisionManager:
         enabled = cam_config.get("enabled", False)
         connected = False
         fps = 0.0
+        source_info = {}
 
         if loop and loop.source:
             connected = loop.source.is_opened()
             fps = loop.source.get_fps()
+            source_info = loop.source.get_info()
+
+        # Determinar endpoint según tipo
+        cam_type = cam_config.get("type", "mjpeg")
+        if cam_type == "rtsp" or cam_config.get("url_main") or cam_config.get("url_sub"):
+            endpoint = cam_config.get("url_sub") or cam_config.get("url_main") or "N/A"
+        else:
+            endpoint = cam_config.get("host", "0.0.0.0")
 
         return {
             "name": camera_name,
-            "type": cam_config.get("type", "mjpeg"),
-            "host": cam_config.get("host", "0.0.0.0"),
+            "type": source_info.get("type", cam_type),
+            "endpoint": endpoint,
             "configured": configured,
             "enabled": enabled,
             "connected": connected,
-            "fps": fps
+            "fps": fps,
+            # Phase 6.11 metrics
+            "fps_read": source_info.get("fps_read", 0.0),
+            "drops": source_info.get("drops", 0),
+            "decode_ms": source_info.get("decode_ms", 0.0),
+            "queue_len": source_info.get("queue_len", 0),
+            "stall_detected": source_info.get("stall_detected", False),
         }
+
+    def get_all_cameras_metrics(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Obtiene métricas de todas las cámaras configuradas.
+        Phase 6.11: Endpoint unificado para monitoreo de latencia.
+
+        Returns:
+            dict: {camera_name: metrics_dict} para todas las cámaras
+        """
+        metrics = {}
+        for cam_name in ["haze", "dj", "artist"]:
+            metrics[cam_name] = self.get_camera_status(cam_name)
+
+        # Log resumen si hay cámaras activas
+        active = [m for m in metrics.values() if m.get("connected")]
+        if active:
+            total_drops = sum(m.get("drops", 0) for m in active)
+            avg_fps = sum(m.get("fps_read", 0) for m in active) / len(active) if active else 0
+            print(f"[VisionManager] Cameras active={len(active)} avg_fps={avg_fps:.1f} total_drops={total_drops}")
+
+        return metrics
 
     def _is_permitted(self, key: str) -> bool:
         """
