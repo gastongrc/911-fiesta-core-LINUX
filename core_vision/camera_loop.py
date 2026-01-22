@@ -199,6 +199,7 @@ class CameraLoop:
 
             # Leer frame (desde CameraSource o USB fallback)
             ret, frame = self._read_frame()
+            frame_ts = time.time()  # V9.1: Timestamp for frame age calculation
 
             if not ret or frame is None:
                 # Phase 6.12: Para fuentes RTSP, NO llamar stop() en errores de lectura
@@ -229,16 +230,18 @@ class CameraLoop:
                         print(f"[CameraLoop] Error en HazeDetector: {e}")
 
                 # 2. DJDetector (solo si está habilitado)
+                # V9.1: Pass frame_ts for frame age tracking
                 if self.dj_detector and self.vision_state.dj_enabled:
                     try:
-                        self.dj_detector.process_frame(frame)
+                        self.dj_detector.process_frame(frame, frame_ts=frame_ts)
                     except Exception as e:
                         print(f"[CameraLoop] Error en DJDetector: {e}")
 
                 # 3. ArtistTracker (solo si está habilitado)
+                # V9.1: Pass frame_ts for frame age tracking
                 if self.artist_tracker and self.vision_state.tracking_enabled:
                     try:
-                        self.artist_tracker.process_frame(frame)
+                        self.artist_tracker.process_frame(frame, frame_ts=frame_ts)
                     except Exception as e:
                         print(f"[CameraLoop] Error en ArtistTracker: {e}")
 
