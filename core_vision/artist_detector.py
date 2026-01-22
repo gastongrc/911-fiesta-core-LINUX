@@ -65,12 +65,15 @@ class ArtistDetector:
         self._engine = VisionArtistEngine(config=engine_config)
         self._engine.set_zones(self.zones)
 
-        # YOLO detector configuration
+        # YOLO detector configuration (V9.1: GPU + optimizations)
         detector_config = DetectorConfig(
             conf_threshold=artist_config.get("conf_threshold", 0.35),
             rate_limit_fps=artist_config.get("target_fps", 6.0),
             max_infer_ms=artist_config.get("max_infer_ms", 250.0),
             max_roi_size=artist_config.get("max_roi_size", 320),
+            device=artist_config.get("device", "auto"),  # V9.1: auto-device
+            fp16=artist_config.get("fp16", True),  # V9.1: FP16 on GPU
+            skip_frame_age_ms=artist_config.get("skip_frame_age_ms", 250.0),  # V9.1: skip old frames
         )
 
         # Initialize detector with callback to engine
@@ -113,7 +116,7 @@ class ArtistDetector:
             self._last_visible_log_ts = now
             print(f"[ArtistDetector] processing visible_zones={len(visible_zones)} ids={visible_zones}")
 
-    def process_frame(self, frame) -> Dict[str, Any]:
+    def process_frame(self, frame, frame_ts: float = None) -> Dict[str, Any]:
         """
         Process a frame for artist detection.
         Uses YOLO ROI-only detection and V9 state machine.
@@ -122,6 +125,7 @@ class ArtistDetector:
 
         Args:
             frame: OpenCV frame (numpy array BGR)
+            frame_ts: Frame timestamp for age calculation (V9.1)
 
         Returns:
             dict: Detection state
@@ -148,7 +152,8 @@ class ArtistDetector:
                     z for z in self.zones
                     if z.get("id") in visible_zones
                 ]
-                self._detector.process_frame_sync(frame, zones_config)
+                # V9.1: Pass frame timestamp for age-based skip
+                self._detector.process_frame_sync(frame, zones_config, frame_ts=frame_ts)
 
                 # Log metrics periodically
                 self._detector.log_metrics()
