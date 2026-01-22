@@ -65,15 +65,18 @@
       "reconnect_s": 2.0
     },
     "dj": {
-      "type": "mjpeg",
+      "type": "rtsp",
       "enabled": true,
-      "host": "192.168.1.110",
-      "path": "/axis-cgi/mjpg/video.cgi?fps=10",
-      "username": "root",
-      "password": "root",
+      "url_main": "rtsp://admin:12345@192.168.1.64:554/Streaming/Channels/101",
+      "url_sub": "rtsp://admin:12345@192.168.1.64:554/Streaming/Channels/102",
+      "preferred": "main",
+      "username": "",
+      "password": "",
       "fps_target": 10,
       "timeout_s": 5.0,
-      "reconnect_s": 2.0
+      "reconnect_s": 2.0,
+      "transport": "tcp",
+      "low_latency": true
     },
     "artist": {
       "type": "mjpeg",
@@ -85,20 +88,6 @@
       "fps_target": 10,
       "timeout_s": 5.0,
       "reconnect_s": 2.0
-    },
-    "generic_2k": {
-      "type": "rtsp",
-      "enabled": false,
-      "url_main": "rtsp://admin:12345@192.168.1.64:554/Streaming/Channels/101",
-      "url_sub": "rtsp://admin:12345@192.168.1.64:554/Streaming/Channels/102",
-      "preferred": "sub",
-      "username": "admin",
-      "password": "12345",
-      "fps_target": 10,
-      "timeout_s": 5.0,
-      "reconnect_s": 2.0,
-      "transport": "udp",
-      "low_latency": true
     }
   },
   "dj": {
@@ -115,16 +104,16 @@
       {
         "id": 1,
         "name": "DJ 1",
-        "norm_x": 0.015806111696522657,
-        "norm_y": 0.023876404494382022,
-        "norm_w": 0.2160168598524763,
-        "norm_h": 0.547752808988764,
-        "x": 31,
-        "y": 17,
-        "w": 205,
-        "h": 390,
-        "width": 205,
-        "height": 390,
+        "norm_x": 0.35372069317023447,
+        "norm_y": 0.35390199637023595,
+        "norm_w": 0.2528032619775739,
+        "norm_h": 0.6460980036297641,
+        "x": 347,
+        "y": 322,
+        "w": 248,
+        "h": 356,
+        "width": 248,
+        "height": 356,
         "visible": true,
         "locked": false
       },
@@ -196,7 +185,7 @@
     "disappear_delay": 2.0
   },
   "artist": {
-    "enabled": false,
+    "enabled": true,
     "zones_count": 8,
     "device": "auto",
     "fp16": true,
@@ -216,7 +205,11 @@
         "width": 80,
         "height": 380,
         "visible": true,
-        "locked": false
+        "locked": false,
+        "norm_x": 0.0,
+        "norm_y": 0.10416666666666667,
+        "norm_w": 0.125,
+        "norm_h": 0.7916666666666666
       },
       {
         "id": 2,
@@ -228,7 +221,11 @@
         "width": 80,
         "height": 380,
         "visible": true,
-        "locked": false
+        "locked": false,
+        "norm_x": 0.125,
+        "norm_y": 0.10416666666666667,
+        "norm_w": 0.125,
+        "norm_h": 0.7916666666666666
       },
       {
         "id": 3,
@@ -240,7 +237,11 @@
         "width": 80,
         "height": 380,
         "visible": true,
-        "locked": false
+        "locked": false,
+        "norm_x": 0.25,
+        "norm_y": 0.10416666666666667,
+        "norm_w": 0.125,
+        "norm_h": 0.7916666666666666
       },
       {
         "id": 4,
@@ -252,7 +253,11 @@
         "width": 80,
         "height": 380,
         "visible": true,
-        "locked": false
+        "locked": false,
+        "norm_x": 0.375,
+        "norm_y": 0.10416666666666667,
+        "norm_w": 0.125,
+        "norm_h": 0.7916666666666666
       },
       {
         "id": 5,
@@ -264,7 +269,11 @@
         "width": 80,
         "height": 380,
         "visible": true,
-        "locked": false
+        "locked": false,
+        "norm_x": 0.5,
+        "norm_y": 0.10416666666666667,
+        "norm_w": 0.125,
+        "norm_h": 0.7916666666666666
       },
       {
         "id": 6,
@@ -276,7 +285,11 @@
         "width": 80,
         "height": 380,
         "visible": true,
-        "locked": false
+        "locked": false,
+        "norm_x": 0.625,
+        "norm_y": 0.10416666666666667,
+        "norm_w": 0.125,
+        "norm_h": 0.7916666666666666
       },
       {
         "id": 7,
@@ -288,7 +301,11 @@
         "width": 80,
         "height": 380,
         "visible": true,
-        "locked": false
+        "locked": false,
+        "norm_x": 0.75,
+        "norm_y": 0.10416666666666667,
+        "norm_w": 0.125,
+        "norm_h": 0.7916666666666666
       },
       {
         "id": 8,
@@ -300,7 +317,11 @@
         "width": 80,
         "height": 380,
         "visible": true,
-        "locked": false
+        "locked": false,
+        "norm_x": 0.875,
+        "norm_y": 0.10416666666666667,
+        "norm_w": 0.125,
+        "norm_h": 0.7916666666666666
       }
     ],
     "disappear_delay": 2.0
