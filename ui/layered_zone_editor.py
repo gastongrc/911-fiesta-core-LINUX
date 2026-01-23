@@ -493,9 +493,35 @@ class LayeredCanvas(QLabel):
         self.update()
 
     def set_zones(self, zones):
-        """Establece las zonas a dibujar."""
+        """
+        Establece las zonas a dibujar.
+
+        V9.2 FIX: Limpia estados de drag/resize para evitar fantasmas
+        cuando una zona es borrada mientras se arrastra/redimensiona.
+        """
         self.zones = zones
+
+        # V9.2 FIX: Limpiar estados de interacción para evitar referencias a zonas borradas
+        # Esto previene el "ROI fantasma" cuando se borra una zona en medio de drag/resize
+        self._clear_interaction_state()
+
+        # Verificar que selected_zone_id sigue existiendo
+        if self.selected_zone_id is not None:
+            zone_ids = [z.get("id") for z in zones]
+            if self.selected_zone_id not in zone_ids:
+                self.selected_zone_id = zone_ids[0] if zone_ids else None
+
         self.update()
+
+    def _clear_interaction_state(self):
+        """
+        V9.2 FIX: Limpia todos los estados de interacción (drag, resize).
+        Llamar cuando las zonas cambian para evitar referencias a zonas borradas.
+        """
+        self.dragging_zone = None
+        self.drag_offset = QPoint(0, 0)
+        self.resizing_zone = None
+        self.resize_handle = None
 
     def resizeEvent(self, event):
         """V9.1 FIX: Recalcular letterbox cuando cambia el tamaño del widget."""
@@ -1048,16 +1074,29 @@ class LayeredZoneEditor(QWidget):
         self.zones_changed.emit(self.zones)
 
     def _on_layer_deleted(self, zone_id):
-        """Callback cuando se elimina un layer."""
+        """
+        Callback cuando se elimina un layer.
+
+        V9.2 FIX: Limpia estados de interacción del canvas para evitar
+        "ROI fantasma" y bloqueo cuando se borra una zona seleccionada/arrastrada.
+        """
+        # V9.2 FIX: Limpiar estados del canvas ANTES de modificar zones
+        # Esto evita que dragging_zone/resizing_zone apunten a zona borrada
+        self.canvas._clear_interaction_state()
+
+        # Eliminar la zona
         self.zones = [z for z in self.zones if z["id"] != zone_id]
+
         # Renumerar IDs con prefijo correcto
         prefix = "Artist" if self.camera_type == "ARTIST" else "DJ"
         for i, zone in enumerate(self.zones):
             zone["id"] = i + 1
             zone["name"] = f"{prefix} {i + 1}"
 
+        # Actualizar selección
         if self.selected_zone_id == zone_id:
             self.selected_zone_id = self.zones[0]["id"] if self.zones else None
+            self.canvas.set_selected_zone(self.selected_zone_id)
 
         self._update_all()
         self.zones_changed.emit(self.zones)
