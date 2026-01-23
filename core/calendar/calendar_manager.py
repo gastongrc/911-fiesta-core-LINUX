@@ -725,8 +725,8 @@ class CalendarManager:
             if not block:
                 return None
 
-            # Generar block_id determinístico (sin escribir archivo)
-            block_id = f"{block.day or 'unknown'}_{block.from_time}_{block.to_time}_{block.mode}"
+            # Generar block_id determinístico con pipe separator
+            block_id = f"{block.day or 'unknown'}|{block.from_time}|{block.to_time}|{block.mode}"
 
             return {
                 "day": block.day,

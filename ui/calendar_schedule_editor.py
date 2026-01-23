@@ -1,6 +1,6 @@
 # ui/calendar_schedule_editor.py
 """
-CalendarScheduleEditor v6.4 - Editor visual de horarios semanales.
+CalendarScheduleEditor v6.5 - Editor visual de horarios semanales.
 
 Widget para editar el calendario de bloques horarios:
 - Vista semanal con 7 columnas
@@ -8,6 +8,7 @@ Widget para editar el calendario de bloques horarios:
 - Modo obligatorio (dropdown)
 - Acciones extra opcionales (panel desplegable)
 - Colores por modo canónico
+- V6.5: Glow verde pulsante en bloque activo
 
 MODOS CANÓNICOS:
 clima_1, clima_2, clima_3, clima_4, teatro, artista,
@@ -25,10 +26,11 @@ from typing import Optional, Dict, Any, List, Set
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QPushButton, QComboBox, QTimeEdit, QScrollArea,
-    QGridLayout, QMessageBox, QCheckBox, QSizePolicy
+    QGridLayout, QMessageBox, QCheckBox, QSizePolicy,
+    QGraphicsDropShadowEffect
 )
-from PySide6.QtCore import Qt, Signal, QTime
-from PySide6.QtGui import QFont
+from PySide6.QtCore import Qt, Signal, QTime, QPropertyAnimation, QEasingCurve, Property
+from PySide6.QtGui import QFont, QColor
 
 
 # ==================== MODOS CANÓNICOS ====================
@@ -294,7 +296,54 @@ class TimeBlockWidget(QFrame):
         self.block_data = block_data
         self._extras_visible = False
         self._is_active = False  # V6.5: Flag para destacar bloque activo
+        self._glow_alpha = 0.3  # V9.3: Glow intensity for animation
+        self._setup_glow_effect()
         self._setup_ui()
+
+    def _setup_glow_effect(self):
+        """V9.3: Setup green glow effect and pulsing animation."""
+        # Create drop shadow effect for glow
+        self._glow_effect = QGraphicsDropShadowEffect(self)
+        self._glow_effect.setBlurRadius(0)
+        self._glow_effect.setColor(QColor(39, 174, 96, 0))  # Green, transparent
+        self._glow_effect.setOffset(0, 0)
+        self.setGraphicsEffect(self._glow_effect)
+
+        # Create pulsing animation (alternates: 0.3 → 1.0 → 0.3 → ...)
+        self._glow_animation = QPropertyAnimation(self, b"glowAlpha", self)
+        self._glow_animation.setDuration(800)  # 0.8 second per direction
+        self._glow_animation.setStartValue(0.3)
+        self._glow_animation.setEndValue(1.0)
+        self._glow_animation.setEasingCurve(QEasingCurve.InOutSine)
+        self._glow_animation.setLoopCount(1)  # Single run, then reverse
+        self._glow_animation.finished.connect(self._on_pulse_finished)
+
+    def _get_glow_alpha(self) -> float:
+        return self._glow_alpha
+
+    def _set_glow_alpha(self, value: float):
+        self._glow_alpha = value
+        if self._is_active:
+            # Update glow effect with new alpha
+            alpha = int(value * 200)  # 0-200 range for visibility
+            self._glow_effect.setColor(QColor(39, 174, 96, alpha))
+            blur = 15 + int(value * 10)  # 15-25 blur radius
+            self._glow_effect.setBlurRadius(blur)
+
+    # Qt Property for animation
+    glowAlpha = Property(float, _get_glow_alpha, _set_glow_alpha)
+
+    def _on_pulse_finished(self):
+        """V9.3: Reverse animation direction for continuous pulse."""
+        if not self._is_active:
+            return  # Don't restart if no longer active
+
+        # Swap start/end values to reverse direction
+        current_start = self._glow_animation.startValue()
+        current_end = self._glow_animation.endValue()
+        self._glow_animation.setStartValue(current_end)
+        self._glow_animation.setEndValue(current_start)
+        self._glow_animation.start()
 
     def _setup_ui(self):
         self.setFrameShape(QFrame.StyledPanel)
@@ -519,7 +568,7 @@ class TimeBlockWidget(QFrame):
 
     def set_active(self, active: bool):
         """
-        V6.5: Marca el bloque como activo/inactivo para destacarlo visualmente.
+        V9.3: Marca el bloque como activo/inactivo con glow verde pulsante.
 
         Args:
             active: True si este bloque es el activo actualmente
@@ -527,6 +576,17 @@ class TimeBlockWidget(QFrame):
         if self._is_active != active:
             self._is_active = active
             self._update_color()
+
+            if active:
+                # Start pulsing glow animation
+                self._glow_effect.setBlurRadius(15)
+                self._glow_effect.setColor(QColor(39, 174, 96, 100))
+                self._glow_animation.start()
+            else:
+                # Stop animation and remove glow
+                self._glow_animation.stop()
+                self._glow_effect.setBlurRadius(0)
+                self._glow_effect.setColor(QColor(39, 174, 96, 0))
 
     def get_block_id(self) -> str:
         """
