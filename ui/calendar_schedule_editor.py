@@ -293,6 +293,7 @@ class TimeBlockWidget(QFrame):
         super().__init__(parent)
         self.block_data = block_data
         self._extras_visible = False
+        self._is_active = False  # V6.5: Flag para destacar bloque activo
         self._setup_ui()
 
     def _setup_ui(self):
@@ -486,16 +487,60 @@ class TimeBlockWidget(QFrame):
         self.changed.emit()
 
     def _update_color(self):
+        """
+        Actualiza el color del bloque según el modo.
+
+        V6.5: Si el bloque está marcado como activo, aplica estilo destacado
+        con borde más grueso y fondo más visible.
+        """
         mode = self.mode_combo.currentText()
         color = MODE_COLORS.get(mode, "#7f8c8d")
-        self.setStyleSheet(f"""
-            QFrame {{
-                background-color: {color}20;
-                border-radius: 6px;
-                border: 2px solid {color};
-                padding: 4px;
-            }}
-        """)
+
+        if self._is_active:
+            # V6.5: Estilo ACTIVO - borde grueso, fondo más visible, glow effect
+            self.setStyleSheet(f"""
+                QFrame {{
+                    background-color: {color}40;
+                    border-radius: 6px;
+                    border: 3px solid #27ae60;
+                    padding: 4px;
+                }}
+            """)
+        else:
+            # Estilo normal
+            self.setStyleSheet(f"""
+                QFrame {{
+                    background-color: {color}20;
+                    border-radius: 6px;
+                    border: 2px solid {color};
+                    padding: 4px;
+                }}
+            """)
+
+    def set_active(self, active: bool):
+        """
+        V6.5: Marca el bloque como activo/inactivo para destacarlo visualmente.
+
+        Args:
+            active: True si este bloque es el activo actualmente
+        """
+        if self._is_active != active:
+            self._is_active = active
+            self._update_color()
+
+    def get_block_id(self) -> str:
+        """
+        V6.5: Genera ID determinístico para comparar con bloque activo.
+
+        Returns:
+            ID en formato "day_from_to_mode" (day puede ser None)
+        """
+        from_time = self.from_edit.time().toString("HH:mm")
+        to_time = self.to_edit.time().toString("HH:mm")
+        mode = self.mode_combo.currentText()
+        # El día se establece desde DayColumnWidget
+        day = getattr(self, '_day_key', 'unknown')
+        return f"{day}_{from_time}_{to_time}_{mode}"
 
     def get_data(self) -> Dict[str, Any]:
         """Obtiene los datos del bloque para guardar."""
@@ -614,6 +659,7 @@ class DayColumnWidget(QFrame):
 
     def _add_block(self, block_data: Dict[str, Any]):
         widget = TimeBlockWidget(block_data)
+        widget._day_key = self.day_key  # V6.5: Para generar block_id
         widget.delete_requested.connect(self._on_delete_block)
         widget.changed.connect(lambda: self.changed.emit())
         self.block_widgets.append(widget)
@@ -664,6 +710,40 @@ class DayColumnWidget(QFrame):
         if from1 < to1 and from2 < to2:
             return not (to1 <= from2 or to2 <= from1)
         return False
+
+    def highlight_active_block(self, from_time: str, to_time: str, mode: str) -> bool:
+        """
+        V6.5: Destaca el bloque activo en esta columna.
+
+        Args:
+            from_time: Hora inicio del bloque activo (HH:mm)
+            to_time: Hora fin del bloque activo (HH:mm)
+            mode: Modo del bloque activo
+
+        Returns:
+            True si se encontró y destacó el bloque
+        """
+        found = False
+        for widget in self.block_widgets:
+            widget_from = widget.from_edit.time().toString("HH:mm")
+            widget_to = widget.to_edit.time().toString("HH:mm")
+            widget_mode = widget.mode_combo.currentText()
+
+            # Comparar por tiempos y modo
+            is_match = (widget_from == from_time and
+                       widget_to == to_time and
+                       widget_mode == mode)
+
+            widget.set_active(is_match)
+            if is_match:
+                found = True
+
+        return found
+
+    def clear_active_highlight(self):
+        """V6.5: Quita el highlight de todos los bloques de esta columna."""
+        for widget in self.block_widgets:
+            widget.set_active(False)
 
 
 # ==================== CALENDAR SCHEDULE EDITOR ====================
@@ -805,6 +885,40 @@ class CalendarScheduleEditor(QWidget):
         else:
             self.changes_label.setText("")
             self.save_btn.setEnabled(False)
+
+    def update_active_block_highlight(self, snapshot: Optional[Dict[str, Any]] = None):
+        """
+        V6.5: Actualiza el highlight del bloque activo en toda la semana.
+
+        Args:
+            snapshot: Dict del bloque activo (de CalendarManager.get_active_block_snapshot())
+                     Si es None, intenta obtenerlo del CalendarManager
+        """
+        # Limpiar todos los highlights primero
+        for column in self._day_columns.values():
+            column.clear_active_highlight()
+
+        # Obtener snapshot si no se proporcionó
+        if snapshot is None and self._calendar:
+            snapshot = self._calendar.get_active_block_snapshot()
+
+        if not snapshot:
+            return
+
+        day = snapshot.get("day")
+        from_time = snapshot.get("from_time")
+        to_time = snapshot.get("to_time")
+        mode = snapshot.get("mode")
+
+        if not all([day, from_time, to_time, mode]):
+            return
+
+        # Buscar la columna del día
+        column = self._day_columns.get(day)
+        if column:
+            found = column.highlight_active_block(from_time, to_time, mode)
+            if found:
+                _log(f"Active block highlighted: {day} {from_time}-{to_time} {mode}")
 
     def _get_schedule(self) -> Dict[str, Any]:
         week = {}

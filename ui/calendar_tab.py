@@ -419,6 +419,7 @@ class CalendarTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._calendar = None
+        self._last_mode = None  # V9.2: Track mode for highlight updates
         self._setup_ui()
         self._setup_timer()
 
@@ -833,6 +834,8 @@ class CalendarTab(QWidget):
         if SCHEDULE_EDITOR_AVAILABLE and self.schedule_editor:
             self.schedule_editor.set_calendar_manager(calendar_manager)
         self._update_display()
+        # V9.2 FIX: Update active block highlight after loading schedule
+        self._update_schedule_highlight()
         print("[CalendarTab] CalendarManager conectado")
 
     # ==================== CONTROLES ====================
@@ -954,6 +957,11 @@ class CalendarTab(QWidget):
 
         src_map = {"MANUAL": "Manual", "AUTO": "Automatico", "OVERRIDE": "Override"}
         self.source_label.setText(f"Fuente: {src_map.get(source, source)}")
+
+        # V9.2 FIX: Update schedule highlight when mode changes
+        if mode != self._last_mode:
+            self._last_mode = mode
+            self._update_schedule_highlight()
 
     def _update_timeline(self, state):
         since_str = state.get("since")
@@ -1148,6 +1156,14 @@ class CalendarTab(QWidget):
             )
         else:
             self.alert_banner.hide_alert()
+
+    def _update_schedule_highlight(self):
+        """V9.2 FIX: Update schedule editor to highlight active block."""
+        if SCHEDULE_EDITOR_AVAILABLE and self.schedule_editor and self._calendar:
+            try:
+                self.schedule_editor.update_active_block_highlight()
+            except Exception as e:
+                print(f"[CalendarTab] Error updating schedule highlight: {e}")
 
     # ==================== LIFECYCLE ====================
 

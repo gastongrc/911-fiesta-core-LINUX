@@ -1,6 +1,6 @@
 # core/system_bridge.py
 """
-SystemBridge v6.5 - Calendar → System Bridge
+SystemBridge v6.6 - Calendar → System Bridge
 
 Punto ÚNICO de gobierno entre el calendario y el sistema.
 Cuando el calendario cambia de modo, el SystemBridge aplica
@@ -9,6 +9,12 @@ los módulos activos de calendar_rules.py a todos los componentes.
 PRINCIPIO FUNDAMENTAL:
 El calendario NO decide CÓMO funcionan los módulos
 El calendario decide SI ESTÁN ACTIVOS O NO
+
+V6.6 FIX (V9.3):
+- Calendar acts as PERMISSION GATE, not direct control
+- When calendar ALLOWS a module: use user's saved preference from config
+- When calendar DISALLOWS a module: force off (regardless of user preference)
+- User preferences (via UI) are preserved in config
 
 V6.5 FIX:
 - Calendar calls VisionManager.enable_module() with persist=False
@@ -99,7 +105,7 @@ class SystemBridge:
         # Logging
         self._log_changes: bool = True
 
-        print("[SystemBridge] v6.4 - Módulos canónicos + cues C60-C82")
+        print("[SystemBridge] v6.6 - Permission gate + user preferences")
 
     # ==================== CONEXIONES ====================
 
@@ -243,21 +249,40 @@ class SystemBridge:
             vm = self._vision_manager
 
             if hasattr(vm, 'enable_module'):
-                # V9.2 FIX: Calendar calls with persist=False to not overwrite user preferences
-                # User preferences are only saved when UI toggles (persist=True)
-                # Calendar controls runtime state only
+                # V9.3 FIX: Calendar acts as PERMISSION GATE
+                # - Calendar ALLOWED + User ENABLED → module ON
+                # - Calendar NOT ALLOWED → module OFF (regardless of user preference)
+                # User preferences are preserved in config (persist=False here)
 
-                # V9.1 FIX: Cada módulo de VisionManager se habilita con OR de permisos relacionados
-                # Esto evita que múltiples permisos del calendario sobrescriban entre sí
-                vm.enable_module("haze", modules.get("vision_haze", False), source="calendar", persist=False)
+                # HAZE: Calendar permission gate
+                haze_allowed = modules.get("vision_haze", False)
+                if haze_allowed and hasattr(vm, 'config'):
+                    # Calendar allows - use user's saved preference
+                    user_pref = vm.config.get_haze_config().get("enabled", False)
+                    vm.enable_module("haze", user_pref, source="calendar", persist=False)
+                else:
+                    # Calendar disallows - force off
+                    vm.enable_module("haze", False, source="calendar", persist=False)
 
-                # DJ: se habilita si vision_dj OR dj_detection está activo
-                dj_enabled = modules.get("vision_dj", False) or modules.get("dj_detection", False)
-                vm.enable_module("dj", dj_enabled, source="calendar", persist=False)
+                # DJ: Calendar permission gate (vision_dj OR dj_detection)
+                dj_allowed = modules.get("vision_dj", False) or modules.get("dj_detection", False)
+                if dj_allowed and hasattr(vm, 'config'):
+                    # Calendar allows - use user's saved preference
+                    user_pref = vm.config.get_dj_config().get("enabled", False)
+                    vm.enable_module("dj", user_pref, source="calendar", persist=False)
+                else:
+                    # Calendar disallows - force off
+                    vm.enable_module("dj", False, source="calendar", persist=False)
 
-                # Tracking: se habilita si vision_artista OR tracking_cam está activo
-                tracking_enabled = modules.get("vision_artista", False) or modules.get("tracking_cam", False)
-                vm.enable_module("tracking", tracking_enabled, source="calendar", persist=False)
+                # TRACKING: Calendar permission gate (vision_artista OR tracking_cam)
+                tracking_allowed = modules.get("vision_artista", False) or modules.get("tracking_cam", False)
+                if tracking_allowed and hasattr(vm, 'config'):
+                    # Calendar allows - use user's saved preference
+                    user_pref = vm.config.get_tracking_config().get("enabled", False)
+                    vm.enable_module("tracking", user_pref, source="calendar", persist=False)
+                else:
+                    # Calendar disallows - force off
+                    vm.enable_module("tracking", False, source="calendar", persist=False)
 
             if hasattr(vm, 'set_calendar_mode'):
                 vm.set_calendar_mode(self._map_to_vision_mode(self._current_mode))
