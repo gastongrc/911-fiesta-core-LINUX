@@ -245,13 +245,21 @@ class ArtistDetector:
                 zone["visible"] = visible
                 break
 
-    def set_enabled(self, enabled: bool):
-        """Enable/disable detector."""
+    def set_enabled(self, enabled: bool, persist: bool = True):
+        """
+        Enable/disable detector.
+
+        V9.2 FIX: Added persist parameter for calendar vs UI control.
+        - persist=True: Save to config (user preference)
+        - persist=False: Runtime only (calendar temporary state)
+        """
         self.enabled = enabled
         self._engine.set_enabled(enabled)
-        self.config.set_artist_enabled(enabled)
+        if persist:
+            self.config.set_artist_enabled(enabled)
         self.vision_state.set_tracking_enabled(enabled)
-        print(f"[ArtistDetector] Enabled={enabled}")
+        persist_str = "persisted" if persist else "runtime"
+        print(f"[ArtistDetector] Enabled={enabled} ({persist_str})")
 
     def set_cue_engine(self, cue_engine):
         """Legacy: Store CueEngine reference."""
