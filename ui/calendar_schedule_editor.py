@@ -1,6 +1,6 @@
 # ui/calendar_schedule_editor.py
 """
-CalendarScheduleEditor v6.4 - Editor visual de horarios semanales.
+CalendarScheduleEditor v6.5 - Editor visual de horarios semanales.
 
 Widget para editar el calendario de bloques horarios:
 - Vista semanal con 7 columnas
@@ -8,6 +8,7 @@ Widget para editar el calendario de bloques horarios:
 - Modo obligatorio (dropdown)
 - Acciones extra opcionales (panel desplegable)
 - Colores por modo canónico
+- V6.5: Glow verde pulsante en bloque activo
 
 MODOS CANÓNICOS:
 clima_1, clima_2, clima_3, clima_4, teatro, artista,
@@ -25,10 +26,11 @@ from typing import Optional, Dict, Any, List, Set
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QPushButton, QComboBox, QTimeEdit, QScrollArea,
-    QGridLayout, QMessageBox, QCheckBox, QSizePolicy
+    QGridLayout, QMessageBox, QCheckBox, QSizePolicy,
+    QGraphicsDropShadowEffect
 )
-from PySide6.QtCore import Qt, Signal, QTime
-from PySide6.QtGui import QFont
+from PySide6.QtCore import Qt, Signal, QTime, QPropertyAnimation, QEasingCurve, Property
+from PySide6.QtGui import QFont, QColor
 
 
 # ==================== MODOS CANÓNICOS ====================
@@ -293,7 +295,55 @@ class TimeBlockWidget(QFrame):
         super().__init__(parent)
         self.block_data = block_data
         self._extras_visible = False
+        self._is_active = False  # V6.5: Flag para destacar bloque activo
+        self._glow_alpha = 0.3  # V9.3: Glow intensity for animation
+        self._setup_glow_effect()
         self._setup_ui()
+
+    def _setup_glow_effect(self):
+        """V9.3: Setup green glow effect and pulsing animation."""
+        # Create drop shadow effect for glow
+        self._glow_effect = QGraphicsDropShadowEffect(self)
+        self._glow_effect.setBlurRadius(0)
+        self._glow_effect.setColor(QColor(39, 174, 96, 0))  # Green, transparent
+        self._glow_effect.setOffset(0, 0)
+        self.setGraphicsEffect(self._glow_effect)
+
+        # Create pulsing animation (alternates: 0.3 → 1.0 → 0.3 → ...)
+        self._glow_animation = QPropertyAnimation(self, b"glowAlpha", self)
+        self._glow_animation.setDuration(800)  # 0.8 second per direction
+        self._glow_animation.setStartValue(0.3)
+        self._glow_animation.setEndValue(1.0)
+        self._glow_animation.setEasingCurve(QEasingCurve.InOutSine)
+        self._glow_animation.setLoopCount(1)  # Single run, then reverse
+        self._glow_animation.finished.connect(self._on_pulse_finished)
+
+    def _get_glow_alpha(self) -> float:
+        return self._glow_alpha
+
+    def _set_glow_alpha(self, value: float):
+        self._glow_alpha = value
+        if self._is_active:
+            # Update glow effect with new alpha
+            alpha = int(value * 200)  # 0-200 range for visibility
+            self._glow_effect.setColor(QColor(39, 174, 96, alpha))
+            blur = 15 + int(value * 10)  # 15-25 blur radius
+            self._glow_effect.setBlurRadius(blur)
+
+    # Qt Property for animation
+    glowAlpha = Property(float, _get_glow_alpha, _set_glow_alpha)
+
+    def _on_pulse_finished(self):
+        """V9.3: Reverse animation direction for continuous pulse."""
+        if not self._is_active:
+            return  # Don't restart if no longer active
+
+        # Swap start/end values to reverse direction
+        current_start = self._glow_animation.startValue()
+        current_end = self._glow_animation.endValue()
+        self._glow_animation.setStartValue(current_end)
+        self._glow_animation.setEndValue(current_start)
+        self._glow_animation.start()
 
     def _setup_ui(self):
         self.setFrameShape(QFrame.StyledPanel)
@@ -486,16 +536,71 @@ class TimeBlockWidget(QFrame):
         self.changed.emit()
 
     def _update_color(self):
+        """
+        Actualiza el color del bloque según el modo.
+
+        V6.5: Si el bloque está marcado como activo, aplica estilo destacado
+        con borde más grueso y fondo más visible.
+        """
         mode = self.mode_combo.currentText()
         color = MODE_COLORS.get(mode, "#7f8c8d")
-        self.setStyleSheet(f"""
-            QFrame {{
-                background-color: {color}20;
-                border-radius: 6px;
-                border: 2px solid {color};
-                padding: 4px;
-            }}
-        """)
+
+        if self._is_active:
+            # V6.5: Estilo ACTIVO - borde grueso, fondo más visible, glow effect
+            self.setStyleSheet(f"""
+                QFrame {{
+                    background-color: {color}40;
+                    border-radius: 6px;
+                    border: 3px solid #27ae60;
+                    padding: 4px;
+                }}
+            """)
+        else:
+            # Estilo normal
+            self.setStyleSheet(f"""
+                QFrame {{
+                    background-color: {color}20;
+                    border-radius: 6px;
+                    border: 2px solid {color};
+                    padding: 4px;
+                }}
+            """)
+
+    def set_active(self, active: bool):
+        """
+        V9.3: Marca el bloque como activo/inactivo con glow verde pulsante.
+
+        Args:
+            active: True si este bloque es el activo actualmente
+        """
+        if self._is_active != active:
+            self._is_active = active
+            self._update_color()
+
+            if active:
+                # Start pulsing glow animation
+                self._glow_effect.setBlurRadius(15)
+                self._glow_effect.setColor(QColor(39, 174, 96, 100))
+                self._glow_animation.start()
+            else:
+                # Stop animation and remove glow
+                self._glow_animation.stop()
+                self._glow_effect.setBlurRadius(0)
+                self._glow_effect.setColor(QColor(39, 174, 96, 0))
+
+    def get_block_id(self) -> str:
+        """
+        V6.5: Genera ID determinístico para comparar con bloque activo.
+
+        Returns:
+            ID en formato "day_from_to_mode" (day puede ser None)
+        """
+        from_time = self.from_edit.time().toString("HH:mm")
+        to_time = self.to_edit.time().toString("HH:mm")
+        mode = self.mode_combo.currentText()
+        # El día se establece desde DayColumnWidget
+        day = getattr(self, '_day_key', 'unknown')
+        return f"{day}_{from_time}_{to_time}_{mode}"
 
     def get_data(self) -> Dict[str, Any]:
         """Obtiene los datos del bloque para guardar."""
@@ -614,6 +719,7 @@ class DayColumnWidget(QFrame):
 
     def _add_block(self, block_data: Dict[str, Any]):
         widget = TimeBlockWidget(block_data)
+        widget._day_key = self.day_key  # V6.5: Para generar block_id
         widget.delete_requested.connect(self._on_delete_block)
         widget.changed.connect(lambda: self.changed.emit())
         self.block_widgets.append(widget)
@@ -664,6 +770,40 @@ class DayColumnWidget(QFrame):
         if from1 < to1 and from2 < to2:
             return not (to1 <= from2 or to2 <= from1)
         return False
+
+    def highlight_active_block(self, from_time: str, to_time: str, mode: str) -> bool:
+        """
+        V6.5: Destaca el bloque activo en esta columna.
+
+        Args:
+            from_time: Hora inicio del bloque activo (HH:mm)
+            to_time: Hora fin del bloque activo (HH:mm)
+            mode: Modo del bloque activo
+
+        Returns:
+            True si se encontró y destacó el bloque
+        """
+        found = False
+        for widget in self.block_widgets:
+            widget_from = widget.from_edit.time().toString("HH:mm")
+            widget_to = widget.to_edit.time().toString("HH:mm")
+            widget_mode = widget.mode_combo.currentText()
+
+            # Comparar por tiempos y modo
+            is_match = (widget_from == from_time and
+                       widget_to == to_time and
+                       widget_mode == mode)
+
+            widget.set_active(is_match)
+            if is_match:
+                found = True
+
+        return found
+
+    def clear_active_highlight(self):
+        """V6.5: Quita el highlight de todos los bloques de esta columna."""
+        for widget in self.block_widgets:
+            widget.set_active(False)
 
 
 # ==================== CALENDAR SCHEDULE EDITOR ====================
@@ -805,6 +945,40 @@ class CalendarScheduleEditor(QWidget):
         else:
             self.changes_label.setText("")
             self.save_btn.setEnabled(False)
+
+    def update_active_block_highlight(self, snapshot: Optional[Dict[str, Any]] = None):
+        """
+        V6.5: Actualiza el highlight del bloque activo en toda la semana.
+
+        Args:
+            snapshot: Dict del bloque activo (de CalendarManager.get_active_block_snapshot())
+                     Si es None, intenta obtenerlo del CalendarManager
+        """
+        # Limpiar todos los highlights primero
+        for column in self._day_columns.values():
+            column.clear_active_highlight()
+
+        # Obtener snapshot si no se proporcionó
+        if snapshot is None and self._calendar:
+            snapshot = self._calendar.get_active_block_snapshot()
+
+        if not snapshot:
+            return
+
+        day = snapshot.get("day")
+        from_time = snapshot.get("from_time")
+        to_time = snapshot.get("to_time")
+        mode = snapshot.get("mode")
+
+        if not all([day, from_time, to_time, mode]):
+            return
+
+        # Buscar la columna del día
+        column = self._day_columns.get(day)
+        if column:
+            found = column.highlight_active_block(from_time, to_time, mode)
+            if found:
+                _log(f"Active block highlighted: {day} {from_time}-{to_time} {mode}")
 
     def _get_schedule(self) -> Dict[str, Any]:
         week = {}
