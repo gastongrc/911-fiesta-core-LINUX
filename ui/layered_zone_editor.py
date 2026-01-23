@@ -2,10 +2,13 @@
 LayeredZoneEditor PRO - Professional zone editor with layers (Resolume-style)
 Sistema de edición profesional de zonas con layers independientes
 
-V9.1 FIX: Coordenadas normalizadas con mapeo letterbox correcto
-- Zonas se guardan en coordenadas normalizadas [0..1]
+V9.2 FIX: Coordenadas normalizadas como fuente de verdad
+- Zonas se guardan SOLO con coordenadas normalizadas [0..1]
+- NO se escriben legacy coords (x/y/w/h) de widget - detector usa norm_*
 - Mapeo widget<->frame respeta letterbox (offset + scale)
 - ROI del detector coincide pixel-perfect con el marco dibujado
+
+V9.1 FIX: Coordenadas normalizadas con mapeo letterbox correcto
 """
 import cv2
 import numpy as np
@@ -703,7 +706,7 @@ class LayeredCanvas(QLabel):
         pos = event.pos()
 
         if self.dragging_zone:
-            # V9.1 FIX: Drag completo con coordenadas normalizadas
+            # V9.2 FIX: Drag usando coordenadas normalizadas como fuente de verdad
             # Obtener tamaño actual en widget coords
             _, _, w, h = self._get_zone_widget_coords(self.dragging_zone)
 
@@ -716,14 +719,13 @@ class LayeredCanvas(QLabel):
             new_x = max(lb["offset_x"], min(new_x, lb["offset_x"] + lb["draw_w"] - w))
             new_y = max(lb["offset_y"], min(new_y, lb["offset_y"] + lb["draw_h"] - h))
 
-            # Convertir a coordenadas normalizadas
-            norm_x, norm_y, _, _ = widget_to_normalized(new_x, new_y, w, h, lb)
+            # Convertir a coordenadas normalizadas (fuente de verdad)
+            norm_x, norm_y, norm_w, norm_h = widget_to_normalized(new_x, new_y, w, h, lb)
             self.dragging_zone["norm_x"] = norm_x
             self.dragging_zone["norm_y"] = norm_y
 
-            # También actualizar legacy coords para compatibilidad
-            self.dragging_zone["x"] = new_x
-            self.dragging_zone["y"] = new_y
+            # V9.2 FIX: NO escribir legacy coords de widget - detector usa norm_*
+            # Legacy x/y/w/h se recalculan desde norm cuando se guardan
             self.update()
 
         elif self.resizing_zone:
@@ -837,7 +839,7 @@ class LayeredCanvas(QLabel):
             new_w = pos.x() - x
             w = max(min_size, min(new_w, lb["offset_x"] + lb["draw_w"] - x))
 
-        # Convertir a coordenadas normalizadas
+        # V9.2 FIX: Convertir a coordenadas normalizadas (fuente de verdad)
         norm_x, norm_y, norm_w, norm_h = widget_to_normalized(x, y, w, h, lb)
 
         # Actualizar zona con coordenadas normalizadas
@@ -846,13 +848,8 @@ class LayeredCanvas(QLabel):
         zone["norm_w"] = norm_w
         zone["norm_h"] = norm_h
 
-        # También actualizar legacy coords para compatibilidad
-        zone["x"] = x
-        zone["y"] = y
-        zone["w"] = w
-        zone["h"] = h
-        zone["width"] = w
-        zone["height"] = h
+        # V9.2 FIX: NO escribir legacy coords de widget - detector usa norm_*
+        # Legacy coords se recalculan desde norm cuando se guardan (ver vision_config.py)
 
 
 class LayeredZoneEditor(QWidget):
