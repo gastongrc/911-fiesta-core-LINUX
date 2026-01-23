@@ -1,6 +1,6 @@
 # core/system_bridge.py
 """
-SystemBridge v6.4 - Calendar → System Bridge
+SystemBridge v6.5 - Calendar → System Bridge
 
 Punto ÚNICO de gobierno entre el calendario y el sistema.
 Cuando el calendario cambia de modo, el SystemBridge aplica
@@ -9,6 +9,11 @@ los módulos activos de calendar_rules.py a todos los componentes.
 PRINCIPIO FUNDAMENTAL:
 El calendario NO decide CÓMO funcionan los módulos
 El calendario decide SI ESTÁN ACTIVOS O NO
+
+V6.5 FIX:
+- Calendar calls VisionManager.enable_module() with persist=False
+- This prevents calendar from overwriting user preferences in config
+- User preferences (via UI) persist; calendar state is runtime-only
 
 FUENTE DE VERDAD ÚNICA: core/calendar/calendar_rules.py
 
@@ -238,17 +243,21 @@ class SystemBridge:
             vm = self._vision_manager
 
             if hasattr(vm, 'enable_module'):
+                # V9.2 FIX: Calendar calls with persist=False to not overwrite user preferences
+                # User preferences are only saved when UI toggles (persist=True)
+                # Calendar controls runtime state only
+
                 # V9.1 FIX: Cada módulo de VisionManager se habilita con OR de permisos relacionados
                 # Esto evita que múltiples permisos del calendario sobrescriban entre sí
-                vm.enable_module("haze", modules.get("vision_haze", False))
+                vm.enable_module("haze", modules.get("vision_haze", False), source="calendar", persist=False)
 
                 # DJ: se habilita si vision_dj OR dj_detection está activo
                 dj_enabled = modules.get("vision_dj", False) or modules.get("dj_detection", False)
-                vm.enable_module("dj", dj_enabled)
+                vm.enable_module("dj", dj_enabled, source="calendar", persist=False)
 
                 # Tracking: se habilita si vision_artista OR tracking_cam está activo
                 tracking_enabled = modules.get("vision_artista", False) or modules.get("tracking_cam", False)
-                vm.enable_module("tracking", tracking_enabled)
+                vm.enable_module("tracking", tracking_enabled, source="calendar", persist=False)
 
             if hasattr(vm, 'set_calendar_mode'):
                 vm.set_calendar_mode(self._map_to_vision_mode(self._current_mode))

@@ -1,6 +1,6 @@
 """
-YoloRoiDetector V9.1 - YOLO-based ROI-only Person Detection
-Phase 9.1: GPU acceleration + optimizations (P0+P1 fixes)
+YoloRoiDetector V9.2 - YOLO-based ROI-only Person Detection
+Phase 9.2: Normalized coordinates fix + GPU acceleration
 
 GOLDEN RULES:
 1. Never freeze core/UI - drop frames, lower FPS, backoff if heavy
@@ -9,6 +9,12 @@ GOLDEN RULES:
 4. Rate-limited processing (default 6 FPS)
 5. Backoff if inference > 250ms
 6. Queue size=1 (latest frame only, drop rest)
+
+V9.2 FIX:
+- ROI uses NORMALIZED coordinates [0..1] as source of truth
+- Converts norm_* to frame pixels using actual frame dimensions
+- Fixes ROI misalignment when widget size != frame resolution
+- Backwards compatible: computes norm from legacy if missing (warns)
 
 V9.1 Optimizations:
 - Auto-select device (cuda > mps > cpu)
@@ -480,22 +486,51 @@ class YoloRoiDetector:
         """
         Process a single zone ROI.
 
+        V9.2 FIX: Use normalized coordinates [0..1] and convert to frame pixels.
+        This fixes ROI misalignment when widget size != frame size.
+
         Args:
             frame: Full frame
-            zone: Zone configuration
+            zone: Zone configuration with norm_x, norm_y, norm_w, norm_h [0..1]
 
         Returns:
             DetectionResult for this zone
         """
         zone_id = zone.get("id", 0)
-        x = zone.get("x", 0)
-        y = zone.get("y", 0)
-        w = zone.get("width", 100)
-        h = zone.get("height", 100)
+
+        # V9.2 FIX: Use normalized coordinates as source of truth
+        h_frame, w_frame = frame.shape[:2]
+
+        norm_x = zone.get("norm_x")
+        norm_y = zone.get("norm_y")
+        norm_w = zone.get("norm_w")
+        norm_h = zone.get("norm_h")
+
+        # Fallback: if no normalized coords, compute from legacy (assume 640x480 widget)
+        # This provides backwards compatibility with old configs
+        if norm_x is None or norm_y is None or norm_w is None or norm_h is None:
+            legacy_x = zone.get("x", 0)
+            legacy_y = zone.get("y", 0)
+            legacy_w = zone.get("width", zone.get("w", 100))
+            legacy_h = zone.get("height", zone.get("h", 100))
+
+            # Assume legacy coords were for 640x480 widget
+            norm_x = legacy_x / 640.0
+            norm_y = legacy_y / 480.0
+            norm_w = legacy_w / 640.0
+            norm_h = legacy_h / 480.0
+
+            print(f"[YoloRoiDetector] WARNING Z{zone_id}: using legacy coords, "
+                  f"computed norm=({norm_x:.3f},{norm_y:.3f},{norm_w:.3f},{norm_h:.3f})")
+
+        # Convert normalized to frame pixels
+        x = int(norm_x * w_frame)
+        y = int(norm_y * h_frame)
+        w = int(norm_w * w_frame)
+        h = int(norm_h * h_frame)
 
         # Extract ROI
         try:
-            h_frame, w_frame = frame.shape[:2]
             x1 = max(0, min(x, w_frame))
             y1 = max(0, min(y, h_frame))
             x2 = max(0, min(x + w, w_frame))

@@ -511,11 +511,13 @@ class VisionManager:
     # NOTE: set_camera_index/set_camera_*_index REMOVED (USB removed in Phase 6.10)
     # Use apply_camera_config() with config changes instead
 
-    def enable_module(self, name: str, enabled: bool):
+    def enable_module(self, name: str, enabled: bool, source: str = "ui", persist: bool = True):
         """
         Habilita/deshabilita un módulo específico.
 
-        V9.1 FIX: Soporta nombres canónicos del SystemBridge (calendar integration).
+        V9.2 FIX: Método canónico con control de persistencia y source tracking.
+        - UI llama con persist=True (guarda preferencia del usuario)
+        - Calendar llama con persist=False (cambio temporal, no sobrescribe preferencia)
 
         Args:
             name: Nombre del módulo
@@ -523,6 +525,8 @@ class VisionManager:
                   - "dj" o "dj_cues" o "dj_detection" -> DJDetector
                   - "tracking" o "artista_cues" -> ArtistTracker
             enabled: True para habilitar, False para deshabilitar
+            source: "ui" | "calendar" | "api" - origen del cambio
+            persist: True para guardar en config, False para cambio solo runtime
         """
         # V9.1 FIX: Mapeo de nombres alternativos del calendario
         name_aliases = {
@@ -549,12 +553,22 @@ class VisionManager:
         detector, state_setter = module_map[canonical_name]
 
         try:
+            # V9.2 FIX: Pass persist flag to detector
             if hasattr(detector, 'set_enabled'):
-                detector.set_enabled(enabled)
+                detector.set_enabled(enabled, persist=persist)
             else:
                 state_setter(enabled)
+                # If using fallback state_setter, persist manually if needed
+                if persist:
+                    if canonical_name == "haze":
+                        self.config.set_haze_enabled(enabled)
+                    elif canonical_name == "dj":
+                        self.config.set_dj_enabled(enabled)
+                    elif canonical_name in ("tracking", "artist"):
+                        self.config.set_artist_enabled(enabled)
 
-            print(f"[VisionManager] Módulo '{canonical_name}' {'habilitado' if enabled else 'deshabilitado'} (via {name})")
+            persist_str = "persisted" if persist else "runtime-only"
+            print(f"[VisionManager] Módulo '{canonical_name}' {'ON' if enabled else 'OFF'} (source={source}, {persist_str})")
         except Exception as e:
             print(f"[VisionManager] Error habilitando módulo '{canonical_name}': {e}")
 

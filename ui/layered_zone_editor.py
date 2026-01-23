@@ -2,10 +2,13 @@
 LayeredZoneEditor PRO - Professional zone editor with layers (Resolume-style)
 Sistema de edición profesional de zonas con layers independientes
 
-V9.1 FIX: Coordenadas normalizadas con mapeo letterbox correcto
-- Zonas se guardan en coordenadas normalizadas [0..1]
+V9.2 FIX: Coordenadas normalizadas como fuente de verdad
+- Zonas se guardan SOLO con coordenadas normalizadas [0..1]
+- NO se escriben legacy coords (x/y/w/h) de widget - detector usa norm_*
 - Mapeo widget<->frame respeta letterbox (offset + scale)
 - ROI del detector coincide pixel-perfect con el marco dibujado
+
+V9.1 FIX: Coordenadas normalizadas con mapeo letterbox correcto
 """
 import cv2
 import numpy as np
@@ -208,8 +211,8 @@ class LayerListWidget(QWidget):
         self.layer_list.itemClicked.connect(self._on_layer_clicked)
         layout.addWidget(self.layer_list)
 
-        # Botón agregar zona (solo para DJ) con estilo mejorado
-        if self.camera_type == "DJ":
+        # Botón agregar zona (para DJ y ARTIST) con estilo mejorado
+        if self.camera_type in ("DJ", "ARTIST"):
             self.btn_add = QPushButton("+ AGREGAR ZONA")
             self.btn_add.setStyleSheet("""
                 QPushButton {
@@ -375,8 +378,8 @@ class LayerListWidget(QWidget):
             )
             item_layout.addWidget(lock_btn)
 
-            # 7. Botón borrar (siempre visible y claro, solo DJ)
-            if self.camera_type == "DJ":
+            # 7. Botón borrar (para DJ y ARTIST)
+            if self.camera_type in ("DJ", "ARTIST"):
                 del_btn = QPushButton("X")
                 del_btn.setFixedSize(24, 24)
                 del_btn.setStyleSheet("""
@@ -407,7 +410,7 @@ class LayerListWidget(QWidget):
             self.layer_list.setItemWidget(list_item, item_widget)
 
         # Actualizar estado del botón agregar y contador
-        if self.camera_type == "DJ":
+        if self.camera_type in ("DJ", "ARTIST"):
             self.btn_add.setEnabled(len(self.zones) < self.max_zones)
         self.zone_count.setText(f"{len(self.zones)}/{self.max_zones}")
 
@@ -490,9 +493,35 @@ class LayeredCanvas(QLabel):
         self.update()
 
     def set_zones(self, zones):
-        """Establece las zonas a dibujar."""
+        """
+        Establece las zonas a dibujar.
+
+        V9.2 FIX: Limpia estados de drag/resize para evitar fantasmas
+        cuando una zona es borrada mientras se arrastra/redimensiona.
+        """
         self.zones = zones
+
+        # V9.2 FIX: Limpiar estados de interacción para evitar referencias a zonas borradas
+        # Esto previene el "ROI fantasma" cuando se borra una zona en medio de drag/resize
+        self._clear_interaction_state()
+
+        # Verificar que selected_zone_id sigue existiendo
+        if self.selected_zone_id is not None:
+            zone_ids = [z.get("id") for z in zones]
+            if self.selected_zone_id not in zone_ids:
+                self.selected_zone_id = zone_ids[0] if zone_ids else None
+
         self.update()
+
+    def _clear_interaction_state(self):
+        """
+        V9.2 FIX: Limpia todos los estados de interacción (drag, resize).
+        Llamar cuando las zonas cambian para evitar referencias a zonas borradas.
+        """
+        self.dragging_zone = None
+        self.drag_offset = QPoint(0, 0)
+        self.resizing_zone = None
+        self.resize_handle = None
 
     def resizeEvent(self, event):
         """V9.1 FIX: Recalcular letterbox cuando cambia el tamaño del widget."""
@@ -703,7 +732,7 @@ class LayeredCanvas(QLabel):
         pos = event.pos()
 
         if self.dragging_zone:
-            # V9.1 FIX: Drag completo con coordenadas normalizadas
+            # V9.2 FIX: Drag usando coordenadas normalizadas como fuente de verdad
             # Obtener tamaño actual en widget coords
             _, _, w, h = self._get_zone_widget_coords(self.dragging_zone)
 
@@ -716,14 +745,13 @@ class LayeredCanvas(QLabel):
             new_x = max(lb["offset_x"], min(new_x, lb["offset_x"] + lb["draw_w"] - w))
             new_y = max(lb["offset_y"], min(new_y, lb["offset_y"] + lb["draw_h"] - h))
 
-            # Convertir a coordenadas normalizadas
-            norm_x, norm_y, _, _ = widget_to_normalized(new_x, new_y, w, h, lb)
+            # Convertir a coordenadas normalizadas (fuente de verdad)
+            norm_x, norm_y, norm_w, norm_h = widget_to_normalized(new_x, new_y, w, h, lb)
             self.dragging_zone["norm_x"] = norm_x
             self.dragging_zone["norm_y"] = norm_y
 
-            # También actualizar legacy coords para compatibilidad
-            self.dragging_zone["x"] = new_x
-            self.dragging_zone["y"] = new_y
+            # V9.2 FIX: NO escribir legacy coords de widget - detector usa norm_*
+            # Legacy x/y/w/h se recalculan desde norm cuando se guardan
             self.update()
 
         elif self.resizing_zone:
@@ -837,7 +865,7 @@ class LayeredCanvas(QLabel):
             new_w = pos.x() - x
             w = max(min_size, min(new_w, lb["offset_x"] + lb["draw_w"] - x))
 
-        # Convertir a coordenadas normalizadas
+        # V9.2 FIX: Convertir a coordenadas normalizadas (fuente de verdad)
         norm_x, norm_y, norm_w, norm_h = widget_to_normalized(x, y, w, h, lb)
 
         # Actualizar zona con coordenadas normalizadas
@@ -846,13 +874,8 @@ class LayeredCanvas(QLabel):
         zone["norm_w"] = norm_w
         zone["norm_h"] = norm_h
 
-        # También actualizar legacy coords para compatibilidad
-        zone["x"] = x
-        zone["y"] = y
-        zone["w"] = w
-        zone["h"] = h
-        zone["width"] = w
-        zone["height"] = h
+        # V9.2 FIX: NO escribir legacy coords de widget - detector usa norm_*
+        # Legacy coords se recalculan desde norm cuando se guardan (ver vision_config.py)
 
 
 class LayeredZoneEditor(QWidget):
@@ -964,25 +987,36 @@ class LayeredZoneEditor(QWidget):
 
     def add_zone(self):
         """
-        Agrega una nueva zona (solo DJ).
+        Agrega una nueva zona (DJ y ARTIST).
 
-        V9.1 FIX: Crea zonas con coordenadas normalizadas.
+        V9.2 FIX: Crea zonas con coordenadas normalizadas para DJ y ARTIST.
         """
-        if self.camera_type != "DJ" or len(self.zones) >= self.max_zones:
+        if self.camera_type not in ("DJ", "ARTIST") or len(self.zones) >= self.max_zones:
             return
 
         zone_id = len(self.zones) + 1
 
-        # V9.1 FIX: Usar coordenadas normalizadas como fuente de verdad
+        # V9.2 FIX: Usar coordenadas normalizadas como fuente de verdad
         # Posición y tamaño inicial en coords normalizadas [0..1]
-        base_x = 0.15 + (zone_id - 1) * 0.05
-        base_y = 0.20 + (zone_id - 1) * 0.05
-        base_w = 0.25
-        base_h = 0.30
+        if self.camera_type == "ARTIST":
+            # Artist: zonas distribuidas horizontalmente (8 performers en escenario)
+            base_x = (zone_id - 1) * 0.125  # 8 zones = 1/8 each
+            base_y = 0.10
+            base_w = 0.125
+            base_h = 0.80
+        else:
+            # DJ: zonas escalonadas
+            base_x = 0.15 + (zone_id - 1) * 0.05
+            base_y = 0.20 + (zone_id - 1) * 0.05
+            base_w = 0.25
+            base_h = 0.30
+
+        # Prefix for zone name
+        prefix = "Artist" if self.camera_type == "ARTIST" else "DJ"
 
         new_zone = {
             "id": zone_id,
-            "name": f"DJ {zone_id}",
+            "name": f"{prefix} {zone_id}",
             # Coordenadas normalizadas (fuente de verdad)
             "norm_x": base_x,
             "norm_y": base_y,
@@ -1040,15 +1074,29 @@ class LayeredZoneEditor(QWidget):
         self.zones_changed.emit(self.zones)
 
     def _on_layer_deleted(self, zone_id):
-        """Callback cuando se elimina un layer."""
+        """
+        Callback cuando se elimina un layer.
+
+        V9.2 FIX: Limpia estados de interacción del canvas para evitar
+        "ROI fantasma" y bloqueo cuando se borra una zona seleccionada/arrastrada.
+        """
+        # V9.2 FIX: Limpiar estados del canvas ANTES de modificar zones
+        # Esto evita que dragging_zone/resizing_zone apunten a zona borrada
+        self.canvas._clear_interaction_state()
+
+        # Eliminar la zona
         self.zones = [z for z in self.zones if z["id"] != zone_id]
-        # Renumerar IDs
+
+        # Renumerar IDs con prefijo correcto
+        prefix = "Artist" if self.camera_type == "ARTIST" else "DJ"
         for i, zone in enumerate(self.zones):
             zone["id"] = i + 1
-            zone["name"] = f"{self.camera_type} {i + 1}"
+            zone["name"] = f"{prefix} {i + 1}"
 
+        # Actualizar selección
         if self.selected_zone_id == zone_id:
             self.selected_zone_id = self.zones[0]["id"] if self.zones else None
+            self.canvas.set_selected_zone(self.selected_zone_id)
 
         self._update_all()
         self.zones_changed.emit(self.zones)
