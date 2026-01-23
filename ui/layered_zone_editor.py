@@ -211,8 +211,8 @@ class LayerListWidget(QWidget):
         self.layer_list.itemClicked.connect(self._on_layer_clicked)
         layout.addWidget(self.layer_list)
 
-        # Botón agregar zona (solo para DJ) con estilo mejorado
-        if self.camera_type == "DJ":
+        # Botón agregar zona (para DJ y ARTIST) con estilo mejorado
+        if self.camera_type in ("DJ", "ARTIST"):
             self.btn_add = QPushButton("+ AGREGAR ZONA")
             self.btn_add.setStyleSheet("""
                 QPushButton {
@@ -378,8 +378,8 @@ class LayerListWidget(QWidget):
             )
             item_layout.addWidget(lock_btn)
 
-            # 7. Botón borrar (siempre visible y claro, solo DJ)
-            if self.camera_type == "DJ":
+            # 7. Botón borrar (para DJ y ARTIST)
+            if self.camera_type in ("DJ", "ARTIST"):
                 del_btn = QPushButton("X")
                 del_btn.setFixedSize(24, 24)
                 del_btn.setStyleSheet("""
@@ -410,7 +410,7 @@ class LayerListWidget(QWidget):
             self.layer_list.setItemWidget(list_item, item_widget)
 
         # Actualizar estado del botón agregar y contador
-        if self.camera_type == "DJ":
+        if self.camera_type in ("DJ", "ARTIST"):
             self.btn_add.setEnabled(len(self.zones) < self.max_zones)
         self.zone_count.setText(f"{len(self.zones)}/{self.max_zones}")
 
@@ -961,25 +961,36 @@ class LayeredZoneEditor(QWidget):
 
     def add_zone(self):
         """
-        Agrega una nueva zona (solo DJ).
+        Agrega una nueva zona (DJ y ARTIST).
 
-        V9.1 FIX: Crea zonas con coordenadas normalizadas.
+        V9.2 FIX: Crea zonas con coordenadas normalizadas para DJ y ARTIST.
         """
-        if self.camera_type != "DJ" or len(self.zones) >= self.max_zones:
+        if self.camera_type not in ("DJ", "ARTIST") or len(self.zones) >= self.max_zones:
             return
 
         zone_id = len(self.zones) + 1
 
-        # V9.1 FIX: Usar coordenadas normalizadas como fuente de verdad
+        # V9.2 FIX: Usar coordenadas normalizadas como fuente de verdad
         # Posición y tamaño inicial en coords normalizadas [0..1]
-        base_x = 0.15 + (zone_id - 1) * 0.05
-        base_y = 0.20 + (zone_id - 1) * 0.05
-        base_w = 0.25
-        base_h = 0.30
+        if self.camera_type == "ARTIST":
+            # Artist: zonas distribuidas horizontalmente (8 performers en escenario)
+            base_x = (zone_id - 1) * 0.125  # 8 zones = 1/8 each
+            base_y = 0.10
+            base_w = 0.125
+            base_h = 0.80
+        else:
+            # DJ: zonas escalonadas
+            base_x = 0.15 + (zone_id - 1) * 0.05
+            base_y = 0.20 + (zone_id - 1) * 0.05
+            base_w = 0.25
+            base_h = 0.30
+
+        # Prefix for zone name
+        prefix = "Artist" if self.camera_type == "ARTIST" else "DJ"
 
         new_zone = {
             "id": zone_id,
-            "name": f"DJ {zone_id}",
+            "name": f"{prefix} {zone_id}",
             # Coordenadas normalizadas (fuente de verdad)
             "norm_x": base_x,
             "norm_y": base_y,
@@ -1039,10 +1050,11 @@ class LayeredZoneEditor(QWidget):
     def _on_layer_deleted(self, zone_id):
         """Callback cuando se elimina un layer."""
         self.zones = [z for z in self.zones if z["id"] != zone_id]
-        # Renumerar IDs
+        # Renumerar IDs con prefijo correcto
+        prefix = "Artist" if self.camera_type == "ARTIST" else "DJ"
         for i, zone in enumerate(self.zones):
             zone["id"] = i + 1
-            zone["name"] = f"{self.camera_type} {i + 1}"
+            zone["name"] = f"{prefix} {i + 1}"
 
         if self.selected_zone_id == zone_id:
             self.selected_zone_id = self.zones[0]["id"] if self.zones else None
