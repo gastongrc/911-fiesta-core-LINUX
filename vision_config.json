@@ -93,6 +93,13 @@
   "dj": {
     "enabled": true,
     "zones_count": 5,
+    "device": "auto",
+    "fp16": true,
+    "skip_frame_age_ms": 250,
+    "conf_threshold": 0.35,
+    "target_fps": 6.0,
+    "max_infer_ms": 250.0,
+    "max_roi_size": 320,
     "zones": [
       {
         "id": 1,
@@ -180,6 +187,13 @@
   "artist": {
     "enabled": true,
     "zones_count": 8,
+    "device": "auto",
+    "fp16": true,
+    "skip_frame_age_ms": 250,
+    "conf_threshold": 0.35,
+    "target_fps": 6.0,
+    "max_infer_ms": 250.0,
+    "max_roi_size": 320,
     "zones": [
       {
         "id": 1,
@@ -310,8 +324,6 @@
         "norm_h": 0.7916666666666666
       }
     ],
-    "disappear_delay": 2.0,
-    "conf_threshold": 0.35,
-    "target_fps": 6.0
+    "disappear_delay": 2.0
   }
 }

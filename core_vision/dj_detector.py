@@ -62,12 +62,15 @@ class DJDetector:
         self._engine = VisionDJEngine(config=engine_config)
         self._engine.set_zones(self.zones)
 
-        # YOLO detector configuration
+        # YOLO detector configuration (V9.1: GPU + optimizations)
         detector_config = DetectorConfig(
             conf_threshold=dj_config.get("conf_threshold", 0.35),
             rate_limit_fps=dj_config.get("target_fps", 6.0),
             max_infer_ms=dj_config.get("max_infer_ms", 250.0),
             max_roi_size=dj_config.get("max_roi_size", 320),
+            device=dj_config.get("device", "auto"),  # V9.1: auto-device
+            fp16=dj_config.get("fp16", True),  # V9.1: FP16 on GPU
+            skip_frame_age_ms=dj_config.get("skip_frame_age_ms", 250.0),  # V9.1: skip old frames
         )
 
         # Initialize detector with callback to engine
@@ -97,7 +100,7 @@ class DJDetector:
         """
         self._engine.update_detection(zone_id, detected, conf)
 
-    def process_frame(self, frame) -> Dict[str, Any]:
+    def process_frame(self, frame, frame_ts: float = None) -> Dict[str, Any]:
         """
         Process a frame for DJ detection.
         Uses YOLO ROI-only detection and V9 state machine.
@@ -106,6 +109,7 @@ class DJDetector:
 
         Args:
             frame: OpenCV frame (numpy array BGR)
+            frame_ts: Frame timestamp for age calculation (V9.1)
 
         Returns:
             dict: Detection state
@@ -129,7 +133,8 @@ class DJDetector:
                     z for z in self.zones
                     if z.get("id") in visible_zones
                 ]
-                self._detector.process_frame_sync(frame, zones_config)
+                # V9.1: Pass frame timestamp for age-based skip
+                self._detector.process_frame_sync(frame, zones_config, frame_ts=frame_ts)
 
                 # Log metrics periodically
                 self._detector.log_metrics()
@@ -221,13 +226,21 @@ class DJDetector:
                 zone["visible"] = visible
                 break
 
-    def set_enabled(self, enabled: bool):
-        """Enable/disable detector."""
+    def set_enabled(self, enabled: bool, persist: bool = True):
+        """
+        Enable/disable detector.
+
+        V9.2 FIX: Added persist parameter for calendar vs UI control.
+        - persist=True: Save to config (user preference)
+        - persist=False: Runtime only (calendar temporary state)
+        """
         self.enabled = enabled
         self._engine.set_enabled(enabled)
-        self.config.set_dj_enabled(enabled)
+        if persist:
+            self.config.set_dj_enabled(enabled)
         self.vision_state.set_dj_enabled(enabled)
-        print(f"[DJDetector] Enabled={enabled}")
+        persist_str = "persisted" if persist else "runtime"
+        print(f"[DJDetector] Enabled={enabled} ({persist_str})")
 
     def set_cue_engine(self, cue_engine):
         """Legacy: Store CueEngine reference."""

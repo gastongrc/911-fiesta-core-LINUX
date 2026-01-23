@@ -310,11 +310,31 @@ class VisionArtistTab(QWidget):
 
             for zone in zones:
                 zone_id = zone.get("id", 0)
-                x = zone.get("x", 0)
-                y = zone.get("y", 0)
-                w = zone.get("width", zone.get("w", 100))
-                h = zone.get("height", zone.get("h", 100))
                 visible = zone.get("visible", True)
+
+                # V9.2 FIX: Use normalized coordinates and convert to frame pixels
+                h_frame, w_frame = frame.shape[:2]
+                norm_x = zone.get("norm_x", 0.0)
+                norm_y = zone.get("norm_y", 0.0)
+                norm_w = zone.get("norm_w", 0.15)
+                norm_h = zone.get("norm_h", 0.3)
+
+                # Fallback to legacy if no norm coords (backwards compat)
+                if norm_x == 0.0 and norm_y == 0.0 and "x" in zone:
+                    legacy_x = zone.get("x", 0)
+                    legacy_y = zone.get("y", 0)
+                    legacy_w = zone.get("width", zone.get("w", 100))
+                    legacy_h = zone.get("height", zone.get("h", 100))
+                    norm_x = legacy_x / 640.0
+                    norm_y = legacy_y / 480.0
+                    norm_w = legacy_w / 640.0
+                    norm_h = legacy_h / 480.0
+
+                # Convert normalized to frame pixels
+                x = int(norm_x * w_frame)
+                y = int(norm_y * h_frame)
+                w = int(norm_w * w_frame)
+                h = int(norm_h * h_frame)
 
                 # Get zone state from engine
                 engine = artist_detector.get_engine()
