@@ -789,10 +789,10 @@ class DayColumnWidget(QFrame):
             widget_to = widget.to_edit.time().toString("HH:mm")
             widget_mode = widget.mode_combo.currentText()
 
-            # Comparar por tiempos y modo
+            # Comparar por tiempos y modo (case-insensitive para modo)
             is_match = (widget_from == from_time and
                        widget_to == to_time and
-                       widget_mode == mode)
+                       widget_mode.lower() == mode.lower())
 
             widget.set_active(is_match)
             if is_match:
