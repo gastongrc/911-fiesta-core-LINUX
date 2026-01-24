@@ -1,25 +1,21 @@
 # core/system_bridge.py
 """
-SystemBridge v6.6 - Calendar → System Bridge
+SystemBridge v6.7 - Calendar → System Bridge
 
 Punto ÚNICO de gobierno entre el calendario y el sistema.
 Cuando el calendario cambia de modo, el SystemBridge aplica
 los módulos activos de calendar_rules.py a todos los componentes.
 
 PRINCIPIO FUNDAMENTAL:
-El calendario NO decide CÓMO funcionan los módulos
-El calendario decide SI ESTÁN ACTIVOS O NO
+El calendario GOBIERNA los módulos directamente.
+El calendario decide SI ESTÁN ACTIVOS O NO.
 
-V6.6 FIX (V9.3):
-- Calendar acts as PERMISSION GATE, not direct control
-- When calendar ALLOWS a module: use user's saved preference from config
-- When calendar DISALLOWS a module: force off (regardless of user preference)
-- User preferences (via UI) are preserved in config
-
-V6.5 FIX:
-- Calendar calls VisionManager.enable_module() with persist=False
-- This prevents calendar from overwriting user preferences in config
-- User preferences (via UI) persist; calendar state is runtime-only
+V6.7 FIX:
+- Calendar GOVERNS modules directly (not permission gate)
+- When calendar ALLOWS → module ON (ignores user preference)
+- When calendar DISALLOWS → module OFF (forced)
+- persist=False ensures user preferences in config are preserved
+- Clear logs: [CALENDAR] haze=ON (allowed) / [CALENDAR] dj=OFF (disallowed)
 
 FUENTE DE VERDAD ÚNICA: core/calendar/calendar_rules.py
 
@@ -105,7 +101,7 @@ class SystemBridge:
         # Logging
         self._log_changes: bool = True
 
-        print("[SystemBridge] v6.6 - Permission gate + user preferences")
+        print("[SystemBridge] v6.7 - Calendar GOVERNS modules directly")
 
     # ==================== CONEXIONES ====================
 
@@ -249,40 +245,25 @@ class SystemBridge:
             vm = self._vision_manager
 
             if hasattr(vm, 'enable_module'):
-                # V9.3 FIX: Calendar acts as PERMISSION GATE
-                # - Calendar ALLOWED + User ENABLED → module ON
-                # - Calendar NOT ALLOWED → module OFF (regardless of user preference)
-                # User preferences are preserved in config (persist=False here)
+                # V6.7 FIX: Calendar GOVERNS modules directly
+                # - Calendar ALLOWS → module ON (calendar overrides user preference)
+                # - Calendar DISALLOWS → module OFF (forced)
+                # persist=False ensures user preferences in config are preserved
 
-                # HAZE: Calendar permission gate
+                # HAZE: Calendar governs directly
                 haze_allowed = modules.get("vision_haze", False)
-                if haze_allowed and hasattr(vm, 'config'):
-                    # Calendar allows - use user's saved preference
-                    user_pref = vm.config.get_haze_config().get("enabled", False)
-                    vm.enable_module("haze", user_pref, source="calendar", persist=False)
-                else:
-                    # Calendar disallows - force off
-                    vm.enable_module("haze", False, source="calendar", persist=False)
+                vm.enable_module("haze", haze_allowed, source="calendar", persist=False)
+                print(f"[CALENDAR] haze={'ON' if haze_allowed else 'OFF'} ({'allowed' if haze_allowed else 'disallowed'})")
 
-                # DJ: Calendar permission gate (vision_dj OR dj_detection)
+                # DJ: Calendar governs directly (vision_dj OR dj_detection)
                 dj_allowed = modules.get("vision_dj", False) or modules.get("dj_detection", False)
-                if dj_allowed and hasattr(vm, 'config'):
-                    # Calendar allows - use user's saved preference
-                    user_pref = vm.config.get_dj_config().get("enabled", False)
-                    vm.enable_module("dj", user_pref, source="calendar", persist=False)
-                else:
-                    # Calendar disallows - force off
-                    vm.enable_module("dj", False, source="calendar", persist=False)
+                vm.enable_module("dj", dj_allowed, source="calendar", persist=False)
+                print(f"[CALENDAR] dj={'ON' if dj_allowed else 'OFF'} ({'allowed' if dj_allowed else 'disallowed'})")
 
-                # TRACKING: Calendar permission gate (vision_artista OR tracking_cam)
+                # ARTIST/TRACKING: Calendar governs directly (vision_artista OR tracking_cam)
                 tracking_allowed = modules.get("vision_artista", False) or modules.get("tracking_cam", False)
-                if tracking_allowed and hasattr(vm, 'config'):
-                    # Calendar allows - use user's saved preference
-                    user_pref = vm.config.get_tracking_config().get("enabled", False)
-                    vm.enable_module("tracking", user_pref, source="calendar", persist=False)
-                else:
-                    # Calendar disallows - force off
-                    vm.enable_module("tracking", False, source="calendar", persist=False)
+                vm.enable_module("tracking", tracking_allowed, source="calendar", persist=False)
+                print(f"[CALENDAR] artist={'ON' if tracking_allowed else 'OFF'} ({'allowed' if tracking_allowed else 'disallowed'})")
 
             if hasattr(vm, 'set_calendar_mode'):
                 vm.set_calendar_mode(self._map_to_vision_mode(self._current_mode))
