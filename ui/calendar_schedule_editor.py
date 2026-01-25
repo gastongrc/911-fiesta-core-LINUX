@@ -1,35 +1,27 @@
 # ui/calendar_schedule_editor.py
 """
-CalendarScheduleEditor v8.2 - Editor visual de horarios semanales.
+CalendarScheduleEditor v8.3 - Editor visual de horarios semanales.
 
-V8.2 CAMBIOS (Overflow Fix):
-- MODOS: QGridLayout 4 columnas fijas (3 filas automáticas)
-- EXTRAS: QGridLayout 3 columnas fijas (2 filas automáticas)
-- Botones con SizePolicy.Expanding para llenar espacio disponible
-- Sin min-width fijo, los botones se adaptan al ancho de columna
-- Padding reducido (10px) para columnas angostas
-- Cero overflow horizontal
+V8.3 CAMBIOS (Eliminar redundancias):
+- MODOS reducidos a 8 canónicos (sin teatro/artista como modos)
+- teatro/artista movidos a EXTRAS
+- EXTRAS sin DJ/Clima (ya implícitos en modos boliche_*/clima_*)
+- Migración automática de modos legacy
+- Filtrado de extras legacy al cargar
 
-V8.1 CAMBIOS (UI Polish):
-- Padding interno aumentado (10-12px)
-- Spacing vertical consistente entre secciones
-- Time section separada visualmente con línea sutil
-- Mode buttons: altura 28-32px, pill radius real, spacing 6px
-- Extra buttons: más pequeños (22-24px), colores apagados, separador
-- Ningún elemento toca bordes/glow
-
-V8.0 CAMBIOS:
-- ELIMINADO botón "Configurar", dropdown de modo, checkboxes
-- NUEVO: Botones PILL para modo (single-select, siempre visibles)
-- NUEVO: Botones TOGGLE para extras (multi-select, siempre visibles)
-- Todo inline, sin paneles desplegables
-
-MODOS: Botones pill (uno solo activo)
-clima_1, clima_2, clima_3, clima_4, teatro, artista,
+MODOS CANÓNICOS (8):
+clima_1, clima_2, clima_3, clima_4,
 boliche_inicio, boliche_desarrollo, boliche_fin, apagado
 
-EXTRAS: Botones toggle (múltiples activos)
-Haze, DJ Cues, Artista, Tracking, DJ Detect, Clima
+EXTRAS PERMITIDOS (5):
+vision_haze (Haze), vision_artista (Artista), tracking_cam (Track),
+dj_detection (Detect), teatro (Teatro)
+
+V8.2 CAMBIOS (Overflow Fix):
+- MODOS: QGridLayout 4 columnas fijas
+- EXTRAS: QGridLayout con wrap automático
+- Botones con SizePolicy.Expanding
+- Cero overflow horizontal
 
 SOLO UI - No ejecuta acciones del sistema.
 """
@@ -45,15 +37,14 @@ from PySide6.QtCore import Qt, Signal, QTime, QPropertyAnimation, QEasingCurve, 
 from PySide6.QtGui import QFont, QColor
 
 
-# ==================== MODOS CANÓNICOS ====================
+# ==================== MODOS CANÓNICOS (V8.3) ====================
 
+# V8.3: Solo 8 modos canónicos (teatro/artista movidos a EXTRAS)
 CANONICAL_MODES = [
     "clima_1",
     "clima_2",
     "clima_3",
     "clima_4",
-    "teatro",
-    "artista",
     "boliche_inicio",
     "boliche_desarrollo",
     "boliche_fin",
@@ -66,8 +57,6 @@ MODE_DISPLAY = {
     "clima_2": "Clima 2",
     "clima_3": "Clima 3",
     "clima_4": "Clima 4",
-    "teatro": "Teatro",
-    "artista": "Artista",
     "boliche_inicio": "Bol.Ini",
     "boliche_desarrollo": "Bol.Des",
     "boliche_fin": "Bol.Fin",
@@ -80,34 +69,46 @@ MODE_COLORS = {
     "clima_2": "#16a085",
     "clima_3": "#2ecc71",
     "clima_4": "#27ae60",
-    "teatro": "#3498db",
-    "artista": "#9b59b6",
     "boliche_inicio": "#f39c12",
     "boliche_desarrollo": "#e67e22",
     "boliche_fin": "#e74c3c",
     "apagado": "#7f8c8d",
 }
 
-# ==================== ACCIONES EXTRA ====================
+# V8.3: Migración de modos legacy → modo destino + extra a agregar
+LEGACY_MODE_MIGRATION = {
+    "teatro": ("boliche_desarrollo", "teatro"),
+    "artista": ("boliche_desarrollo", "vision_artista"),
+}
 
+# ==================== ACCIONES EXTRA (V8.3) ====================
+
+# V8.3: 5 extras (sin DJ/Clima que son redundantes con modos)
+# Keys reales del sistema:
+#   - vision_haze: control de haze
+#   - vision_artista: tracking de artista
+#   - tracking_cam: tracking de cámara
+#   - dj_detection: detección de DJ
+#   - teatro: placeholder para modo teatro como extra
 EXTRA_ACTIONS = [
     "vision_haze",
-    "vision_dj",
     "vision_artista",
     "tracking_cam",
     "dj_detection",
-    "cues_clima",
+    "teatro",
 ]
 
 # Display para botones toggle
 EXTRA_DISPLAY = {
     "vision_haze": "💨 Haze",
-    "vision_dj": "🎧 DJ",
-    "vision_artista": "🎤 Artist",
+    "vision_artista": "🎤 Artista",
     "tracking_cam": "📹 Track",
     "dj_detection": "👁 Detect",
-    "cues_clima": "🌡 Clima",
+    "teatro": "🎭 Teatro",
 }
+
+# V8.3: Extras legacy a filtrar (redundantes con modos)
+LEGACY_EXTRAS_FILTER = {"vision_dj", "cues_clima"}
 
 # Nombres de días
 DAY_NAMES = {
@@ -350,7 +351,7 @@ class TimeBlockWidget(QFrame):
         initial_mode = self._get_initial_mode()
         self._current_mode = initial_mode
 
-        # V8.2: 4 columnas fijas → 3 filas (10 botones)
+        # V8.3: 4 columnas fijas → 2 filas (8 botones)
         MODE_COLS = 4
         for i, mode in enumerate(CANONICAL_MODES):
             btn = QPushButton(MODE_DISPLAY.get(mode, mode))
@@ -411,7 +412,7 @@ class TimeBlockWidget(QFrame):
         initial_extras = self._get_initial_extras()
         self._selected_actions = set(initial_extras)
 
-        # V8.2: 3 columnas fijas → 2 filas (6 botones)
+        # V8.3: 3 columnas fijas → 2 filas (5 botones)
         EXTRA_COLS = 3
         for i, action in enumerate(EXTRA_ACTIONS):
             btn = QPushButton(EXTRA_DISPLAY.get(action, action))
@@ -451,19 +452,49 @@ class TimeBlockWidget(QFrame):
         self._update_color()
 
     def _get_initial_mode(self) -> str:
+        """
+        V8.3: Obtiene modo inicial con migración de modos legacy.
+
+        Si el modo es teatro/artista, migra a boliche_desarrollo.
+        El extra correspondiente se agrega en _get_initial_extras().
+        """
         if "mode" in self.block_data:
             mode = self.block_data["mode"].lower()
+            # V8.3: Migrar modos legacy
+            if mode in LEGACY_MODE_MIGRATION:
+                new_mode, _ = LEGACY_MODE_MIGRATION[mode]
+                return new_mode
             if mode in CANONICAL_MODES:
                 return mode
         return "clima_1"
 
     def _get_initial_extras(self) -> List[str]:
-        # V8.0: Lee de "actions" o "extra_actions" (legacy)
-        if "actions" in self.block_data:
-            return [a for a in self.block_data["actions"] if a in EXTRA_ACTIONS]
-        if "extra_actions" in self.block_data:
-            return [a for a in self.block_data["extra_actions"] if a in EXTRA_ACTIONS]
-        return []
+        """
+        V8.3: Obtiene extras iniciales con filtrado y migración.
+
+        - Filtra extras legacy (vision_dj, cues_clima)
+        - Agrega extra de migración si el modo original era legacy
+        """
+        extras: Set[str] = set()
+
+        # Leer extras existentes (filtrar legacy)
+        raw_extras = self.block_data.get("actions") or self.block_data.get("extra_actions") or []
+        for a in raw_extras:
+            # V8.3: Filtrar extras legacy
+            if a in LEGACY_EXTRAS_FILTER:
+                continue
+            if a in EXTRA_ACTIONS:
+                extras.add(a)
+
+        # V8.3: Agregar extra de migración si el modo original era legacy
+        if "mode" in self.block_data:
+            orig_mode = self.block_data["mode"].lower()
+            if orig_mode in LEGACY_MODE_MIGRATION:
+                _, migration_extra = LEGACY_MODE_MIGRATION[orig_mode]
+                if migration_extra and migration_extra in EXTRA_ACTIONS:
+                    extras.add(migration_extra)
+
+        return list(extras)
 
     def _on_changed(self):
         self.changed.emit()
