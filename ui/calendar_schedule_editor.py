@@ -1,28 +1,20 @@
 # ui/calendar_schedule_editor.py
 """
-CalendarScheduleEditor v7.0 - Editor visual de horarios semanales.
+CalendarScheduleEditor v8.0 - Editor visual de horarios semanales.
 
-V7.0 CAMBIOS:
-- ELIMINADO dropdown de modo separado del TimeBlockWidget
-- UNIFICADO en panel "Configurar" con:
-  - Sección MODO (ComboBox single-select)
-  - Sección EXTRAS (checkboxes para módulos adicionales)
-- Guardado: mode + actions[] en calendar.json
-- Layout mejorado sin superposiciones
+V8.0 CAMBIOS:
+- ELIMINADO botón "Configurar", dropdown de modo, checkboxes
+- NUEVO: Botones PILL para modo (single-select, siempre visibles)
+- NUEVO: Botones TOGGLE para extras (multi-select, siempre visibles)
+- Todo inline, sin paneles desplegables
+- Layout mejorado con flow/wrap
 
-Widget para editar el calendario de bloques horarios:
-- Vista semanal con 7 columnas
-- Bloques editables con from/to + panel unificado de modo+extras
-- Colores por modo canónico
-- Glow verde pulsante en bloque activo
-
-MODOS CANÓNICOS:
+MODOS: Botones pill (uno solo activo)
 clima_1, clima_2, clima_3, clima_4, teatro, artista,
 boliche_inicio, boliche_desarrollo, boliche_fin, apagado
 
-ACCIONES EXTRA (opcionales):
-vision_haze, vision_dj, vision_artista, tracking_cam,
-dj_detection, cues_clima
+EXTRAS: Botones toggle (múltiples activos)
+Haze, DJ Cues, Artista, Tracking, DJ Detect, Clima
 
 SOLO UI - No ejecuta acciones del sistema.
 """
@@ -31,9 +23,8 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List, Set
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
-    QPushButton, QComboBox, QTimeEdit, QScrollArea,
-    QGridLayout, QMessageBox, QCheckBox, QSizePolicy,
-    QGraphicsDropShadowEffect
+    QPushButton, QTimeEdit, QScrollArea, QGridLayout,
+    QMessageBox, QSizePolicy, QGraphicsDropShadowEffect
 )
 from PySide6.QtCore import Qt, Signal, QTime, QPropertyAnimation, QEasingCurve, Property
 from PySide6.QtGui import QFont, QColor
@@ -54,6 +45,20 @@ CANONICAL_MODES = [
     "apagado",
 ]
 
+# Display names cortos para botones pill
+MODE_DISPLAY = {
+    "clima_1": "Clima 1",
+    "clima_2": "Clima 2",
+    "clima_3": "Clima 3",
+    "clima_4": "Clima 4",
+    "teatro": "Teatro",
+    "artista": "Artista",
+    "boliche_inicio": "Bol.Ini",
+    "boliche_desarrollo": "Bol.Des",
+    "boliche_fin": "Bol.Fin",
+    "apagado": "Apagado",
+}
+
 # Colores por modo
 MODE_COLORS = {
     "clima_1": "#1abc9c",
@@ -70,7 +75,6 @@ MODE_COLORS = {
 
 # ==================== ACCIONES EXTRA ====================
 
-# Acciones que el usuario puede agregar manualmente
 EXTRA_ACTIONS = [
     "vision_haze",
     "vision_dj",
@@ -80,30 +84,14 @@ EXTRA_ACTIONS = [
     "cues_clima",
 ]
 
-# Configuración visual de acciones extra
-EXTRA_ACTION_CONFIG = {
-    "vision_haze": {"icon": "💨", "name": "Haze"},
-    "vision_dj": {"icon": "🎧", "name": "DJ Cues"},
-    "vision_artista": {"icon": "🎤", "name": "Artista"},
-    "tracking_cam": {"icon": "📹", "name": "Tracking"},
-    "dj_detection": {"icon": "👁", "name": "DJ Detect"},
-    "cues_clima": {"icon": "🌡", "name": "Clima"},
-}
-
-# ==================== LEGACY MODE MAP ====================
-# Acciones implícitas por modo (el usuario NO las ve ni edita)
-
-LEGACY_MODE_MAP = {
-    "clima_1": ["cues_clima"],
-    "clima_2": ["cues_clima"],
-    "clima_3": ["cues_clima"],
-    "clima_4": ["cues_clima"],
-    "teatro": ["vision_artista", "tracking_cam", "dj_detection"],
-    "artista": ["vision_artista", "tracking_cam"],
-    "boliche_inicio": [],
-    "boliche_desarrollo": ["audio_911", "vision_haze", "vision_dj"],
-    "boliche_fin": ["audio_911", "vision_haze", "vision_dj", "dj_detection"],
-    "apagado": ["system_idle"],
+# Display para botones toggle
+EXTRA_DISPLAY = {
+    "vision_haze": "💨 Haze",
+    "vision_dj": "🎧 DJ",
+    "vision_artista": "🎤 Artist",
+    "tracking_cam": "📹 Track",
+    "dj_detection": "👁 Detect",
+    "cues_clima": "🌡 Clima",
 }
 
 # Nombres de días
@@ -129,276 +117,71 @@ def _log(msg: str):
         print(f"[CalendarUI] {msg}")
 
 
-# ==================== MODE AND ACTIONS PANEL (UNIFIED) ====================
+# ==================== FLOW LAYOUT HELPER ====================
 
-class ModeAndActionsPanel(QFrame):
+class FlowLayout(QVBoxLayout):
     """
-    Panel unificado para seleccionar MODO + ACCIONES EXTRAS.
-
-    V7.0: Reemplaza el dropdown de modo separado + panel de extras.
-    - Sección MODO: ComboBox single-select con modos canónicos
-    - Sección EXTRAS: Checkboxes para acciones adicionales
+    Simple flow layout that wraps widgets into multiple rows.
+    Uses multiple QHBoxLayouts internally.
     """
 
-    changed = Signal()
-    mode_changed = Signal(str)  # Emite cuando cambia el modo
-
-    def __init__(self, mode: str = "clima_1", actions: List[str] = None, parent=None):
+    def __init__(self, parent=None, max_per_row: int = 5):
         super().__init__(parent)
-        self._current_mode = mode if mode in CANONICAL_MODES else "clima_1"
-        self._selected_actions: Set[str] = set(actions or [])
-        self._checkboxes: Dict[str, QCheckBox] = {}
-        self._setup_ui()
+        self._max_per_row = max_per_row
+        self._rows: List[QHBoxLayout] = []
+        self._widgets: List[QWidget] = []
+        self.setSpacing(4)
+        self.setContentsMargins(0, 0, 0, 0)
 
-    def _setup_ui(self):
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+    def addFlowWidget(self, widget: QWidget):
+        self._widgets.append(widget)
+        self._rebuild()
 
-        self.setStyleSheet("""
-            QFrame {
-                background-color: #1a252f;
-                border: 1px solid #3498db;
-                border-radius: 6px;
-            }
-        """)
+    def clearWidgets(self):
+        for w in self._widgets:
+            w.setParent(None)
+        self._widgets.clear()
+        self._rebuild()
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(8)
+    def _rebuild(self):
+        # Clear existing rows
+        while self.count():
+            item = self.takeAt(0)
+            if item.layout():
+                while item.layout().count():
+                    child = item.layout().takeAt(0)
+                    if child.widget():
+                        child.widget().setParent(None)
 
-        # ==================== SECCIÓN MODO ====================
-        mode_section = QVBoxLayout()
-        mode_section.setSpacing(4)
+        self._rows.clear()
 
-        mode_title = QLabel("🎯 MODO (principal)")
-        mode_title.setFont(QFont("", 10, QFont.Bold))
-        mode_title.setStyleSheet("color: #f39c12; border: none;")
-        mode_section.addWidget(mode_title)
+        # Rebuild rows
+        for i, widget in enumerate(self._widgets):
+            row_idx = i // self._max_per_row
+            if row_idx >= len(self._rows):
+                row = QHBoxLayout()
+                row.setSpacing(3)
+                row.setContentsMargins(0, 0, 0, 0)
+                self._rows.append(row)
+                self.addLayout(row)
 
-        self.mode_combo = QComboBox()
-        self.mode_combo.addItems(CANONICAL_MODES)
-        self.mode_combo.setCurrentText(self._current_mode)
-        self.mode_combo.currentTextChanged.connect(self._on_mode_changed)
-        self.mode_combo.setStyleSheet("""
-            QComboBox {
-                background: #2c3e50;
-                color: white;
-                border: 2px solid #f39c12;
-                border-radius: 4px;
-                padding: 6px 10px;
-                font-size: 11px;
-                font-weight: bold;
-                min-width: 150px;
-            }
-            QComboBox::drop-down {
-                border: none;
-                width: 20px;
-            }
-            QComboBox::down-arrow {
-                image: none;
-                border-left: 5px solid transparent;
-                border-right: 5px solid transparent;
-                border-top: 6px solid #f39c12;
-                margin-right: 5px;
-            }
-            QComboBox QAbstractItemView {
-                background: #2c3e50;
-                color: white;
-                selection-background-color: #f39c12;
-                border: 1px solid #f39c12;
-            }
-        """)
-        mode_section.addWidget(self.mode_combo)
+            self._rows[row_idx].addWidget(widget)
 
-        layout.addLayout(mode_section)
-
-        # Separador visual
-        separator = QFrame()
-        separator.setFrameShape(QFrame.HLine)
-        separator.setStyleSheet("background-color: #34495e; border: none; max-height: 1px;")
-        layout.addWidget(separator)
-
-        # ==================== SECCIÓN EXTRAS ====================
-        extras_section = QVBoxLayout()
-        extras_section.setSpacing(4)
-
-        extras_title = QLabel("⚡ EXTRAS / MÓDULOS")
-        extras_title.setFont(QFont("", 10, QFont.Bold))
-        extras_title.setStyleSheet("color: #3498db; border: none;")
-        extras_section.addWidget(extras_title)
-
-        # Grid de checkboxes 2x3
-        grid = QGridLayout()
-        grid.setSpacing(6)
-        grid.setContentsMargins(0, 4, 0, 0)
-
-        for i, action in enumerate(EXTRA_ACTIONS):
-            cfg = EXTRA_ACTION_CONFIG.get(action, {})
-            row = i // 2
-            col = i % 2
-
-            cb = QCheckBox(f"{cfg.get('icon', '?')} {cfg.get('name', action)}")
-            cb.setChecked(action in self._selected_actions)
-            cb.setStyleSheet("""
-                QCheckBox {
-                    color: #ecf0f1;
-                    font-size: 11px;
-                    border: none;
-                    padding: 2px;
-                }
-                QCheckBox::indicator {
-                    width: 16px;
-                    height: 16px;
-                }
-                QCheckBox::indicator:checked {
-                    background: #3498db;
-                    border: 2px solid #2980b9;
-                    border-radius: 4px;
-                }
-                QCheckBox::indicator:unchecked {
-                    background: #34495e;
-                    border: 2px solid #7f8c8d;
-                    border-radius: 4px;
-                }
-                QCheckBox:hover {
-                    background: rgba(52, 152, 219, 0.1);
-                    border-radius: 3px;
-                }
-            """)
-            cb.stateChanged.connect(lambda state, a=action: self._on_action_toggled(a, state))
-            self._checkboxes[action] = cb
-            grid.addWidget(cb, row, col)
-
-        extras_section.addLayout(grid)
-        layout.addLayout(extras_section)
-
-        # Contador de total
-        self.counter_label = QLabel("")
-        self.counter_label.setStyleSheet("color: #7f8c8d; font-size: 9px; border: none;")
-        layout.addWidget(self.counter_label)
-
-        self._update_counter()
-
-    def _on_mode_changed(self, mode: str):
-        self._current_mode = mode
-        self.mode_changed.emit(mode)
-        self.changed.emit()
-
-    def _on_action_toggled(self, action: str, state: int):
-        if state == Qt.Checked:
-            self._selected_actions.add(action)
-        else:
-            self._selected_actions.discard(action)
-        self._update_counter()
-        self.changed.emit()
-
-    def _update_counter(self):
-        count = len(self._selected_actions)
-        total = 1 + count  # 1 (modo) + extras
-        if total > 5:
-            self.counter_label.setText(f"⚠ Máximo 5 total ({total}/5)")
-            self.counter_label.setStyleSheet("color: #e74c3c; font-size: 9px; border: none;")
-        else:
-            self.counter_label.setText(f"Total: {total}/5 (modo + {count} extras)")
-            self.counter_label.setStyleSheet("color: #7f8c8d; font-size: 9px; border: none;")
-
-    def get_mode(self) -> str:
-        return self.mode_combo.currentText()
-
-    def set_mode(self, mode: str):
-        if mode.lower() in [m.lower() for m in CANONICAL_MODES]:
-            # Find the matching mode (case-insensitive)
-            for m in CANONICAL_MODES:
-                if m.lower() == mode.lower():
-                    self.mode_combo.blockSignals(True)
-                    self.mode_combo.setCurrentText(m)
-                    self._current_mode = m
-                    self.mode_combo.blockSignals(False)
-                    break
-
-    def get_actions(self) -> List[str]:
-        """Retorna las acciones extras seleccionadas (sin el modo)."""
-        return [a for a in EXTRA_ACTIONS if a in self._selected_actions]
-
-    def set_actions(self, actions: List[str]):
-        """Setea las acciones extras (sin el modo)."""
-        self._selected_actions = set(a for a in actions if a in EXTRA_ACTIONS)
-        for action, cb in self._checkboxes.items():
-            cb.blockSignals(True)
-            cb.setChecked(action in self._selected_actions)
-            cb.blockSignals(False)
-        self._update_counter()
-
-    def is_valid(self) -> bool:
-        """Máximo 4 extras (modo + 4 = 5 total)"""
-        return len(self._selected_actions) <= 4
-
-
-# ==================== LEGACY: ExtraActionsPanel (wrapper for compatibility) ====================
-
-class ExtraActionsPanel(ModeAndActionsPanel):
-    """
-    DEPRECATED: Use ModeAndActionsPanel directly.
-    This is a compatibility wrapper.
-    """
-    def __init__(self, selected: List[str] = None, parent=None):
-        super().__init__(mode="clima_1", actions=selected, parent=parent)
-
-    def get_extra_actions(self) -> List[str]:
-        return self.get_actions()
-
-    def set_extra_actions(self, actions: List[str]):
-        self.set_actions(actions)
-
-
-# ==================== EXTRA BADGES WIDGET ====================
-
-class ExtraBadgesWidget(QWidget):
-    """Badges de acciones extra activas."""
-
-    def __init__(self, actions: List[str] = None, parent=None):
-        super().__init__(parent)
-        self._actions = actions or []
-        self._setup_ui()
-
-    def _setup_ui(self):
-        # SizePolicy: expandir horizontal, altura mínima
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
-
-        self._layout = QHBoxLayout(self)
-        self._layout.setContentsMargins(0, 0, 0, 0)
-        self._layout.setSpacing(3)
-        self._update_badges()
-
-    def _update_badges(self):
-        while self._layout.count():
-            item = self._layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-
-        for action in self._actions[:4]:  # Max 4 extras
-            cfg = EXTRA_ACTION_CONFIG.get(action, {})
-            badge = QLabel(cfg.get("icon", "?"))
-            badge.setToolTip(cfg.get("name", action))
-            badge.setStyleSheet("""
-                background: rgba(52, 152, 219, 0.3);
-                color: #3498db;
-                padding: 2px 4px;
-                border-radius: 3px;
-                font-size: 11px;
-            """)
-            self._layout.addWidget(badge)
-
-        self._layout.addStretch()
-
-    def set_actions(self, actions: List[str]):
-        self._actions = [a for a in actions if a in EXTRA_ACTIONS]
-        self._update_badges()
+        # Add stretch to last row
+        if self._rows:
+            self._rows[-1].addStretch()
 
 
 # ==================== TIME BLOCK WIDGET ====================
 
 class TimeBlockWidget(QFrame):
-    """Widget para un bloque de tiempo con modo + acciones extra."""
+    """
+    V8.0: Widget para un bloque de tiempo con botones pill/toggle.
+
+    - MODOS: Botones pill (single-select)
+    - EXTRAS: Botones toggle (multi-select)
+    - Todo visible inline, sin paneles desplegables
+    """
 
     delete_requested = Signal(object)
     changed = Signal()
@@ -406,9 +189,12 @@ class TimeBlockWidget(QFrame):
     def __init__(self, block_data: Dict[str, Any], parent=None):
         super().__init__(parent)
         self.block_data = block_data
-        self._panel_visible = False  # V7.0: Panel unificado visible
-        self._is_active = False  # V6.5: Flag para destacar bloque activo
-        self._glow_alpha = 0.3  # V9.3: Glow intensity for animation
+        self._current_mode = "clima_1"
+        self._selected_actions: Set[str] = set()
+        self._mode_buttons: Dict[str, QPushButton] = {}
+        self._extra_buttons: Dict[str, QPushButton] = {}
+        self._is_active = False
+        self._glow_alpha = 0.3
         self._setup_glow_effect()
         self._setup_ui()
 
@@ -459,16 +245,13 @@ class TimeBlockWidget(QFrame):
 
     def _setup_ui(self):
         self.setFrameShape(QFrame.StyledPanel)
-
-        # SizePolicy: expandir horizontal, ajustar vertical al contenido
-        # Esto permite que el bloque crezca cuando se muestra el panel de extras
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 6, 8, 6)
-        layout.setSpacing(6)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(4)
 
-        # Fila 1: Tiempos
+        # ===== FILA 1: Tiempos + Delete =====
         time_row = QHBoxLayout()
         time_row.setSpacing(4)
 
@@ -477,193 +260,160 @@ class TimeBlockWidget(QFrame):
         self.from_edit.setTime(QTime.fromString(self.block_data.get("from", "00:00"), "HH:mm"))
         self.from_edit.timeChanged.connect(self._on_changed)
         self.from_edit.setStyleSheet("background: #1e272e; color: white; border: 1px solid #34495e; border-radius: 3px;")
-        self.from_edit.setFixedWidth(60)
+        self.from_edit.setFixedWidth(58)
         time_row.addWidget(self.from_edit)
 
-        time_row.addWidget(QLabel("→"))
+        arrow = QLabel("→")
+        arrow.setStyleSheet("color: #7f8c8d;")
+        time_row.addWidget(arrow)
 
         self.to_edit = QTimeEdit()
         self.to_edit.setDisplayFormat("HH:mm")
         self.to_edit.setTime(QTime.fromString(self.block_data.get("to", "00:00"), "HH:mm"))
         self.to_edit.timeChanged.connect(self._on_changed)
         self.to_edit.setStyleSheet("background: #1e272e; color: white; border: 1px solid #34495e; border-radius: 3px;")
-        self.to_edit.setFixedWidth(60)
+        self.to_edit.setFixedWidth(58)
         time_row.addWidget(self.to_edit)
 
         time_row.addStretch()
 
         delete_btn = QPushButton("✕")
-        delete_btn.setFixedSize(24, 24)
+        delete_btn.setFixedSize(22, 22)
         delete_btn.setStyleSheet("""
-            QPushButton {
-                background: #c0392b;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background: #e74c3c;
-            }
+            QPushButton { background: #c0392b; color: white; border: none; border-radius: 3px; font-weight: bold; }
+            QPushButton:hover { background: #e74c3c; }
         """)
         delete_btn.clicked.connect(lambda: self.delete_requested.emit(self))
         time_row.addWidget(delete_btn)
 
         layout.addLayout(time_row)
 
-        # Fila 2: Botón configurar + indicador de modo
-        config_row = QHBoxLayout()
-        config_row.setSpacing(6)
+        # ===== FILA 2: MODOS (botones pill) =====
+        modes_frame = QFrame()
+        modes_frame.setStyleSheet("QFrame { background: transparent; border: none; }")
+        modes_layout = QGridLayout(modes_frame)
+        modes_layout.setContentsMargins(0, 2, 0, 2)
+        modes_layout.setSpacing(2)
 
-        # Botón configurar (abre panel unificado)
-        self.config_btn = QPushButton("⚙ Configurar")
-        self.config_btn.setCheckable(True)
-        self.config_btn.setStyleSheet("""
-            QPushButton {
-                background: #2980b9;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 6px 12px;
-                font-size: 11px;
-                font-weight: bold;
-            }
-            QPushButton:checked {
-                background: #3498db;
-            }
-            QPushButton:hover {
-                background: #3498db;
-            }
-        """)
-        self.config_btn.toggled.connect(self._on_config_toggled)
-        config_row.addWidget(self.config_btn)
-
-        # Label que muestra el modo actual
-        self.mode_label = QLabel()
-        self.mode_label.setStyleSheet("""
-            QLabel {
-                color: #f39c12;
-                font-size: 11px;
-                font-weight: bold;
-                padding: 4px 8px;
-                background: rgba(243, 156, 18, 0.15);
-                border-radius: 4px;
-            }
-        """)
-        config_row.addWidget(self.mode_label)
-
-        # Badges de extras
-        self.extra_badges = ExtraBadgesWidget()
-        config_row.addWidget(self.extra_badges)
-
-        config_row.addStretch()
-
-        layout.addLayout(config_row)
-
-        # Panel unificado de MODO + ACCIONES (oculto por defecto)
         initial_mode = self._get_initial_mode()
+        self._current_mode = initial_mode
+
+        for i, mode in enumerate(CANONICAL_MODES):
+            btn = QPushButton(MODE_DISPLAY.get(mode, mode))
+            btn.setCheckable(True)
+            btn.setChecked(mode == initial_mode)
+            btn.setProperty("mode_key", mode)
+            color = MODE_COLORS.get(mode, "#7f8c8d")
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: #2c3e50;
+                    color: #bdc3c7;
+                    border: 1px solid #34495e;
+                    border-radius: 3px;
+                    padding: 2px 4px;
+                    font-size: 9px;
+                    min-width: 38px;
+                }}
+                QPushButton:checked {{
+                    background: {color};
+                    color: white;
+                    border: 1px solid {color};
+                    font-weight: bold;
+                }}
+                QPushButton:hover {{
+                    border: 1px solid {color};
+                }}
+            """)
+            btn.clicked.connect(lambda checked, m=mode: self._on_mode_clicked(m))
+            self._mode_buttons[mode] = btn
+            row, col = i // 5, i % 5
+            modes_layout.addWidget(btn, row, col)
+
+        layout.addWidget(modes_frame)
+
+        # ===== FILA 3: EXTRAS (botones toggle) =====
+        extras_frame = QFrame()
+        extras_frame.setStyleSheet("QFrame { background: transparent; border: none; }")
+        extras_layout = QHBoxLayout(extras_frame)
+        extras_layout.setContentsMargins(0, 2, 0, 0)
+        extras_layout.setSpacing(2)
+
         initial_extras = self._get_initial_extras()
-        self.config_panel = ModeAndActionsPanel(mode=initial_mode, actions=initial_extras)
-        self.config_panel.changed.connect(self._on_config_changed)
-        self.config_panel.mode_changed.connect(self._on_mode_changed)
-        self.config_panel.hide()
-        layout.addWidget(self.config_panel)
+        self._selected_actions = set(initial_extras)
 
-        # Actualizar label de modo y badges
-        self._update_mode_label()
-        self.extra_badges.set_actions(initial_extras)
+        for action in EXTRA_ACTIONS:
+            btn = QPushButton(EXTRA_DISPLAY.get(action, action))
+            btn.setCheckable(True)
+            btn.setChecked(action in initial_extras)
+            btn.setProperty("action_key", action)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background: #34495e;
+                    color: #95a5a6;
+                    border: 1px solid #2c3e50;
+                    border-radius: 3px;
+                    padding: 2px 4px;
+                    font-size: 9px;
+                }
+                QPushButton:checked {
+                    background: #3498db;
+                    color: white;
+                    border: 1px solid #2980b9;
+                }
+                QPushButton:hover {
+                    border: 1px solid #3498db;
+                }
+            """)
+            btn.clicked.connect(lambda checked, a=action: self._on_extra_clicked(a, checked))
+            self._extra_buttons[action] = btn
+            extras_layout.addWidget(btn)
 
-        # Si ya tiene extras, mostrar el panel abierto
-        if initial_extras:
-            self.config_btn.setChecked(True)
-            self._panel_visible = True
-            self.config_panel.show()
+        extras_layout.addStretch()
+        layout.addWidget(extras_frame)
 
         # Color inicial
         self._update_color()
 
     def _get_initial_mode(self) -> str:
-        """Obtiene el modo inicial del bloque."""
-        # Prioridad 1: campo mode
         if "mode" in self.block_data:
             mode = self.block_data["mode"].lower()
             if mode in CANONICAL_MODES:
                 return mode
-
-        # Prioridad 2: derivar de actions[] (legacy)
-        if "actions" in self.block_data:
-            actions = self.block_data["actions"]
-            return self._derive_mode_from_actions(actions)
-
         return "clima_1"
 
     def _get_initial_extras(self) -> List[str]:
-        """
-        V7.0: Obtiene las acciones extras iniciales.
-
-        Lee de:
-        1. Campo "actions" (nuevo formato V7.0)
-        2. Campo "extra_actions" (formato anterior)
-        """
-        # Prioridad 1: campo "actions" (V7.0 nuevo formato)
+        # V8.0: Lee de "actions" o "extra_actions" (legacy)
         if "actions" in self.block_data:
             return [a for a in self.block_data["actions"] if a in EXTRA_ACTIONS]
-
-        # Prioridad 2: campo "extra_actions" (formato anterior)
         if "extra_actions" in self.block_data:
             return [a for a in self.block_data["extra_actions"] if a in EXTRA_ACTIONS]
-
         return []
-
-    def _derive_mode_from_actions(self, actions: List[str]) -> str:
-        """Deriva modo desde lista de acciones (para legacy)."""
-        actions_lower = [a.lower() for a in actions]
-        if "audio_911" in actions_lower:
-            return "boliche_desarrollo"
-        if "vision_artista" in actions_lower:
-            return "artista"
-        if "cues_clima" in actions_lower:
-            return "clima_1"
-        if "system_idle" in actions_lower:
-            return "apagado"
-        return "boliche_inicio"
 
     def _on_changed(self):
         self.changed.emit()
 
-    def _on_mode_changed(self, mode: str):
-        self._update_mode_label()
+    def _on_mode_clicked(self, mode: str):
+        # Single-select: deselect all others
+        for m, btn in self._mode_buttons.items():
+            btn.blockSignals(True)
+            btn.setChecked(m == mode)
+            btn.blockSignals(False)
+        self._current_mode = mode
         self._update_color()
         self.changed.emit()
 
-    def _on_config_toggled(self, checked: bool):
-        self._panel_visible = checked
-        self.config_panel.setVisible(checked)
-
-    def _on_config_changed(self):
-        extras = self.config_panel.get_actions()
-        self.extra_badges.set_actions(extras)
-        self._update_mode_label()
+    def _on_extra_clicked(self, action: str, checked: bool):
+        if checked:
+            self._selected_actions.add(action)
+        else:
+            self._selected_actions.discard(action)
         self.changed.emit()
 
-    def _update_mode_label(self):
-        """Actualiza el label que muestra el modo actual."""
-        mode = self.config_panel.get_mode()
-        self.mode_label.setText(f"🎯 {mode}")
-
     def _update_color(self):
-        """
-        Actualiza el color del bloque según el modo.
-
-        V7.0: Lee el modo desde config_panel (panel unificado).
-        V6.5: Si el bloque está marcado como activo, aplica estilo destacado
-        con borde más grueso y fondo más visible.
-        """
-        mode = self.config_panel.get_mode()
-        color = MODE_COLORS.get(mode, "#7f8c8d")
+        """V8.0: Actualiza el color del bloque según el modo."""
+        color = MODE_COLORS.get(self._current_mode, "#7f8c8d")
 
         if self._is_active:
-            # V6.5: Estilo ACTIVO - borde grueso, fondo más visible, glow effect
             self.setStyleSheet(f"""
                 QFrame {{
                     background-color: {color}40;
@@ -673,7 +423,6 @@ class TimeBlockWidget(QFrame):
                 }}
             """)
         else:
-            # Estilo normal
             self.setStyleSheet(f"""
                 QFrame {{
                     background-color: {color}20;
@@ -706,26 +455,19 @@ class TimeBlockWidget(QFrame):
                 self._glow_effect.setColor(QColor(39, 174, 96, 0))
 
     def get_block_id(self) -> str:
-        """
-        V6.5: Genera ID determinístico para comparar con bloque activo.
-
-        Returns:
-            ID en formato "day_from_to_mode" (day puede ser None)
-        """
+        """V8.0: ID determinístico para comparar con bloque activo."""
         from_time = self.from_edit.time().toString("HH:mm")
         to_time = self.to_edit.time().toString("HH:mm")
-        mode = self.config_panel.get_mode()
-        # El día se establece desde DayColumnWidget
         day = getattr(self, '_day_key', 'unknown')
-        return f"{day}_{from_time}_{to_time}_{mode}"
+        return f"{day}_{from_time}_{to_time}_{self._current_mode}"
 
     def get_mode(self) -> str:
-        """V7.0: Obtiene el modo actual desde el panel unificado."""
-        return self.config_panel.get_mode()
+        """V8.0: Obtiene el modo actual."""
+        return self._current_mode
 
     def get_data(self) -> Dict[str, Any]:
         """
-        V7.0: Obtiene los datos del bloque para guardar.
+        V8.0: Obtiene los datos del bloque para guardar.
 
         Retorna:
             - from: hora inicio
@@ -733,29 +475,24 @@ class TimeBlockWidget(QFrame):
             - mode: modo canónico
             - actions: lista de extras (si hay)
         """
-        mode = self.config_panel.get_mode()
-        extras = self.config_panel.get_actions()
-
         result = {
             "from": self.from_edit.time().toString("HH:mm"),
             "to": self.to_edit.time().toString("HH:mm"),
-            "mode": mode,
+            "mode": self._current_mode,
         }
 
-        # V7.0: Guardar como "actions" (no "extra_actions") para compatibilidad
-        if extras:
-            result["actions"] = extras
+        # V8.0: Guardar extras como "actions"
+        if self._selected_actions:
+            result["actions"] = list(self._selected_actions)
 
         return result
 
     def is_valid(self) -> bool:
-        # Modo siempre existe, extras max 4
-        return self.config_panel.is_valid()
+        return len(self._selected_actions) <= 4
 
     def get_validation_error(self) -> Optional[str]:
-        extras = self.config_panel.get_actions()
-        if len(extras) > 4:
-            return f"Más de 4 acciones extra ({len(extras)})"
+        if len(self._selected_actions) > 4:
+            return f"Más de 4 acciones extra ({len(self._selected_actions)})"
         return None
 
 
