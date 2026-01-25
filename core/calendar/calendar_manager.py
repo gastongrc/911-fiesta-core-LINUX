@@ -709,6 +709,34 @@ class CalendarManager:
         with self._lock:
             return self._state.permissions.energy
 
+    def get_active_block_snapshot(self) -> Optional[Dict[str, Any]]:
+        """
+        Obtiene snapshot del bloque activo actual.
+
+        V6.5: Para que la UI pueda destacar el bloque activo en el editor.
+        Genera un block_id determinístico basado en day + from + to + mode.
+
+        Returns:
+            Dict con: day, from_time, to_time, mode, actions, block_id
+            None si no hay bloque activo
+        """
+        with self._lock:
+            block = self._state.active_block
+            if not block:
+                return None
+
+            # Generar block_id determinístico con pipe separator
+            block_id = f"{block.day or 'unknown'}|{block.from_time}|{block.to_time}|{block.mode}"
+
+            return {
+                "day": block.day,
+                "from_time": block.from_time,
+                "to_time": block.to_time,
+                "mode": block.mode,
+                "actions": block.actions.copy() if block.actions else [],
+                "block_id": block_id,
+            }
+
     def set_auto_mode(self, enabled: bool) -> None:
         """Habilita/deshabilita el modo automatico"""
         self._resolver.set_auto_mode(enabled)

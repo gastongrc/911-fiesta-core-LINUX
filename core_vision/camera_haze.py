@@ -399,12 +399,13 @@ class HazeDetector:
         self.haze_level = 0.0
         self.vision_state.update_haze(level=0.0, state="DISABLED")
 
-    def set_enabled(self, enabled: bool):
+    def set_enabled(self, enabled: bool, persist: bool = None):
         """
         Habilita/deshabilita el detector.
 
         Args:
             enabled: True para habilitar, False para deshabilitar
+            persist: Ignored (handled by VisionManager). Kept for API compatibility.
         """
         self.vision_state.set_haze_enabled(enabled)
         if not enabled:

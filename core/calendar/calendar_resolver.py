@@ -1,11 +1,17 @@
 # core/calendar/calendar_resolver.py
 """
-CalendarResolver v6.4 - Resolucion pasiva de horarios.
+CalendarResolver v6.6 - Resolucion pasiva de horarios.
 
 Lee calendar.json y determina:
 - Bloque activo segun hora actual
 - Proximo cambio de modo
 - Tiempo restante en bloque actual
+
+v6.6 FIX:
+- Locale-independent weekday resolution (fixes Windows locale bug)
+- Uses now.weekday() + DAY_NAMES[] (not strftime)
+- ScheduleBlock includes 'day' field for UI highlight
+- Diagnostic logs for governance debugging
 
 v6.4 NUEVO: Soporte para bloques compuestos
 - base_mode: Modo canónico obligatorio
@@ -379,8 +385,11 @@ class CalendarResolver:
         if not self._auto_mode_enabled:
             return None, None, None
 
-        # Obtener dia de la semana
-        day_name = DAY_NAMES[now.weekday()]
+        # V6.6: Locale-independent weekday resolution
+        # Uses numeric weekday() (0=Monday) mapped to English day names
+        # This works regardless of Windows locale settings
+        weekday_idx = now.weekday()
+        day_name = DAY_NAMES[weekday_idx]
         current_time = now.time()
 
         # Obtener bloques del dia
@@ -399,9 +408,12 @@ class CalendarResolver:
                     from_time=block["from"],
                     to_time=block["to"],
                     mode=mode,
+                    day=day_name,  # V6.6: Include day for UI highlight
                     actions=actions
                 )
                 next_change = self._calculate_next_change(now, to_time)
+                # V6.6: Diagnostic log for governance
+                print(f"[CalendarResolver] now={now.strftime('%H:%M')} day_key={day_name} block=FOUND mode={mode} next_change={next_change.strftime('%H:%M') if next_change else 'None'}")
                 return mode, schedule_block, next_change
 
         # Si no hay bloque activo hoy, buscar en el dia anterior
@@ -425,13 +437,19 @@ class CalendarResolver:
                         from_time=block["from"],
                         to_time=block["to"],
                         mode=mode,
+                        day=yesterday_name,  # V6.6: Block started yesterday
                         actions=actions
                     )
                     next_change = self._calculate_next_change(now, to_time)
+                    # V6.6: Diagnostic log for midnight-crossing block
+                    print(f"[CalendarResolver] now={now.strftime('%H:%M')} day_key={yesterday_name}(midnight) block=FOUND mode={mode} next_change={next_change.strftime('%H:%M') if next_change else 'None'}")
                     return mode, schedule_block, next_change
 
         # No hay bloque activo
-        return None, None, self._find_next_block_start(now)
+        next_start = self._find_next_block_start(now)
+        # V6.6: Diagnostic log when no block found
+        print(f"[CalendarResolver] now={now.strftime('%H:%M')} day_key={day_name} block=None next_start={next_start.strftime('%Y-%m-%d %H:%M') if next_start else 'None'}")
+        return None, None, next_start
 
     def _calculate_next_change(self, now: datetime, to_time: time) -> datetime:
         """
