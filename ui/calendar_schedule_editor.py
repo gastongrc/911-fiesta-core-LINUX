@@ -1,6 +1,14 @@
 # ui/calendar_schedule_editor.py
 """
-CalendarScheduleEditor v8.1 - Editor visual de horarios semanales.
+CalendarScheduleEditor v8.2 - Editor visual de horarios semanales.
+
+V8.2 CAMBIOS (Overflow Fix):
+- MODOS: QGridLayout 4 columnas fijas (3 filas automáticas)
+- EXTRAS: QGridLayout 3 columnas fijas (2 filas automáticas)
+- Botones con SizePolicy.Expanding para llenar espacio disponible
+- Sin min-width fijo, los botones se adaptan al ancho de columna
+- Padding reducido (10px) para columnas angostas
+- Cero overflow horizontal
 
 V8.1 CAMBIOS (UI Polish):
 - Padding interno aumentado (10-12px)
@@ -254,14 +262,14 @@ class TimeBlockWidget(QFrame):
         self.setFrameShape(QFrame.StyledPanel)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
 
-        # V8.1: Padding interno real (10-12px) para que nada toque bordes/glow
+        # V8.2: Padding reducido (10px) para columnas angostas
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(8)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(6)
 
         # ===== SECCIÓN 1: Tiempos + Delete =====
         time_row = QHBoxLayout()
-        time_row.setSpacing(6)
+        time_row.setSpacing(4)
 
         self.from_edit = QTimeEdit()
         self.from_edit.setDisplayFormat("HH:mm")
@@ -273,16 +281,16 @@ class TimeBlockWidget(QFrame):
                 color: white;
                 border: 1px solid #34495e;
                 border-radius: 4px;
-                padding: 4px 6px;
-                font-size: 11px;
+                padding: 2px 4px;
+                font-size: 10px;
             }
         """)
-        self.from_edit.setFixedWidth(64)
-        self.from_edit.setFixedHeight(26)
+        self.from_edit.setFixedWidth(56)
+        self.from_edit.setFixedHeight(24)
         time_row.addWidget(self.from_edit)
 
         arrow = QLabel("→")
-        arrow.setStyleSheet("color: #7f8c8d; font-size: 12px;")
+        arrow.setStyleSheet("color: #7f8c8d; font-size: 11px;")
         time_row.addWidget(arrow)
 
         self.to_edit = QTimeEdit()
@@ -295,18 +303,18 @@ class TimeBlockWidget(QFrame):
                 color: white;
                 border: 1px solid #34495e;
                 border-radius: 4px;
-                padding: 4px 6px;
-                font-size: 11px;
+                padding: 2px 4px;
+                font-size: 10px;
             }
         """)
-        self.to_edit.setFixedWidth(64)
-        self.to_edit.setFixedHeight(26)
+        self.to_edit.setFixedWidth(56)
+        self.to_edit.setFixedHeight(24)
         time_row.addWidget(self.to_edit)
 
         time_row.addStretch()
 
         delete_btn = QPushButton("✕")
-        delete_btn.setFixedSize(24, 24)
+        delete_btn.setFixedSize(22, 22)
         delete_btn.setStyleSheet("""
             QPushButton {
                 background: #c0392b;
@@ -314,7 +322,7 @@ class TimeBlockWidget(QFrame):
                 border: none;
                 border-radius: 4px;
                 font-weight: bold;
-                font-size: 11px;
+                font-size: 10px;
             }
             QPushButton:hover { background: #e74c3c; }
         """)
@@ -326,37 +334,41 @@ class TimeBlockWidget(QFrame):
         # V8.1: Separador visual sutil entre horarios y modos
         separator = QFrame()
         separator.setFrameShape(QFrame.HLine)
-        separator.setStyleSheet("background: #34495e; max-height: 1px; margin: 2px 0;")
+        separator.setStyleSheet("background: #34495e; max-height: 1px;")
         separator.setFixedHeight(1)
         layout.addWidget(separator)
 
-        # ===== SECCIÓN 2: MODOS (botones pill protagonistas) =====
+        # ===== SECCIÓN 2: MODOS (QGridLayout 4 columnas fijas) =====
         modes_frame = QFrame()
         modes_frame.setStyleSheet("QFrame { background: transparent; border: none; }")
+        modes_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         modes_layout = QGridLayout(modes_frame)
         modes_layout.setContentsMargins(0, 4, 0, 4)
-        modes_layout.setSpacing(6)  # V8.1: Spacing 6px entre botones
+        modes_layout.setHorizontalSpacing(4)
+        modes_layout.setVerticalSpacing(4)
 
         initial_mode = self._get_initial_mode()
         self._current_mode = initial_mode
 
+        # V8.2: 4 columnas fijas → 3 filas (10 botones)
+        MODE_COLS = 4
         for i, mode in enumerate(CANONICAL_MODES):
             btn = QPushButton(MODE_DISPLAY.get(mode, mode))
             btn.setCheckable(True)
             btn.setChecked(mode == initial_mode)
             btn.setProperty("mode_key", mode)
             color = MODE_COLORS.get(mode, "#7f8c8d")
-            # V8.1: Altura 28-32px, padding 10-14px, pill radius real
+            # V8.2: Sin min-width, Expanding para llenar espacio
+            btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            btn.setFixedHeight(28)
             btn.setStyleSheet(f"""
                 QPushButton {{
                     background: #2c3e50;
                     color: #95a5a6;
                     border: 1px solid #3d5266;
-                    border-radius: 14px;
-                    padding: 4px 12px;
-                    font-size: 10px;
-                    min-width: 44px;
-                    min-height: 28px;
+                    border-radius: 12px;
+                    padding: 2px 6px;
+                    font-size: 9px;
                 }}
                 QPushButton:checked {{
                     background: {color};
@@ -371,13 +383,12 @@ class TimeBlockWidget(QFrame):
             """)
             btn.clicked.connect(lambda checked, m=mode: self._on_mode_clicked(m))
             self._mode_buttons[mode] = btn
-            row, col = i // 5, i % 5
+            row, col = i // MODE_COLS, i % MODE_COLS
             modes_layout.addWidget(btn, row, col)
 
         layout.addWidget(modes_frame)
 
-        # ===== SECCIÓN 3: EXTRAS (botones toggle secundarios) =====
-        # V8.1: Separador visual + label discreto
+        # ===== SECCIÓN 3: EXTRAS (QGridLayout 3 columnas fijas) =====
         extras_separator = QFrame()
         extras_separator.setFrameShape(QFrame.HLine)
         extras_separator.setStyleSheet("background: #2c3e50; max-height: 1px;")
@@ -385,34 +396,39 @@ class TimeBlockWidget(QFrame):
         layout.addWidget(extras_separator)
 
         extras_label = QLabel("EXTRAS")
-        extras_label.setStyleSheet("color: #5d6d7e; font-size: 8px; font-weight: bold; margin: 0; padding: 0;")
+        extras_label.setStyleSheet("color: #5d6d7e; font-size: 8px; font-weight: bold;")
         extras_label.setAlignment(Qt.AlignLeft)
         layout.addWidget(extras_label)
 
         extras_frame = QFrame()
         extras_frame.setStyleSheet("QFrame { background: transparent; border: none; }")
-        extras_layout = QHBoxLayout(extras_frame)
+        extras_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        extras_layout = QGridLayout(extras_frame)
         extras_layout.setContentsMargins(0, 2, 0, 0)
-        extras_layout.setSpacing(4)  # V8.1: Spacing 4px
+        extras_layout.setHorizontalSpacing(4)
+        extras_layout.setVerticalSpacing(4)
 
         initial_extras = self._get_initial_extras()
         self._selected_actions = set(initial_extras)
 
-        for action in EXTRA_ACTIONS:
+        # V8.2: 3 columnas fijas → 2 filas (6 botones)
+        EXTRA_COLS = 3
+        for i, action in enumerate(EXTRA_ACTIONS):
             btn = QPushButton(EXTRA_DISPLAY.get(action, action))
             btn.setCheckable(True)
             btn.setChecked(action in initial_extras)
             btn.setProperty("action_key", action)
-            # V8.1: Más pequeños (22-24px), colores apagados
+            # V8.2: Sin min-width, Expanding para llenar espacio
+            btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            btn.setFixedHeight(22)
             btn.setStyleSheet("""
                 QPushButton {
                     background: #283747;
                     color: #6c7a89;
                     border: 1px solid #2c3e50;
-                    border-radius: 11px;
-                    padding: 2px 8px;
-                    font-size: 9px;
-                    min-height: 22px;
+                    border-radius: 10px;
+                    padding: 1px 4px;
+                    font-size: 8px;
                 }
                 QPushButton:checked {
                     background: #2980b9;
@@ -426,9 +442,9 @@ class TimeBlockWidget(QFrame):
             """)
             btn.clicked.connect(lambda checked, a=action: self._on_extra_clicked(a, checked))
             self._extra_buttons[action] = btn
-            extras_layout.addWidget(btn)
+            row, col = i // EXTRA_COLS, i % EXTRA_COLS
+            extras_layout.addWidget(btn, row, col)
 
-        extras_layout.addStretch()
         layout.addWidget(extras_frame)
 
         # Color inicial
