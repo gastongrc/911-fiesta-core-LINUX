@@ -1,13 +1,20 @@
 # ui/calendar_schedule_editor.py
 """
-CalendarScheduleEditor v8.0 - Editor visual de horarios semanales.
+CalendarScheduleEditor v8.1 - Editor visual de horarios semanales.
+
+V8.1 CAMBIOS (UI Polish):
+- Padding interno aumentado (10-12px)
+- Spacing vertical consistente entre secciones
+- Time section separada visualmente con línea sutil
+- Mode buttons: altura 28-32px, pill radius real, spacing 6px
+- Extra buttons: más pequeños (22-24px), colores apagados, separador
+- Ningún elemento toca bordes/glow
 
 V8.0 CAMBIOS:
 - ELIMINADO botón "Configurar", dropdown de modo, checkboxes
 - NUEVO: Botones PILL para modo (single-select, siempre visibles)
 - NUEVO: Botones TOGGLE para extras (multi-select, siempre visibles)
 - Todo inline, sin paneles desplegables
-- Layout mejorado con flow/wrap
 
 MODOS: Botones pill (uno solo activo)
 clima_1, clima_2, clima_3, clima_4, teatro, artista,
@@ -247,40 +254,68 @@ class TimeBlockWidget(QFrame):
         self.setFrameShape(QFrame.StyledPanel)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
 
+        # V8.1: Padding interno real (10-12px) para que nada toque bordes/glow
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(6, 6, 6, 6)
-        layout.setSpacing(4)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(8)
 
-        # ===== FILA 1: Tiempos + Delete =====
+        # ===== SECCIÓN 1: Tiempos + Delete =====
         time_row = QHBoxLayout()
-        time_row.setSpacing(4)
+        time_row.setSpacing(6)
 
         self.from_edit = QTimeEdit()
         self.from_edit.setDisplayFormat("HH:mm")
         self.from_edit.setTime(QTime.fromString(self.block_data.get("from", "00:00"), "HH:mm"))
         self.from_edit.timeChanged.connect(self._on_changed)
-        self.from_edit.setStyleSheet("background: #1e272e; color: white; border: 1px solid #34495e; border-radius: 3px;")
-        self.from_edit.setFixedWidth(58)
+        self.from_edit.setStyleSheet("""
+            QTimeEdit {
+                background: #1e272e;
+                color: white;
+                border: 1px solid #34495e;
+                border-radius: 4px;
+                padding: 4px 6px;
+                font-size: 11px;
+            }
+        """)
+        self.from_edit.setFixedWidth(64)
+        self.from_edit.setFixedHeight(26)
         time_row.addWidget(self.from_edit)
 
         arrow = QLabel("→")
-        arrow.setStyleSheet("color: #7f8c8d;")
+        arrow.setStyleSheet("color: #7f8c8d; font-size: 12px;")
         time_row.addWidget(arrow)
 
         self.to_edit = QTimeEdit()
         self.to_edit.setDisplayFormat("HH:mm")
         self.to_edit.setTime(QTime.fromString(self.block_data.get("to", "00:00"), "HH:mm"))
         self.to_edit.timeChanged.connect(self._on_changed)
-        self.to_edit.setStyleSheet("background: #1e272e; color: white; border: 1px solid #34495e; border-radius: 3px;")
-        self.to_edit.setFixedWidth(58)
+        self.to_edit.setStyleSheet("""
+            QTimeEdit {
+                background: #1e272e;
+                color: white;
+                border: 1px solid #34495e;
+                border-radius: 4px;
+                padding: 4px 6px;
+                font-size: 11px;
+            }
+        """)
+        self.to_edit.setFixedWidth(64)
+        self.to_edit.setFixedHeight(26)
         time_row.addWidget(self.to_edit)
 
         time_row.addStretch()
 
         delete_btn = QPushButton("✕")
-        delete_btn.setFixedSize(22, 22)
+        delete_btn.setFixedSize(24, 24)
         delete_btn.setStyleSheet("""
-            QPushButton { background: #c0392b; color: white; border: none; border-radius: 3px; font-weight: bold; }
+            QPushButton {
+                background: #c0392b;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 11px;
+            }
             QPushButton:hover { background: #e74c3c; }
         """)
         delete_btn.clicked.connect(lambda: self.delete_requested.emit(self))
@@ -288,12 +323,19 @@ class TimeBlockWidget(QFrame):
 
         layout.addLayout(time_row)
 
-        # ===== FILA 2: MODOS (botones pill) =====
+        # V8.1: Separador visual sutil entre horarios y modos
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setStyleSheet("background: #34495e; max-height: 1px; margin: 2px 0;")
+        separator.setFixedHeight(1)
+        layout.addWidget(separator)
+
+        # ===== SECCIÓN 2: MODOS (botones pill protagonistas) =====
         modes_frame = QFrame()
         modes_frame.setStyleSheet("QFrame { background: transparent; border: none; }")
         modes_layout = QGridLayout(modes_frame)
-        modes_layout.setContentsMargins(0, 2, 0, 2)
-        modes_layout.setSpacing(2)
+        modes_layout.setContentsMargins(0, 4, 0, 4)
+        modes_layout.setSpacing(6)  # V8.1: Spacing 6px entre botones
 
         initial_mode = self._get_initial_mode()
         self._current_mode = initial_mode
@@ -304,23 +346,26 @@ class TimeBlockWidget(QFrame):
             btn.setChecked(mode == initial_mode)
             btn.setProperty("mode_key", mode)
             color = MODE_COLORS.get(mode, "#7f8c8d")
+            # V8.1: Altura 28-32px, padding 10-14px, pill radius real
             btn.setStyleSheet(f"""
                 QPushButton {{
                     background: #2c3e50;
-                    color: #bdc3c7;
-                    border: 1px solid #34495e;
-                    border-radius: 3px;
-                    padding: 2px 4px;
-                    font-size: 9px;
-                    min-width: 38px;
+                    color: #95a5a6;
+                    border: 1px solid #3d5266;
+                    border-radius: 14px;
+                    padding: 4px 12px;
+                    font-size: 10px;
+                    min-width: 44px;
+                    min-height: 28px;
                 }}
                 QPushButton:checked {{
                     background: {color};
                     color: white;
-                    border: 1px solid {color};
+                    border: none;
                     font-weight: bold;
                 }}
-                QPushButton:hover {{
+                QPushButton:hover:!checked {{
+                    background: #34495e;
                     border: 1px solid {color};
                 }}
             """)
@@ -331,12 +376,24 @@ class TimeBlockWidget(QFrame):
 
         layout.addWidget(modes_frame)
 
-        # ===== FILA 3: EXTRAS (botones toggle) =====
+        # ===== SECCIÓN 3: EXTRAS (botones toggle secundarios) =====
+        # V8.1: Separador visual + label discreto
+        extras_separator = QFrame()
+        extras_separator.setFrameShape(QFrame.HLine)
+        extras_separator.setStyleSheet("background: #2c3e50; max-height: 1px;")
+        extras_separator.setFixedHeight(1)
+        layout.addWidget(extras_separator)
+
+        extras_label = QLabel("EXTRAS")
+        extras_label.setStyleSheet("color: #5d6d7e; font-size: 8px; font-weight: bold; margin: 0; padding: 0;")
+        extras_label.setAlignment(Qt.AlignLeft)
+        layout.addWidget(extras_label)
+
         extras_frame = QFrame()
         extras_frame.setStyleSheet("QFrame { background: transparent; border: none; }")
         extras_layout = QHBoxLayout(extras_frame)
         extras_layout.setContentsMargins(0, 2, 0, 0)
-        extras_layout.setSpacing(2)
+        extras_layout.setSpacing(4)  # V8.1: Spacing 4px
 
         initial_extras = self._get_initial_extras()
         self._selected_actions = set(initial_extras)
@@ -346,22 +403,25 @@ class TimeBlockWidget(QFrame):
             btn.setCheckable(True)
             btn.setChecked(action in initial_extras)
             btn.setProperty("action_key", action)
+            # V8.1: Más pequeños (22-24px), colores apagados
             btn.setStyleSheet("""
                 QPushButton {
-                    background: #34495e;
-                    color: #95a5a6;
+                    background: #283747;
+                    color: #6c7a89;
                     border: 1px solid #2c3e50;
-                    border-radius: 3px;
-                    padding: 2px 4px;
+                    border-radius: 11px;
+                    padding: 2px 8px;
                     font-size: 9px;
+                    min-height: 22px;
                 }
                 QPushButton:checked {
-                    background: #3498db;
-                    color: white;
-                    border: 1px solid #2980b9;
+                    background: #2980b9;
+                    color: #ecf0f1;
+                    border: none;
                 }
-                QPushButton:hover {
-                    border: 1px solid #3498db;
+                QPushButton:hover:!checked {
+                    background: #34495e;
+                    color: #95a5a6;
                 }
             """)
             btn.clicked.connect(lambda checked, a=action: self._on_extra_clicked(a, checked))
@@ -410,25 +470,25 @@ class TimeBlockWidget(QFrame):
         self.changed.emit()
 
     def _update_color(self):
-        """V8.0: Actualiza el color del bloque según el modo."""
+        """V8.1: Actualiza el color del bloque según el modo."""
         color = MODE_COLORS.get(self._current_mode, "#7f8c8d")
 
+        # V8.1: Sin padding en CSS (se usa layout margins)
+        # Border-radius 8px para mejor apariencia
         if self._is_active:
             self.setStyleSheet(f"""
-                QFrame {{
+                TimeBlockWidget {{
                     background-color: {color}40;
-                    border-radius: 6px;
+                    border-radius: 8px;
                     border: 3px solid #27ae60;
-                    padding: 4px;
                 }}
             """)
         else:
             self.setStyleSheet(f"""
-                QFrame {{
-                    background-color: {color}20;
-                    border-radius: 6px;
-                    border: 2px solid {color};
-                    padding: 4px;
+                TimeBlockWidget {{
+                    background-color: {color}18;
+                    border-radius: 8px;
+                    border: 2px solid {color}80;
                 }}
             """)
 
