@@ -120,8 +120,12 @@ class SystemBridge:
             vision_manager.set_family_manager(self._family_manager)
             print("[SystemBridge] FamilyManager wired to VisionManager detectors")
 
+        # V9.6: Sincronizar con estado del calendario inmediatamente
         if self._current_mode:
+            print(f"[SystemBridge] Syncing VisionManager with calendar state: mode={self._current_mode}")
             self._sync_vision()
+        else:
+            print("[SystemBridge] No calendar mode yet - VisionManager stays OFF")
 
     def connect_audio_engine(self, audio_engine) -> None:
         """Conecta el AudioEngine para control de audio."""

@@ -21,10 +21,13 @@ class VisionState:
     - Flags ON/OFF de cada módulo
     - Cámara activa
     - Módulo general ON/OFF
+
+    V9.6: TODOS los módulos arrancan OFF por defecto.
+    CalendarManager aplica el estado inicial vía SystemBridge.
     """
 
     def __init__(self):
-        """Inicializa el estado con valores por defecto."""
+        """Inicializa el estado con valores por defecto - TODOS OFF."""
         self.lock = threading.RLock()
 
         # Estado del sistema
@@ -33,8 +36,8 @@ class VisionState:
         self.fps = 0.0
         self.last_frame_time = None
 
-        # Estado Haze
-        self.haze_enabled = True
+        # V9.6: Haze arranca OFF (Calendar gobierna)
+        self.haze_enabled = False
         self.haze_level = 0.0
         self.haze_baseline = 0.0
         self.haze_contrast = 0.0
@@ -43,14 +46,14 @@ class VisionState:
         self.haze_cooldown_until = 0.0
         self.haze_last_fire = 0.0
 
-        # Estado DJ Detector
+        # Estado DJ Detector (ya arrancaba OFF)
         self.dj_enabled = False
         self.dj_active_zone = None  # 1-5 o None
         self.dj_state = "disabled"  # disabled, idle, active
         self.dj_last_seen = None
         self.dj_zones_count = 1
 
-        # Estado Artist Tracker
+        # Estado Artist Tracker (ya arrancaba OFF)
         self.tracking_enabled = False
         self.tracking_zone = None  # 1-8 o None
         self.tracking_state = "disabled"  # disabled, idle, tracking

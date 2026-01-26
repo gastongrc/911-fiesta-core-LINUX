@@ -63,6 +63,9 @@ class VisionManager:
         self.config = VisionConfig()
         self.vision_state = VisionState()
 
+        # V9.6: Log estado inicial - TODOS OFF (Calendar gobierna)
+        print(f"[VisionManager] Initial state: haze={self.vision_state.haze_enabled}, dj={self.vision_state.dj_enabled}, tracking={self.vision_state.tracking_enabled}")
+
         # ✅ VISION PRO v2: Cargar zonas desde config
         self.zones = self.config.data.get("zones", {
             "dshotkey_center": [0.42, 0.28, 0.58, 0.70],
