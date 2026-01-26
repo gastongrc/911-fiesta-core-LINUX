@@ -1,6 +1,6 @@
 # core/system_bridge.py
 """
-SystemBridge v6.7 - Calendar → System Bridge
+SystemBridge v6.8 - Calendar → System Bridge (Hard Governance)
 
 Punto ÚNICO de gobierno entre el calendario y el sistema.
 Cuando el calendario cambia de modo, el SystemBridge aplica
@@ -10,12 +10,17 @@ PRINCIPIO FUNDAMENTAL:
 El calendario GOBIERNA los módulos directamente.
 El calendario decide SI ESTÁN ACTIVOS O NO.
 
+V6.8 FIX (Hard Governance):
+- Teardown explícito en transiciones: log de módulos enable/disable
+- ZZZ state (apagado) cuando no hay bloque activo
+- Transición A→B muestra qué módulos se apagan/encienden
+- Log format: [SystemBridge] disable: x, y / enable: z
+
 V6.7 FIX:
 - Calendar GOVERNS modules directly (not permission gate)
 - When calendar ALLOWS → module ON (ignores user preference)
 - When calendar DISALLOWS → module OFF (forced)
 - persist=False ensures user preferences in config are preserved
-- Clear logs: [CALENDAR] haze=ON (allowed) / [CALENDAR] dj=OFF (disallowed)
 
 FUENTE DE VERDAD ÚNICA: core/calendar/calendar_rules.py
 
@@ -173,6 +178,8 @@ class SystemBridge:
         ÚNICO punto de entrada. CalendarManager debe llamar este método
         UNA VEZ por cambio de estado.
 
+        V6.8: Teardown explícito - log de módulos que se desactivan.
+
         Args:
             base_mode: Modo canónico (ej: "boliche_desarrollo")
             actions: Acciones paralelas activas (ej: ["vision_dj"])
@@ -187,6 +194,21 @@ class SystemBridge:
         if self._log_changes:
             actions_str = f" + {actions}" if actions else ""
             print(f"[SystemBridge] applying: {base_mode}{actions_str}")
+
+        # V6.8: Log de transición (teardown explícito)
+        if self._log_changes and self._current_modules:
+            old_active = {m for m, v in self._current_modules.items() if v}
+            new_active = {m for m, v in modules.items() if v}
+
+            # Módulos que se desactivan
+            turning_off = old_active - new_active
+            if turning_off:
+                print(f"[SystemBridge] disable: {', '.join(sorted(turning_off))}")
+
+            # Módulos que se activan
+            turning_on = new_active - old_active
+            if turning_on:
+                print(f"[SystemBridge] enable: {', '.join(sorted(turning_on))}")
 
         # ✅ FIX: Guardar estado ANTES de _apply_modules para que el gating use el modo correcto
         self._current_mode = normalize_mode(base_mode)
@@ -203,7 +225,7 @@ class SystemBridge:
             if active:
                 print(f"[SystemBridge] active: {', '.join(active)}")
             else:
-                print("[SystemBridge] active: (none)")
+                print("[SystemBridge] active: (none) - ZZZ state")
 
     def _apply_modules(self, modules: Dict[str, bool]) -> None:
         """Aplica los módulos activos a los componentes conectados."""

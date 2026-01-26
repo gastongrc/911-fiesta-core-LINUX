@@ -262,6 +262,9 @@ class CalendarManager:
         """
         Resuelve el modo actual basado en la hora.
         Respeta overrides activos.
+
+        V6.5 FIX: Cuando NO hay bloque activo, aplica ZZZ (apagado).
+        Esto garantiza teardown completo entre bloques.
         """
         now = datetime.now()
 
@@ -274,8 +277,39 @@ class CalendarManager:
             # Resolver modo desde horario
             mode, block, next_change = self._resolver.resolve(now)
 
-            # Si no hay bloque activo, mantener estado actual
+            # V6.5 FIX: Si no hay bloque activo, aplicar ZZZ (apagado)
             if mode is None:
+                old_mode = self._state.current_mode
+                zzz_mode = "apagado"
+
+                # Solo aplicar si realmente cambia a ZZZ
+                if old_mode != zzz_mode:
+                    self._state.current_mode = zzz_mode
+                    self._state.source = CalendarSource.AUTO
+                    self._state.since = now
+                    self._state.active_block = None
+                    self._state.current_actions = []
+                    self._update_permissions()
+
+                    # Resetear alertas
+                    self._fired_alerts.clear()
+                    self._active_alert = None
+
+                    # ===== APLICAR ZZZ VÍA SYSTEM BRIDGE =====
+                    if self._system_bridge is not None:
+                        try:
+                            print(f"[CALENDAR] ZZZ (no active block) - was: {old_mode}")
+                            self._system_bridge.apply_calendar_state(zzz_mode, [])
+                        except Exception as e:
+                            print(f"[Calendar] error applying ZZZ: {e}")
+
+                    # Notificar cambio a ZZZ
+                    if self._on_mode_change:
+                        try:
+                            self._on_mode_change(old_mode, zzz_mode, self._state.permissions)
+                        except Exception as e:
+                            print(f"[Calendar] error in ZZZ callback: {e}")
+
                 self._state.update_progress(now)
                 self._state.next_change_at = next_change
                 self._state.next_mode = None
