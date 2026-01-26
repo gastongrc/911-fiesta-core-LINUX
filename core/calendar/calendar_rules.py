@@ -24,16 +24,18 @@ from typing import Dict, Any, List, Optional
 
 # ==================== MÓDULOS CANÓNICOS ====================
 # Única lista de módulos que el calendario puede controlar
+#
+# V9.5: Simplificado a 6 módulos (eliminadas redundancias)
+# - dj_detection y tracking_cam eran aliases de vision_dj y vision_artista
+# - SystemBridge aún acepta los aliases legacy para compatibilidad
 
 CANONICAL_MODULES = [
-    "audio_engine",
-    "vision_haze",
-    "vision_dj",
-    "vision_artista",
-    "tracking_cam",
-    "dj_detection",
-    "cues_clima",
-    "system_idle",
+    "audio_engine",    # Motor 911 completo
+    "vision_haze",     # HazeDetector
+    "vision_dj",       # DJDetector (facade de VisionDJEngine)
+    "vision_artista",  # ArtistDetector (EXCLUSIVO con vision_dj)
+    "cues_clima",      # Familia de cues clima (C60-C63)
+    "system_idle",     # Sistema en standby
 ]
 
 

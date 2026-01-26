@@ -81,34 +81,38 @@ LEGACY_MODE_MIGRATION = {
     "artista": ("boliche_desarrollo", "vision_artista"),
 }
 
-# ==================== ACCIONES EXTRA (V8.3) ====================
+# ==================== ACCIONES EXTRA (V9.5) ====================
 
-# V8.3: 5 extras (sin DJ/Clima que son redundantes con modos)
-# Keys reales del sistema:
-#   - vision_haze: control de haze
-#   - vision_artista: tracking de artista
-#   - tracking_cam: tracking de cámara
-#   - dj_detection: detección de DJ
-#   - teatro: placeholder para modo teatro como extra
+# V9.5: Solo 3 extras canónicos para Vision
+# Keys canónicas que SystemBridge entiende:
+#   - vision_haze: HazeDetector
+#   - vision_dj: DJDetector (facade de VisionDJEngine)
+#   - vision_artista: ArtistDetector
+#
+# EXCLUSIÓN MUTUA: DJ y Artista no pueden estar activos a la vez.
+# Haze puede convivir con cualquiera.
 EXTRA_ACTIONS = [
     "vision_haze",
+    "vision_dj",
     "vision_artista",
-    "tracking_cam",
-    "dj_detection",
-    "teatro",
 ]
 
 # Display para botones toggle
 EXTRA_DISPLAY = {
     "vision_haze": "💨 Haze",
+    "vision_dj": "🎧 DJ",
     "vision_artista": "🎤 Artista",
-    "tracking_cam": "📹 Track",
-    "dj_detection": "👁 Detect",
-    "teatro": "🎭 Teatro",
 }
 
-# V8.3: Extras legacy a filtrar (redundantes con modos)
-LEGACY_EXTRAS_FILTER = {"vision_dj", "cues_clima"}
+# V9.5: Extras legacy a migrar automáticamente
+# dj_detection → vision_dj, tracking_cam → vision_artista
+LEGACY_EXTRAS_MIGRATION = {
+    "dj_detection": "vision_dj",
+    "tracking_cam": "vision_artista",
+}
+
+# V9.5: Extras legacy a filtrar completamente (ya no se usan)
+LEGACY_EXTRAS_FILTER = {"cues_clima", "teatro"}
 
 # Nombres de días
 DAY_NAMES = {
@@ -474,19 +478,27 @@ class TimeBlockWidget(QFrame):
 
     def _get_initial_extras(self) -> List[str]:
         """
-        V8.3: Obtiene extras iniciales con filtrado y migración.
+        V9.5: Obtiene extras iniciales con migración de keys legacy.
 
-        - Filtra extras legacy (vision_dj, cues_clima)
+        - Migra dj_detection → vision_dj, tracking_cam → vision_artista
+        - Filtra extras completamente legacy (cues_clima, teatro)
         - Agrega extra de migración si el modo original era legacy
         """
         extras: Set[str] = set()
 
-        # Leer extras existentes (filtrar legacy)
+        # Leer extras existentes
         raw_extras = self.block_data.get("actions") or self.block_data.get("extra_actions") or []
         for a in raw_extras:
-            # V8.3: Filtrar extras legacy
+            # V9.5: Filtrar extras completamente legacy
             if a in LEGACY_EXTRAS_FILTER:
                 continue
+            # V9.5: Migrar keys legacy a canónicas
+            if a in LEGACY_EXTRAS_MIGRATION:
+                migrated = LEGACY_EXTRAS_MIGRATION[a]
+                if migrated in EXTRA_ACTIONS:
+                    extras.add(migrated)
+                continue
+            # Key canónica directa
             if a in EXTRA_ACTIONS:
                 extras.add(a)
 
@@ -497,6 +509,12 @@ class TimeBlockWidget(QFrame):
                 _, migration_extra = LEGACY_MODE_MIGRATION[orig_mode]
                 if migration_extra and migration_extra in EXTRA_ACTIONS:
                     extras.add(migration_extra)
+
+        # V9.5: Aplicar exclusión mutua (preferencia al primero encontrado)
+        if "vision_dj" in extras and "vision_artista" in extras:
+            # Si ambos están, preferir vision_dj (DJ tiene prioridad histórica)
+            extras.discard("vision_artista")
+            _log("[CALENDAR UI] mutual exclusion on load: removed vision_artista (DJ has priority)")
 
         return list(extras)
 
@@ -521,6 +539,16 @@ class TimeBlockWidget(QFrame):
     def _on_extra_clicked(self, action: str, checked: bool):
         if checked:
             self._selected_actions.add(action)
+
+            # V9.5: Exclusión mutua DJ/Artista
+            if action == "vision_dj" and "vision_artista" in self._selected_actions:
+                self._selected_actions.discard("vision_artista")
+                self._update_extra_button("vision_artista", False)
+                _log("[CALENDAR UI] mutual exclusion applied: vision_dj ON → vision_artista OFF")
+            elif action == "vision_artista" and "vision_dj" in self._selected_actions:
+                self._selected_actions.discard("vision_dj")
+                self._update_extra_button("vision_dj", False)
+                _log("[CALENDAR UI] mutual exclusion applied: vision_artista ON → vision_dj OFF")
         else:
             self._selected_actions.discard(action)
         self.changed.emit()
@@ -529,6 +557,14 @@ class TimeBlockWidget(QFrame):
         if self._is_active:
             _log(f"[ACTIVE BLOCK EDIT] extra={action} checked={checked} mode={self._current_mode} actions={list(self._selected_actions)}")
             self.active_block_edited.emit(self._current_mode, list(self._selected_actions))
+
+    def _update_extra_button(self, action: str, checked: bool):
+        """V9.5: Actualiza visualmente un botón de extra sin emitir señales."""
+        if action in self._extra_buttons:
+            btn = self._extra_buttons[action]
+            btn.blockSignals(True)
+            btn.setChecked(checked)
+            btn.blockSignals(False)
 
     def _update_color(self):
         """V8.1: Actualiza el color del bloque según el modo."""

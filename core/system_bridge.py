@@ -272,20 +272,28 @@ class SystemBridge:
                 # - Calendar DISALLOWS → module OFF (forced)
                 # persist=False ensures user preferences in config are preserved
 
-                # HAZE: Calendar governs directly
+                # HAZE: Calendar governs directly (puede convivir con DJ o Artista)
                 haze_allowed = modules.get("vision_haze", False)
                 vm.enable_module("haze", haze_allowed, source="calendar", persist=False)
-                print(f"[CALENDAR] haze={'ON' if haze_allowed else 'OFF'} ({'allowed' if haze_allowed else 'disallowed'})")
+                print(f"[CALENDAR] haze={'ON' if haze_allowed else 'OFF'}")
 
-                # DJ: Calendar governs directly (vision_dj OR dj_detection)
+                # DJ: Calendar governs directly (vision_dj OR dj_detection for legacy)
                 dj_allowed = modules.get("vision_dj", False) or modules.get("dj_detection", False)
-                vm.enable_module("dj", dj_allowed, source="calendar", persist=False)
-                print(f"[CALENDAR] dj={'ON' if dj_allowed else 'OFF'} ({'allowed' if dj_allowed else 'disallowed'})")
 
-                # ARTIST/TRACKING: Calendar governs directly (vision_artista OR tracking_cam)
+                # ARTIST/TRACKING: Calendar governs directly (vision_artista OR tracking_cam for legacy)
                 tracking_allowed = modules.get("vision_artista", False) or modules.get("tracking_cam", False)
+
+                # V9.5: EXCLUSIÓN MUTUA DJ/Artista (defensa runtime)
+                # Si ambos están activos, DJ tiene prioridad
+                if dj_allowed and tracking_allowed:
+                    print("[CALENDAR] EXCLUSION: DJ + Artist both requested → DJ wins, Artist OFF")
+                    tracking_allowed = False
+
+                vm.enable_module("dj", dj_allowed, source="calendar", persist=False)
+                print(f"[CALENDAR] dj={'ON' if dj_allowed else 'OFF'}")
+
                 vm.enable_module("tracking", tracking_allowed, source="calendar", persist=False)
-                print(f"[CALENDAR] artist={'ON' if tracking_allowed else 'OFF'} ({'allowed' if tracking_allowed else 'disallowed'})")
+                print(f"[CALENDAR] artist={'ON' if tracking_allowed else 'OFF'}")
 
             if hasattr(vm, 'set_calendar_mode'):
                 vm.set_calendar_mode(self._map_to_vision_mode(self._current_mode))
