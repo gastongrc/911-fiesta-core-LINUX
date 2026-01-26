@@ -132,7 +132,14 @@ def main():
     print("\n--- Utilities ---")
 
     check("psutil", lambda: __import__("psutil").__version__)
-    check("python-dotenv", lambda: __import__("dotenv").__version__)
+    def check_dotenv():
+        import dotenv
+        try:
+            from importlib.metadata import version
+            return version("python-dotenv")
+        except Exception:
+            return "imported"
+    check("python-dotenv", check_dotenv)
 
     # === Internal Modules (quick check) ===
     print("\n--- Internal Modules (import check) ---")
