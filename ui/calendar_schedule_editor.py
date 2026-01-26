@@ -197,10 +197,14 @@ class TimeBlockWidget(QFrame):
     - MODOS: Botones pill (single-select)
     - EXTRAS: Botones toggle (multi-select)
     - Todo visible inline, sin paneles desplegables
+
+    V9.4: Emite active_block_edited cuando se edita el bloque activo
     """
 
     delete_requested = Signal(object)
     changed = Signal()
+    # V9.4: Señal emitida cuando se edita el bloque activo (mode, actions)
+    active_block_edited = Signal(str, list)
 
     def __init__(self, block_data: Dict[str, Any], parent=None):
         super().__init__(parent)
@@ -509,12 +513,22 @@ class TimeBlockWidget(QFrame):
         self._update_color()
         self.changed.emit()
 
+        # V9.4: Si este es el bloque activo, notificar para reapply inmediato
+        if self._is_active:
+            _log(f"[ACTIVE BLOCK EDIT] mode changed to {mode} actions={list(self._selected_actions)}")
+            self.active_block_edited.emit(mode, list(self._selected_actions))
+
     def _on_extra_clicked(self, action: str, checked: bool):
         if checked:
             self._selected_actions.add(action)
         else:
             self._selected_actions.discard(action)
         self.changed.emit()
+
+        # V9.4: Si este es el bloque activo, notificar para reapply inmediato
+        if self._is_active:
+            _log(f"[ACTIVE BLOCK EDIT] extra={action} checked={checked} mode={self._current_mode} actions={list(self._selected_actions)}")
+            self.active_block_edited.emit(self._current_mode, list(self._selected_actions))
 
     def _update_color(self):
         """V8.1: Actualiza el color del bloque según el modo."""
@@ -609,6 +623,8 @@ class DayColumnWidget(QFrame):
     """Columna para un día de la semana."""
 
     changed = Signal()
+    # V9.4: Propagada desde TimeBlockWidget cuando se edita bloque activo
+    active_block_edited = Signal(str, list)
 
     def __init__(self, day_key: str, day_name: str, blocks: List[Dict], parent=None):
         super().__init__(parent)
@@ -696,6 +712,8 @@ class DayColumnWidget(QFrame):
         widget._day_key = self.day_key  # V6.5: Para generar block_id
         widget.delete_requested.connect(self._on_delete_block)
         widget.changed.connect(lambda: self.changed.emit())
+        # V9.4: Propagar señal de edición de bloque activo
+        widget.active_block_edited.connect(lambda m, a: self.active_block_edited.emit(m, a))
         self.block_widgets.append(widget)
 
         count = self.blocks_layout.count()
@@ -783,10 +801,12 @@ class DayColumnWidget(QFrame):
 # ==================== CALENDAR SCHEDULE EDITOR ====================
 
 class CalendarScheduleEditor(QWidget):
-    """Editor visual del schedule semanal v6.4."""
+    """Editor visual del schedule semanal v6.4 + v9.4 reapply."""
 
     schedule_changed = Signal(dict)
     save_requested = Signal(dict)
+    # V9.4: Señal emitida cuando se edita el bloque activo (para reapply inmediato)
+    active_block_edited = Signal(str, list)  # mode, actions
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -831,6 +851,8 @@ class CalendarScheduleEditor(QWidget):
         for day_key in DAY_ORDER:
             column = DayColumnWidget(day_key, DAY_NAMES[day_key], [])
             column.changed.connect(self._on_changed)
+            # V9.4: Propagar edición de bloque activo
+            column.active_block_edited.connect(self._on_active_block_edited)
             self._day_columns[day_key] = column
             days_layout.addWidget(column)
 
@@ -901,6 +923,8 @@ class CalendarScheduleEditor(QWidget):
 
                 new_column = DayColumnWidget(day_key, DAY_NAMES[day_key], blocks)
                 new_column.changed.connect(self._on_changed)
+                # V9.4: Propagar edición de bloque activo
+                new_column.active_block_edited.connect(self._on_active_block_edited)
                 layout.insertWidget(idx, new_column)
                 self._day_columns[day_key] = new_column
 
@@ -911,6 +935,20 @@ class CalendarScheduleEditor(QWidget):
         self._has_changes = True
         self._update_changes_indicator()
         self.schedule_changed.emit(self._get_schedule())
+
+    def _on_active_block_edited(self, mode: str, actions: list):
+        """
+        V9.4: Llamado cuando se edita el bloque activo (modo o extras).
+        Reaplica el estado inmediatamente via CalendarManager.
+        """
+        _log(f"[CALENDAR UI] active block edited → reapply mode={mode} actions={actions}")
+
+        # Propagar señal para que CalendarTab pueda conectar
+        self.active_block_edited.emit(mode, actions)
+
+        # Llamar directamente al CalendarManager si está conectado
+        if self._calendar and hasattr(self._calendar, 'reapply_active_block'):
+            self._calendar.reapply_active_block(mode, actions)
 
     def _update_changes_indicator(self):
         if self._has_changes:

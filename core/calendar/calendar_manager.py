@@ -858,6 +858,43 @@ class CalendarManager:
         """Fuerza una resolucion inmediata"""
         self._resolve_now()
 
+    def reapply_active_block(self, mode: str, actions: list) -> bool:
+        """
+        V9.4: Reaplica el estado del bloque activo con nuevas acciones.
+
+        Llamado cuando el usuario edita el bloque activo en la UI.
+        No espera al polling, aplica inmediatamente.
+
+        Args:
+            mode: Modo del bloque (debe coincidir con el modo actual)
+            actions: Lista de acciones actualizada
+
+        Returns:
+            True si se aplicó correctamente
+        """
+        with self._lock:
+            # Verificar que estamos editando el bloque activo
+            if not self._state.active_block:
+                print(f"[Calendar] reapply_active_block SKIPPED (no active block)")
+                return False
+
+            # Actualizar acciones en el estado interno
+            self._state.current_actions = actions.copy()
+
+            # Aplicar via SystemBridge
+            if self._system_bridge is not None:
+                try:
+                    actions_str = f" + {actions}" if actions else ""
+                    print(f"[Calendar] REAPPLY active block → {mode}{actions_str}")
+                    self._system_bridge.apply_calendar_state(mode, actions)
+                    return True
+                except Exception as e:
+                    print(f"[Calendar] error in reapply_active_block: {e}")
+                    return False
+            else:
+                print("[Calendar] reapply_active_block SKIPPED (no system_bridge)")
+                return False
+
     def get_debug_info(self) -> Dict[str, Any]:
         """Obtiene informacion de debug completa"""
         with self._lock:
