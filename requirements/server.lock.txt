@@ -1,0 +1,50 @@
+# 911 Fiesta V7 - SERVER Runtime Lock File
+#
+# GENERATED: 2026-01-26
+# PYTHON: 3.10.x / 3.11.x
+# PLATFORM: Any (Linux recommended for production)
+#
+# INSTALACION:
+#   pip install -r requirements/server.lock.txt
+
+# === FastAPI Stack ===
+fastapi==0.115.5
+uvicorn==0.32.1
+starlette==0.41.3
+pydantic==2.10.2
+pydantic-core==2.27.1
+python-multipart==0.0.17
+annotated-types==0.7.0
+
+# === ASGI/HTTP ===
+httptools==0.6.4
+uvloop==0.21.0  # Linux/macOS only, skipped on Windows
+watchfiles==1.0.0
+websockets==14.1
+httpcore==1.0.7
+httpx==0.28.1
+h11==0.14.0
+sniffio==1.3.1
+anyio==4.6.2.post1
+
+# === Core Scientific (shared) ===
+numpy==1.26.4
+
+# === Video (headless) ===
+opencv-python-headless==4.10.0.84
+
+# === Network ===
+requests==2.32.3
+urllib3==2.2.3
+certifi==2024.8.30
+charset-normalizer==3.4.0
+idna==3.10
+
+# === Utilities ===
+python-dotenv==1.0.1
+typing_extensions==4.12.2
+click==8.1.7
+
+# === Email validation (pydantic) ===
+email-validator==2.2.0
+dnspython==2.7.0

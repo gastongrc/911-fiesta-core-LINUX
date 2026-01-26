@@ -1,0 +1,44 @@
+# 911 Fiesta V7 - SHOW Runtime Dependencies
+# UI + Core + Vision + Audio
+#
+# USAGE:
+#   pip-compile show.in -o show.lock.txt --resolver=backtracking
+#
+# NOTA: torch y torchvision se instalan aparte con indice PyTorch GPU
+# Ver docs/INSTALL_WINDOWS_GPU.md
+
+# === Qt UI Framework ===
+PySide6>=6.6.0,<7.0
+pyqtgraph>=0.13.7  # Compatible con PySide6
+
+# === Core Scientific ===
+numpy>=1.24.0,<2.0
+scipy>=1.10.0
+
+# === Audio Capture & Analysis ===
+sounddevice>=0.4.6
+librosa>=0.10.0
+audioread>=3.0.0
+
+# === Video/Vision ===
+opencv-python>=4.8.0
+av>=12.0.0  # PyAV para RTSP/streams
+
+# === YOLO Detection ===
+# torch se instala con: pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+ultralytics>=8.0.0
+
+# === Network/HTTP ===
+requests>=2.31.0
+urllib3>=2.0.0
+
+# === System Monitoring ===
+psutil>=5.9.0
+
+# === Utilities ===
+python-dotenv>=1.0.0
+typing_extensions>=4.8.0
+
+# === Flask Legacy API (api_server.py) ===
+Flask>=3.0.0
+flask-cors>=4.0.0
