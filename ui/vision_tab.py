@@ -435,11 +435,11 @@ class VisionTab(QWidget):
         group = QGroupBox("Haze Detector PRO")
         layout = QVBoxLayout(group)
 
-        # Toggle enable - V9.6: Arranca OFF, Calendar gobierna
+        # Toggle enable - V10: persist=False, Calendar es autoridad
         self.haze_enabled_check = QCheckBox("Habilitado")
         self.haze_enabled_check.setChecked(False)
         self.haze_enabled_check.stateChanged.connect(
-            lambda: self.vision_manager.enable_module("haze", self.haze_enabled_check.isChecked())
+            lambda: self.vision_manager.enable_module("haze", self.haze_enabled_check.isChecked(), source="ui", persist=False)
         )
         layout.addWidget(self.haze_enabled_check)
 
@@ -599,11 +599,11 @@ class VisionTab(QWidget):
         group = QGroupBox("DJ Detector PRO")
         layout = QVBoxLayout(group)
 
-        # Toggle enable
+        # Toggle enable - V10: persist=False, Calendar es autoridad
         self.dj_enabled_check = QCheckBox("Habilitado")
         self.dj_enabled_check.setChecked(False)
         self.dj_enabled_check.stateChanged.connect(
-            lambda: self.vision_manager.enable_module("dj", self.dj_enabled_check.isChecked())
+            lambda: self.vision_manager.enable_module("dj", self.dj_enabled_check.isChecked(), source="ui", persist=False)
         )
         layout.addWidget(self.dj_enabled_check)
 
@@ -721,11 +721,11 @@ class VisionTab(QWidget):
         group = QGroupBox("Artist Tracker PRO")
         layout = QVBoxLayout(group)
 
-        # Toggle enable
+        # Toggle enable - V10: persist=False, Calendar es autoridad
         self.tracking_enabled_check = QCheckBox("Habilitado")
         self.tracking_enabled_check.setChecked(False)
         self.tracking_enabled_check.stateChanged.connect(
-            lambda: self.vision_manager.enable_module("tracking", self.tracking_enabled_check.isChecked())
+            lambda: self.vision_manager.enable_module("tracking", self.tracking_enabled_check.isChecked(), source="ui", persist=False)
         )
         layout.addWidget(self.tracking_enabled_check)
 

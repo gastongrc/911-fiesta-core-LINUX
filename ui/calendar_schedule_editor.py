@@ -1071,11 +1071,12 @@ class CalendarScheduleEditor(QWidget):
         schedule = self._get_schedule()
 
         total_blocks = sum(len(b) for b in schedule["week"].values())
-        _log(f"Saving schedule: {total_blocks} blocks")
+        _log(f"[CalendarUI] save schedule: {total_blocks} blocks")
         for day, blocks in schedule["week"].items():
             for block in blocks:
-                extras = block.get("extra_actions", [])
-                _log(f"  {day}: {block['from']}-{block['to']} mode={block['mode']} extras={extras}")
+                # V10: UI guarda en "actions"
+                extras = block.get("actions", [])
+                _log(f"[CalendarUI] save block {day}: {block['from']}-{block['to']} mode={block['mode']} actions={extras}")
 
         reply = QMessageBox.question(
             self, "Guardar",

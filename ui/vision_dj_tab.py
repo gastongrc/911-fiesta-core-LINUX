@@ -514,9 +514,9 @@ class VisionDJTab(QWidget):
         pass
 
     def _on_enabled_changed(self):
-        """Handle enable/disable toggle."""
+        """Handle enable/disable toggle. V10: persist=False, Calendar es autoridad."""
         enabled = self.dj_enabled_check.isChecked()
-        self.vision_manager.enable_module("dj", enabled)
+        self.vision_manager.enable_module("dj", enabled, source="ui", persist=False)
 
     def _on_zone_visible_changed(self, zone_id: int, state: int):
         """Handle zone visibility toggle."""

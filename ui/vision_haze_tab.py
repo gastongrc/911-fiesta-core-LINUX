@@ -138,11 +138,11 @@ class VisionHazeTab(QWidget):
         group = QGroupBox("Haze Detector PRO")
         layout = QVBoxLayout(group)
 
-        # Toggle enable - V9.6: Arranca OFF, Calendar gobierna
+        # Toggle enable - V10: persist=False, Calendar es autoridad
         self.haze_enabled_check = QCheckBox("Habilitado")
         self.haze_enabled_check.setChecked(False)
         self.haze_enabled_check.stateChanged.connect(
-            lambda: self.vision_manager.enable_module("haze", self.haze_enabled_check.isChecked())
+            lambda: self.vision_manager.enable_module("haze", self.haze_enabled_check.isChecked(), source="ui", persist=False)
         )
         layout.addWidget(self.haze_enabled_check)
 

@@ -516,9 +516,9 @@ class VisionArtistTab(QWidget):
         pass
 
     def _on_enabled_changed(self):
-        """Handle enable/disable toggle."""
+        """Handle enable/disable toggle. V10: persist=False, Calendar es autoridad."""
         enabled = self.artist_enabled_check.isChecked()
-        self.vision_manager.enable_module("artist", enabled)
+        self.vision_manager.enable_module("artist", enabled, source="ui", persist=False)
 
     def _on_zone_visible_changed(self, zone_id: int, state: int):
         """Handle zone visibility toggle."""

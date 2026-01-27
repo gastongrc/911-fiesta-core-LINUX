@@ -318,35 +318,45 @@ class CalendarManager:
             # Normalizar modo a canonico
             canonical_mode = normalize_mode(mode)
 
-            # Verificar si cambio el modo
+            # Verificar si cambió el modo o las actions
             old_mode = self._state.current_mode
-            if canonical_mode != old_mode:
+            old_actions = set(self._state.current_actions)
+            new_actions = block.actions.copy() if block else []
+            new_actions_set = set(new_actions)
+
+            mode_changed = canonical_mode != old_mode
+            actions_changed = new_actions_set != old_actions
+
+            # V10: Aplicar si modo O actions cambiaron (enforce Vision)
+            if mode_changed or actions_changed:
                 self._state.current_mode = canonical_mode
                 self._state.source = CalendarSource.AUTO
                 self._state.since = now
                 self._state.active_block = block
-                # v6.4: Actualizar acciones paralelas del bloque
-                self._state.current_actions = block.actions.copy() if block else []
+                self._state.current_actions = new_actions
                 self._update_permissions()
 
-                # Resetear alertas disparadas para el nuevo bloque
-                self._fired_alerts.clear()
-                self._active_alert = None
+                if mode_changed:
+                    # Resetear alertas disparadas para el nuevo bloque
+                    self._fired_alerts.clear()
+                    self._active_alert = None
 
-                # ===== APLICAR ESTADO VÍA SYSTEM BRIDGE (UNA SOLA VEZ) =====
+                # ===== APLICAR ESTADO VÍA SYSTEM BRIDGE =====
+                # V10: Aplica si modo O actions cambiaron (enforce Vision)
                 if self._system_bridge is not None:
                     try:
-                        actions_str = f" + {self._state.current_actions}" if self._state.current_actions else ""
-                        print(f"[Calendar] state changed → {canonical_mode}{actions_str}")
+                        change_reason = "mode" if mode_changed else "actions"
+                        actions_str = f" actions={new_actions}" if new_actions else ""
+                        print(f"[Calendar] {change_reason} changed → {canonical_mode}{actions_str}")
                         self._system_bridge.apply_calendar_state(
                             canonical_mode,
-                            self._state.current_actions
+                            new_actions
                         )
                     except Exception as e:
                         print(f"[Calendar] error applying state: {e}")
 
                 # Notificar cambio (callback legacy para UI)
-                if self._on_mode_change:
+                if self._on_mode_change and mode_changed:
                     try:
                         self._on_mode_change(old_mode, canonical_mode, self._state.permissions)
                     except Exception as e:
@@ -354,8 +364,7 @@ class CalendarManager:
 
             # Actualizar info de timeline
             self._state.active_block = block
-            # v6.4: Siempre sincronizar acciones con el bloque activo
-            self._state.current_actions = block.actions.copy() if block else []
+            self._state.current_actions = new_actions
             self._state.next_change_at = next_change
             self._state.update_progress(now)
 

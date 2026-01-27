@@ -307,10 +307,13 @@ class CalendarResolver:
         """
         Parsea un bloque y retorna (mode, actions).
 
+        V10: La UI guarda extras en "actions". Leemos "actions" primero,
+        con fallback a "extra_actions" para compatibilidad legacy.
+
         Soporta 3 formatos:
-        1. mode + extra_actions (v6.4 nuevo)
-        2. actions[] sin mode (v6.4 legacy)
-        3. mode solo (legacy clásico)
+        1. mode + actions (V10 canónico - UI guarda aquí)
+        2. mode + extra_actions (legacy)
+        3. mode solo (sin extras)
 
         Args:
             block: Diccionario del bloque
@@ -318,24 +321,26 @@ class CalendarResolver:
         Returns:
             Tupla (mode_uppercase, actions_list)
         """
-        # Formato 1: mode + extra_actions (v6.4 nuevo - prioritario)
+        # Formato principal: mode + actions (V10: UI guarda en "actions")
         if "mode" in block:
             mode = block["mode"].upper()
-            extra_actions = block.get("extra_actions", [])
+            # V10 FIX: Leer "actions" primero (UI), fallback "extra_actions" (legacy)
+            extra_actions = block.get("actions") or block.get("extra_actions") or []
 
             # Combinar acciones del modo con extras
             mode_actions = self._get_mode_base_actions(mode)
             all_actions = list(set(mode_actions + extra_actions))
 
+            print(f"[Calendar] resolved → mode={mode} extras={extra_actions} combined={all_actions}")
             return mode, all_actions
 
-        # Formato 2: actions[] sin mode (v6.4 legacy)
+        # Formato legacy: solo actions[] sin mode
         if "actions" in block and block["actions"]:
             actions = block["actions"]
             mode = self._derive_mode_from_actions(actions)
             return mode, actions
 
-        # Formato 3: sin mode ni actions → apagado
+        # Sin mode ni actions → apagado
         return "APAGADO", ["system_idle"]
 
     def _get_mode_base_actions(self, mode: str) -> List[str]:
