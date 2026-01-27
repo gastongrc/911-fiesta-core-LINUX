@@ -884,12 +884,14 @@ class CalendarManager:
             # Aplicar via SystemBridge
             if self._system_bridge is not None:
                 try:
-                    actions_str = f" + {actions}" if actions else ""
-                    print(f"[Calendar] REAPPLY active block → {mode}{actions_str}")
+                    print(f"[Calendar] REAPPLY active block → mode={mode} actions={actions}")
                     self._system_bridge.apply_calendar_state(mode, actions)
+                    print(f"[Calendar] REAPPLY complete")
                     return True
                 except Exception as e:
                     print(f"[Calendar] error in reapply_active_block: {e}")
+                    import traceback
+                    traceback.print_exc()
                     return False
             else:
                 print("[Calendar] reapply_active_block SKIPPED (no system_bridge)")

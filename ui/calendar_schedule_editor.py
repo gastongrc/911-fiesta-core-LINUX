@@ -540,7 +540,7 @@ class TimeBlockWidget(QFrame):
         if checked:
             self._selected_actions.add(action)
 
-            # V9.5: Exclusión mutua DJ/Artista
+            # V9.5: Exclusión mutua DJ/Artista (ANTES del reapply)
             if action == "vision_dj" and "vision_artista" in self._selected_actions:
                 self._selected_actions.discard("vision_artista")
                 self._update_extra_button("vision_artista", False)
@@ -553,10 +553,14 @@ class TimeBlockWidget(QFrame):
             self._selected_actions.discard(action)
         self.changed.emit()
 
-        # V9.4: Si este es el bloque activo, notificar para reapply inmediato
+        # V9.8: Log obligatorio + reapply inmediato si es bloque activo
+        block_id = f"{getattr(self, '_day_key', '?')}|{self.from_edit.time().toString('HH:mm')}|{self.to_edit.time().toString('HH:mm')}|{self._current_mode}"
         if self._is_active:
-            _log(f"[ACTIVE BLOCK EDIT] extra={action} checked={checked} mode={self._current_mode} actions={list(self._selected_actions)}")
+            _log(f"[CALENDAR UI] active block edited block_id={block_id}")
+            _log(f"[CALENDAR UI] → reapply mode={self._current_mode} actions={list(self._selected_actions)}")
             self.active_block_edited.emit(self._current_mode, list(self._selected_actions))
+        else:
+            _log(f"[CALENDAR UI] IGNORED: editing non-active block block_id={block_id}")
 
     def _update_extra_button(self, action: str, checked: bool):
         """V9.5: Actualiza visualmente un botón de extra sin emitir señales."""
