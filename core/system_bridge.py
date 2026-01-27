@@ -267,37 +267,38 @@ class SystemBridge:
                 self._cue_engine.set_disabled_states([])
 
         # Vision Manager - cada módulo de visión
+        # V9.7: Vision se gobierna SOLO por actions, NO por el modo
+        # Esto permite que los extras funcionen igual con cualquier modo
         if self._vision_manager:
             vm = self._vision_manager
 
             if hasattr(vm, 'enable_module'):
-                # V6.7 FIX: Calendar GOVERNS modules directly
-                # - Calendar ALLOWS → module ON (calendar overrides user preference)
-                # - Calendar DISALLOWS → module OFF (forced)
-                # persist=False ensures user preferences in config are preserved
+                # V9.7: VISION BY ACTIONS ONLY
+                # - El modo NO gobierna Vision (ignoramos modules["vision_*"])
+                # - Solo los extras (actions) controlan Haze/DJ/Artist
+                # - Esto permite destildar extras y que se apaguen inmediatamente
+                actions_set = set(self._current_actions or [])
 
-                # HAZE: Calendar governs directly (puede convivir con DJ o Artista)
-                haze_allowed = modules.get("vision_haze", False)
+                # HAZE: Solo si está en actions
+                haze_allowed = "vision_haze" in actions_set
                 vm.enable_module("haze", haze_allowed, source="calendar", persist=False)
-                print(f"[CALENDAR] haze={'ON' if haze_allowed else 'OFF'}")
 
-                # DJ: Calendar governs directly (vision_dj OR dj_detection for legacy)
-                dj_allowed = modules.get("vision_dj", False) or modules.get("dj_detection", False)
+                # DJ: Solo si está en actions (vision_dj o legacy dj_detection)
+                dj_allowed = "vision_dj" in actions_set or "dj_detection" in actions_set
 
-                # ARTIST/TRACKING: Calendar governs directly (vision_artista OR tracking_cam for legacy)
-                tracking_allowed = modules.get("vision_artista", False) or modules.get("tracking_cam", False)
+                # ARTIST: Solo si está en actions (vision_artista o legacy tracking_cam)
+                tracking_allowed = "vision_artista" in actions_set or "tracking_cam" in actions_set
 
                 # V9.5: EXCLUSIÓN MUTUA DJ/Artista (defensa runtime)
-                # Si ambos están activos, DJ tiene prioridad
                 if dj_allowed and tracking_allowed:
                     print("[CALENDAR] EXCLUSION: DJ + Artist both requested → DJ wins, Artist OFF")
                     tracking_allowed = False
 
                 vm.enable_module("dj", dj_allowed, source="calendar", persist=False)
-                print(f"[CALENDAR] dj={'ON' if dj_allowed else 'OFF'}")
-
                 vm.enable_module("tracking", tracking_allowed, source="calendar", persist=False)
-                print(f"[CALENDAR] artist={'ON' if tracking_allowed else 'OFF'}")
+
+                # V9.7: Log canónico para Vision by Actions
+                print(f"[VISION BY ACTIONS] haze={haze_allowed} dj={dj_allowed} artist={tracking_allowed} (actions={list(actions_set)})")
 
             if hasattr(vm, 'set_calendar_mode'):
                 vm.set_calendar_mode(self._map_to_vision_mode(self._current_mode))
