@@ -445,19 +445,26 @@ class VisionManager:
 
     # NOTE: validate_camera_indices/_fix_camera_index_collision REMOVED (USB removed in Phase 6.10)
 
-    def start(self):
-        """Arranca el sistema de visión (todos los CameraLoops)."""
+    def start(self, force: bool = False):
+        """
+        Arranca el sistema de visión (todos los CameraLoops).
+
+        V13: Agregado parámetro force para bypass de gating cuando calendario activa módulo.
+
+        Args:
+            force: Si True, ignora el gating de permisos (usado por calendario)
+        """
         if self.running:
             print("[VisionManager] Ya está corriendo")
             return
 
-        # GATING: Verificar permiso de cámaras
-        if not self._is_permitted("cameras"):
+        # GATING: Verificar permiso de cámaras (skip si force=True)
+        if not force and not self._is_permitted("cameras"):
             print("[VisionManager] Cámaras deshabilitadas por calendario - no iniciando")
             return
 
         try:
-            print("[VisionManager] Iniciando 3 CameraLoops (MJPEG only)...")
+            print(f"[VisionManager] Iniciando 3 CameraLoops (MJPEG only) force={force}...")
             self.camera_loop_haze.start()
             self.camera_loop_dj.start()
             self.camera_loop_artist.start()
@@ -530,6 +537,10 @@ class VisionManager:
         - UI llama con persist=True (guarda preferencia del usuario)
         - Calendar llama con persist=False (cambio temporal, no sobrescribe preferencia)
 
+        V13 FIX: Auto-start del sistema cuando calendario activa un módulo.
+        - Si enabled=True y sistema no está corriendo → start()
+        - Esto garantiza que el calendario tenga el mismo efecto que el panel manual.
+
         Args:
             name: Nombre del módulo
                   - "haze" o "vision_haze" -> HazeDetector
@@ -581,6 +592,12 @@ class VisionManager:
 
             persist_str = "persisted" if persist else "runtime-only"
             print(f"[VisionManager] Módulo '{canonical_name}' {'ON' if enabled else 'OFF'} (source={source}, {persist_str})")
+
+            # V13 FIX: Auto-start del sistema cuando calendario activa un módulo
+            if enabled and not self.running:
+                print(f"[VisionManager] AUTO-START: módulo '{canonical_name}' activado pero sistema no corre → iniciando (force=True)")
+                self.start(force=True)
+
         except Exception as e:
             print(f"[VisionManager] Error habilitando módulo '{canonical_name}': {e}")
 
