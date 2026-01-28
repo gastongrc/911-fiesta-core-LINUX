@@ -407,7 +407,9 @@ class HazeDetector:
             enabled: True para habilitar, False para deshabilitar
             persist: Ignored (handled by VisionManager). Kept for API compatibility.
         """
+        print(f"[HazeDetector] set_enabled({enabled}) called")
         self.vision_state.set_haze_enabled(enabled)
+        print(f"[HazeDetector] vision_state.haze_enabled is now: {self.vision_state.haze_enabled}")
         if not enabled:
             self.disable_by_mode()
 

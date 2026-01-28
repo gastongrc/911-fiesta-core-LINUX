@@ -275,9 +275,11 @@ class SystemBridge:
                 # - Solo los extras (actions) controlan Haze/DJ/Artist
                 # - Esto permite destildar extras y que se apaguen inmediatamente
                 actions_set = set(self._current_actions or [])
+                print(f"[VISION APPLY] _current_actions={self._current_actions} actions_set={actions_set}")
 
                 # HAZE: Solo si está en actions
                 haze_allowed = "vision_haze" in actions_set
+                print(f"[VISION APPLY] haze check: 'vision_haze' in {actions_set} = {haze_allowed}")
                 vm.enable_module("haze", haze_allowed, source="calendar", persist=False)
 
                 # DJ: Solo si está en actions (vision_dj o legacy dj_detection)

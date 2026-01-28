@@ -549,6 +549,7 @@ class VisionManager:
             "tracking_cam": "tracking",
         }
         canonical_name = name_aliases.get(name, name)
+        print(f"[VisionManager] enable_module called: name='{name}' canonical='{canonical_name}' enabled={enabled} source={source}")
 
         module_map = {
             "haze": (self.haze_detector, self.vision_state.set_haze_enabled),
