@@ -120,12 +120,9 @@ class SystemBridge:
             vision_manager.set_family_manager(self._family_manager)
             print("[SystemBridge] FamilyManager wired to VisionManager detectors")
 
-        # V9.6: Sincronizar con estado del calendario inmediatamente
-        if self._current_mode:
-            print(f"[SystemBridge] Syncing VisionManager with calendar state: mode={self._current_mode}")
-            self._sync_vision()
-        else:
-            print("[SystemBridge] No calendar mode yet - VisionManager stays OFF")
+        # V11 FIX: HARD SYNC - Calendar es autoridad, SIEMPRE aplicar estado
+        # No confiar en que VisionManager arranque OFF por sí solo
+        self._hard_sync_vision()
 
     def connect_audio_engine(self, audio_engine) -> None:
         """Conecta el AudioEngine para control de audio."""
@@ -311,6 +308,37 @@ class SystemBridge:
         """Sincroniza VisionManager con el estado actual."""
         if self._current_modules:
             self._apply_modules(self._current_modules)
+
+    def _hard_sync_vision(self) -> None:
+        """
+        V11: Hard sync de Vision al conectar VisionManager.
+
+        Calendar es autoridad. Si no hay actions, forzar TODO OFF.
+        Esto garantiza que Vision no quede prendido por config.
+        """
+        if not self._vision_manager:
+            return
+
+        vm = self._vision_manager
+        actions_set = set(self._current_actions or [])
+
+        # Calcular estado según actions del calendario
+        haze_on = "vision_haze" in actions_set
+        dj_on = "vision_dj" in actions_set or "dj_detection" in actions_set
+        artist_on = "vision_artista" in actions_set or "tracking_cam" in actions_set
+
+        # Exclusión mutua DJ/Artist
+        if dj_on and artist_on:
+            print("[VISION HARD SYNC] EXCLUSION: DJ + Artist → DJ wins")
+            artist_on = False
+
+        # Aplicar estado
+        if hasattr(vm, 'enable_module'):
+            vm.enable_module("haze", haze_on, source="calendar", persist=False)
+            vm.enable_module("dj", dj_on, source="calendar", persist=False)
+            vm.enable_module("tracking", artist_on, source="calendar", persist=False)
+
+        print(f"[VISION HARD SYNC] mode={self._current_mode} actions={list(actions_set)} => haze={haze_on} dj={dj_on} artist={artist_on}")
 
     def _sync_audio(self) -> None:
         """Sincroniza AudioEngine con el estado actual."""

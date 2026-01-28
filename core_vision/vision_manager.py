@@ -81,6 +81,14 @@ class VisionManager:
         # Legacy alias for backward compatibility
         self.artist_tracker = self.artist_detector
 
+        # V11 FIX: Forzar TODOS los módulos OFF al boot (Calendar es autoridad)
+        # Los detectores pueden haber leído enabled=True de vision_config.json
+        # Pero Calendar gobierna, así que forzamos OFF y esperamos apply del calendario
+        self.haze_detector.set_enabled(False, persist=False)
+        self.dj_detector.set_enabled(False, persist=False)
+        self.artist_detector.set_enabled(False, persist=False)
+        print("[BOOT VISION] forced OFF: haze=False dj=False artist=False reason=calendar_authority")
+
         # MULTICÁMARA v6.10: 3 CameraLoops con MJPEGSource (IP only, USB removed)
         self._ip_only = True  # Always true (USB removed)
         print("[VisionManager] Modo: MJPEG only (USB removed)")
