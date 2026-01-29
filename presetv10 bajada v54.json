@@ -1,0 +1,402 @@
+{
+  "version": 15,
+  "bajada": {
+    "NO HITS": {
+      "min": 0,
+      "max": 100,
+      "match": 52,
+      "sliders": {
+        "sens": 308,
+        "refrac": 401,
+        "snr": 936,
+        "smooth": 759
+      }
+    },
+    "DEEP LISTENER": {
+      "min": 21,
+      "max": 100,
+      "match": 63,
+      "sliders": {
+        "f_lo": 153,
+        "f_hi": 218,
+        "sens_db": 278,
+        "tau_db": 782,
+        "snr_db": 314,
+        "agc_mix": 467,
+        "smooth": 1000,
+        "hold_ms": 333
+      }
+    },
+    "SOFT PEAKS": {
+      "min": 0,
+      "max": 100,
+      "match": 72,
+      "sliders": {
+        "sens": 332,
+        "attack": 439,
+        "kl": 9,
+        "kh": 57,
+        "smooth": 923,
+        "sil_db": 732
+      }
+    },
+    "RAMP DOWN": {
+      "min": 0,
+      "max": 31,
+      "match": 0,
+      "sliders": {
+        "vmin": 0,
+        "vmax": 118,
+        "smooth": 1000
+      }
+    },
+    "BREAK SPOTTER": {
+      "min": 53,
+      "max": 100,
+      "match": 61,
+      "sliders": {
+        "gmin": 696,
+        "gmax": 935,
+        "thdb": 967,
+        "env_ms": 230,
+        "hold": 272,
+        "smooth": 363
+      }
+    }
+  },
+  "base_golpe": {
+    "YES HITS": {
+      "min": 21,
+      "max": 100,
+      "match": 32,
+      "sliders": {
+        "sens": 1000,
+        "refrac": 281,
+        "smooth": 0,
+        "snr": 901,
+        "hold": 995,
+        "thresh": 307
+      }
+    },
+    "ACCENT CATCHER": {
+      "min": 16,
+      "max": 100,
+      "match": 21,
+      "sliders": {
+        "sens": 328,
+        "attack": 776,
+        "ratio": 317,
+        "kl": 792,
+        "kh": 231,
+        "smooth": 22,
+        "dens_thresh": 499,
+        "dens_boost": 250,
+        "dens_cut": 250,
+        "sparse_atten": 666,
+        "hold": 142
+      }
+    },
+    "GROOVE KEEPER": {
+      "min": 25,
+      "max": 100,
+      "match": 32,
+      "sliders": {
+        "thr": 9,
+        "swing": 0,
+        "tol": 88,
+        "smooth": 585,
+        "hold": 719
+      }
+    },
+    "PATTERN LOCK": {
+      "min": 50,
+      "max": 81,
+      "match": 53,
+      "sliders": {
+        "auto": 1000,
+        "win_s": 363,
+        "warp": 500,
+        "cap": 640,
+        "hold": 326,
+        "smooth": 526
+      }
+    },
+    "CADENCE SPOTTER": {
+      "min": 57,
+      "max": 100,
+      "match": 64,
+      "sliders": {
+        "thr": 417,
+        "tol_ms": 170,
+        "smooth": 447,
+        "hold": 0,
+        "threshold": 5
+      }
+    },
+    "FLOW MONITOR": {
+      "min": 15,
+      "max": 81,
+      "match": 19,
+      "sliders": {
+        "sens": 649,
+        "dens_tgt": 326,
+        "gap_ms": 115,
+        "win_s": 901,
+        "smooth": 1000,
+        "hold": 53
+      }
+    },
+    "DYNAMIC PULSE": {
+      "min": 0,
+      "max": 11,
+      "match": 0,
+      "sliders": {
+        "thr": 279,
+        "var_ok": 510,
+        "win_s": 225,
+        "smooth": 814,
+        "hold": 167
+      }
+    },
+    "PULSE FINDER": {
+      "min": 25,
+      "max": 75,
+      "match": 50,
+      "sliders": {
+        "thr_x": 230,
+        "win_s": 222,
+        "refrac": 176,
+        "smooth": 526,
+        "consistency": 600
+      }
+    },
+    "RHYTHM HIGHLIGHTER": {
+      "min": 0,
+      "max": 8,
+      "match": 0,
+      "sliders": {
+        "sens_x": 262,
+        "win_s": 812,
+        "dens_tgt": 236,
+        "ratio_ok": 209,
+        "smooth": 26,
+        "hold": 0
+      }
+    },
+    "DRUM ROLL DETECTOR": {
+      "min": 25,
+      "max": 75,
+      "match": 50,
+      "sliders": {
+        "cf_min": 200,
+        "cent_min": 250,
+        "win_s": 300,
+        "flux_on": 285,
+        "hi_ratio": 375,
+        "env_min": 230,
+        "low_veto": 428,
+        "period_min": 333,
+        "period_max": 400,
+        "period_str": 222,
+        "period_on": 0,
+        "dur_min": 333,
+        "dur_max": 333,
+        "dur_on": 0,
+        "cf_weight": 499,
+        "cent_weight": 399,
+        "flux_weight": 250,
+        "smooth": 285,
+        "hold": 300
+      }
+    }
+  },
+  "ataque": {
+    "SNARE ROLL": {
+      "min": 0,
+      "max": 54,
+      "match": 26,
+      "sliders": {
+        "thr_x": 198,
+        "refrac": 814,
+        "win_s": 28,
+        "hits_req": 73,
+        "flux_on": 774,
+        "hi_ratio_min": 62,
+        "env_min": 186,
+        "low_veto": 175,
+        "smooth": 859,
+        "hold": 51
+      }
+    },
+    "HI ROLL": {
+      "min": 42,
+      "max": 100,
+      "match": 63,
+      "sliders": {
+        "win_s": 28,
+        "f_lo": 237,
+        "f_hi": 119,
+        "peak_ratio": 621,
+        "flux_on": 440,
+        "hi_ratio_min": 463,
+        "env_min": 639,
+        "low_veto": 606,
+        "smooth": 808,
+        "hold": 231
+      }
+    },
+    "DRUM ROLL DETECTOR": {
+      "min": 29,
+      "max": 79,
+      "match": 45,
+      "sliders": {
+        "cf_min": 458,
+        "cent_min": 904,
+        "win_s": 439,
+        "flux_on": 179,
+        "hi_ratio": 782,
+        "env_min": 205,
+        "low_veto": 126,
+        "period_min": 333,
+        "period_max": 956,
+        "period_str": 154,
+        "period_on": 496,
+        "dur_min": 104,
+        "dur_max": 170,
+        "dur_on": 433,
+        "cf_weight": 0,
+        "cent_weight": 72,
+        "flux_weight": 53,
+        "smooth": 0,
+        "hold": 32
+      }
+    }
+  },
+  "brake": {
+    "ENERGY CLIFF": {
+      "min": 0,
+      "max": 100,
+      "match": 20,
+      "sliders": {
+        "win_short": 215,
+        "win_long": 285,
+        "drop_db": 333,
+        "confirm_s": 380,
+        "smooth": 631,
+        "hold": 363,
+        "thr_on": 499,
+        "thr_off": 461
+      }
+    },
+    "WIDEBAND BLACKOUT": {
+      "min": 0,
+      "max": 100,
+      "match": 6,
+      "sliders": {
+        "win_short": 0,
+        "win_long": 0,
+        "ratio_max": 1000,
+        "confirm_s": 0,
+        "smooth": 1000,
+        "hold": 0,
+        "thr_on": 499,
+        "thr_off": 461
+      }
+    },
+    "RHYTHM VOID": {
+      "min": 0,
+      "max": 100,
+      "match": 4,
+      "sliders": {
+        "thr_x": 346,
+        "refrac": 428,
+        "void_s": 400,
+        "flux_max": 260,
+        "rms_thr": 222,
+        "energy_w": 400,
+        "smooth": 631,
+        "hold": 347,
+        "thr_on": 416,
+        "thr_off": 384
+      }
+    },
+    "BRAKE ANALYZER (DAS)": {
+      "min": 0,
+      "max": 100,
+      "match": 23,
+      "sliders": {
+        "win_short": 272,
+        "win_long": 213,
+        "drop_db_req": 333,
+        "void_s": 315,
+        "flux_max": 279,
+        "confirm_s": 250,
+        "smooth": 555,
+        "hold": 350,
+        "hold_off": 384,
+        "thr_on": 499,
+        "thr_off": 461
+      }
+    }
+  },
+  "cue_engine_modular_v42": true,
+  "brake_analyzer_real": true,
+  "architecture": "modular_v4.2",
+  "enabled_flags": {
+    "NO HITS": true,
+    "DEEP LISTENER": true,
+    "SOFT PEAKS": true,
+    "RAMP DOWN": true,
+    "BREAK SPOTTER": true,
+    "YES HITS": true,
+    "ACCENT CATCHER": true,
+    "GROOVE KEEPER": true,
+    "PATTERN LOCK": true,
+    "CADENCE SPOTTER": true,
+    "FLOW MONITOR": true,
+    "DYNAMIC PULSE": true,
+    "PULSE FINDER": true,
+    "RHYTHM HIGHLIGHTER": true,
+    "DRUM ROLL DETECTOR": true,
+    "SNARE ROLL": true,
+    "HI ROLL": true,
+    "ENERGY CLIFF": true,
+    "WIDEBAND BLACKOUT": true,
+    "RHYTHM VOID": true,
+    "BRAKE ANALYZER (DAS)": true
+  },
+  "net_panel": {
+    "enabled": true,
+    "console_ip": "192.168.0.3",
+    "console_port": 4430,
+    "local_nic": "Descripci¢n . . . . . . . . . . . . . . .",
+    "local_ip": "",
+    "auto_retry": true,
+    "transport": "http",
+    "timeouts": {
+      "connect_ms": 1500,
+      "send_ms": 300
+    },
+    "retries": {
+      "max": 5,
+      "backoff_ms": [
+        500,
+        1000,
+        2000
+      ]
+    },
+    "ui": {
+      "show_latency": true,
+      "show_events": true
+    },
+    "sacn": {
+      "universe": 1,
+      "priority": 100
+    },
+    "artnet": {
+      "net": 0,
+      "subnet": 0,
+      "universe": 0
+    }
+  }
+}

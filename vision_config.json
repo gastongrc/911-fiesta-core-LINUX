@@ -12,8 +12,8 @@
     "smooth_alpha": 0.25,
     "lock_time": 0.25,
     "fire_duration": 3.0,
-    "cooldown_min": 60,
-    "cooldown_max": 60,
+    "cooldown_min": 3,
+    "cooldown_max": 3,
     "threshold_low": 30,
     "threshold_med": 50,
     "threshold_high": 70,
@@ -65,18 +65,15 @@
       "reconnect_s": 2.0
     },
     "dj": {
-      "type": "rtsp",
+      "type": "mjpeg",
       "enabled": true,
-      "url_main": "rtsp://admin:12345@192.168.1.64:554/Streaming/Channels/101",
-      "url_sub": "rtsp://admin:12345@192.168.1.64:554/Streaming/Channels/102",
-      "preferred": "main",
-      "username": "",
-      "password": "",
+      "host": "192.168.1.110",
+      "path": "/axis-cgi/mjpg/video.cgi?fps=10",
+      "username": "root",
+      "password": "root",
       "fps_target": 10,
       "timeout_s": 5.0,
-      "reconnect_s": 2.0,
-      "transport": "tcp",
-      "low_latency": true
+      "reconnect_s": 2.0
     },
     "artist": {
       "type": "mjpeg",

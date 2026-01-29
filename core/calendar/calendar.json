@@ -11,9 +11,13 @@
     "wednesday": [],
     "thursday": [
       {
-        "from": "22:00",
+        "from": "12:00",
         "to": "05:00",
-        "mode": "boliche_inicio"
+        "mode": "boliche_desarrollo",
+        "actions": [
+          "vision_haze",
+          "vision_dj"
+        ]
       }
     ],
     "friday": [
