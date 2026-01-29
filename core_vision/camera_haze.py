@@ -392,16 +392,37 @@ class HazeDetector:
 
     def disable_by_mode(self):
         """
-        Desactiva el detector por modo calendario.
-        Resetea estado y limpia cooldown.
+        V17: Teardown completo del detector.
+        Resetea TODO el estado interno para arrancar limpio después.
         """
-        self.haze_state = "DISABLED"
+        # Estado interno
+        self.baseline_contrast = None
+        self.baseline_samples = []
+        self.contrast_history = []
         self.haze_level = 0.0
-        self.vision_state.update_haze(level=0.0, state="DISABLED")
+        self.haze_state = "NONE"
+        self.frame_count = 0
+
+        # Control de disparos
+        self.last_fire_time = 0.0
+        self.cooldown_until = 0.0
+        self.current_cue = None
+        self._last_fire_state = None
+        self._armed = True
+        self._fire_end_time = 0.0
+        self._cue_is_on = False
+
+        # VisionState
+        self.vision_state.update_haze(level=0.0, state="NONE")
+        self.vision_state.set_haze_status("READY")
+
+        print("[HazeDetector] teardown: cleared all state")
 
     def set_enabled(self, enabled: bool, persist: bool = None):
         """
         Habilita/deshabilita el detector.
+
+        V17: Teardown completo al deshabilitar, start clean al habilitar.
 
         Args:
             enabled: True para habilitar, False para deshabilitar
@@ -409,9 +430,16 @@ class HazeDetector:
         """
         print(f"[HazeDetector] set_enabled({enabled}) called")
         self.vision_state.set_haze_enabled(enabled)
-        print(f"[HazeDetector] vision_state.haze_enabled is now: {self.vision_state.haze_enabled}")
+
         if not enabled:
+            # Teardown completo
             self.disable_by_mode()
+            print(f"[HazeDetector] DISABLED - teardown done")
+        else:
+            # Start clean: resetear estado para arrancar sin basura
+            self.disable_by_mode()  # Limpiar primero
+            self.vision_state.set_haze_enabled(True)  # Re-habilitar
+            print(f"[HazeDetector] ENABLED - start clean, ready for analysis")
 
     def _test_fire(self, cue_id: int = 64, force_fire: bool = False) -> Dict[str, Any]:
         """
