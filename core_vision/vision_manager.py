@@ -620,34 +620,16 @@ class VisionManager:
         """
         Obtiene el estado completo del sistema.
 
-        ✅ VISION PRO v2 FIX: Respeta calendario + detección robusta de bailarinas
+        V15 FIX: get_state() solo LEE estado, NO lo modifica.
+        El calendario gobierna via enable_module(), no via mode_calendar.
 
         Returns:
-            dict: Estado completo desde VisionState con dancers + respeto a calendario
+            dict: Estado completo desde VisionState con dancers
         """
         try:
             state = self.vision_state.to_dict()
 
-            # ✅ VISION PRO v2 FIX: Respeto absoluto al calendario
-            if self.mode_calendar in ["ESCENA", "CLIMA", "TEATRO"]:
-                # Desactivar detector de haze (guard para evitar errores)
-                if hasattr(self.haze_detector, 'disable_by_mode'):
-                    self.haze_detector.disable_by_mode()
-
-                # Forzar estado deshabilitado
-                if "haze" in state:
-                    state["haze"]["haze_state"] = "DISABLED_BY_MODE"
-                    state["haze"]["level"] = 0.0
-                    state["haze"]["smooth_value"] = 0.0
-
-                state["dancers"] = {
-                    "left": False,
-                    "right": False,
-                    "count": 0
-                }
-                return state
-
-            # ✅ VISION PRO v2 FIX: Detección robusta de bailarinas en modos normales
+            # V15: Detección robusta de bailarinas
             # Obtener detecciones de personas del DJ detector
             detections = state.get("dj", {}).get("detections", [])
 

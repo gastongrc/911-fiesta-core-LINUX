@@ -386,30 +386,19 @@ class VisionHazeTab(QWidget):
             level = haze_state.get("level", 0.0)
             haze_level_str = haze_state.get("state", "LOW")
             cooldown_remaining = haze_state.get("cooldown_remaining", 0.0)
-            haze_state_name = haze_state.get("haze_state", "HAZE_LOW")
 
-            # ✅ VISION PRO v2 FIX: Mostrar "OFF (CALENDARIO)" cuando está deshabilitado
-            if haze_state_name == "DISABLED_BY_MODE":
-                self.detector_state_label.setText("OFF (CALENDARIO)")
-                self.detector_state_label.setStyleSheet("font-weight: bold; color: #888;")
-                self.level_label.setText("0.0")
-                self.state_label.setText("DISABLED")
-                self.cooldown_label.setText("—")
-            else:
-                self.detector_state_label.setText(status.lower())
-                self.detector_state_label.setStyleSheet("font-weight: bold;")
-                self.level_label.setText(f"{level:.1f}")
-                self.state_label.setText(haze_level_str)
-                self.cooldown_label.setText(f"{int(cooldown_remaining)}s")
+            # V15: UI muestra estado REAL del detector (sin estados inventados)
+            self.detector_state_label.setText(status.lower())
+            self.detector_state_label.setStyleSheet("font-weight: bold;")
+            self.level_label.setText(f"{level:.1f}")
+            self.state_label.setText(haze_level_str)
+            self.cooldown_label.setText(f"{int(cooldown_remaining)}s")
 
-            # ✅ VISION PRO v2: Actualizar barra de haze con colores dinámicos
+            # V15: Actualizar barra de haze con colores dinámicos (estado real)
             haze_value = level / 100.0  # Normalizar a 0-1
 
-            # Determinar color según nivel y estado
-            if haze_state_name == "DISABLED_BY_MODE":
-                bar_color = "#555555"  # Gris para deshabilitado
-                haze_value = 0.0
-            elif haze_value < 0.25:
+            # Determinar color según nivel
+            if haze_value < 0.25:
                 bar_color = "#00FF64"  # Verde
             elif haze_value < 0.40:
                 bar_color = "#FFD000"  # Amarillo
