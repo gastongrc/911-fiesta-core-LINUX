@@ -1,5 +1,5 @@
 """
-CameraLoop PRO - Phase 6.12
+CameraLoop PRO - Phase 6.14
 Loop de captura de cámara con procesamiento de todos los detectores
 Soporta: MJPEG (IP cameras only) - USB REMOVED
 Orquestador: HazeDetector → DJDetector → ArtistTracker
@@ -8,6 +8,10 @@ Phase 6.12: RTSP thread-safe reconnection
 - No llama stop() en errores de lectura para RTSP
 - Deja que RTSPSource maneje reconexión internamente
 - Previene crash de FFmpeg async_lock
+
+Phase 6.14: Deterministic restart on start() if already running
+- start() now calls restart() instead of returning silently
+- Prevents "ghost" camera states
 """
 import time
 import threading
@@ -94,10 +98,20 @@ class CameraLoop:
         else:
             print(f"[CameraLoop] {camera_name} inicializado -> NO SOURCE (waiting for config)")
 
-    def start(self):
-        """Arranca el thread de captura."""
+    def start(self, force_restart: bool = False):
+        """
+        Arranca el thread de captura.
+
+        Phase 6.14: If already running, performs restart instead of returning silently.
+        This ensures deterministic behavior and prevents ghost states.
+
+        Args:
+            force_restart: If True, always restart even if running (default False for backwards compat)
+        """
         if self.running:
-            print(f"[CameraLoop] {self.camera_name} ya está corriendo")
+            # Phase 6.14: Restart instead of silent return
+            print(f"[CameraLoop] {self.camera_name} already running - performing restart for clean state")
+            self.restart()
             return
 
         # Sin source válido, no iniciar

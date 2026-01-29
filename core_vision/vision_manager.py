@@ -1,5 +1,5 @@
 """
-VisionManager PRO - Phase 6.11 + V9 Artist
+VisionManager PRO - Phase 6.14 + V9 Artist
 Manager centralizado del Vision System PRO
 Coordina: VisionConfig, VisionState, HazeDetector, DJDetector, ArtistDetector, CameraLoop
 Soporta: IP cameras (MJPEG Axis + RTSP H.264) - USB REMOVED
@@ -7,6 +7,7 @@ Integración con CueEngine para disparar cues
 
 V9 Artist: ArtistTracker replaced with ArtistDetector (YOLO-based, 8 zones, non-blocking)
 Phase 6.11: Soporte dual MJPEG + RTSP con baja latencia (queue maxsize=1, frame drops)
+Phase 6.14: Deterministic camera restart on config change (no more "SKIPPED" ghosting)
 """
 import threading
 import hashlib
@@ -228,13 +229,19 @@ class VisionManager:
 
         LIFECYCLE: STOP_OLD -> CREATE_NEW -> START_NEW (nunca al revés)
 
+        Phase 6.14: Deterministic restart behavior
+        - If config changed and camera running → stop → apply → start (restart limpio)
+        - If config unchanged → skip (no-op)
+        - Lock prevents concurrent calls, not camera restarts
+
         Args:
             camera_name: Nombre de cámara específica, o None para todas
             force: Si True, forzar recreación aunque config no haya cambiado
         """
         # Intentar adquirir lock (no bloqueante para evitar deadlock)
         if not self._apply_lock.acquire(blocking=False):
-            print("[VisionManager] apply_camera_config SKIPPED (already running)")
+            # Phase 6.14: Clearer message - this is about concurrent calls, not camera state
+            print("[VisionManager] apply_camera_config SKIPPED (concurrent call in progress)")
             return
 
         try:
@@ -250,8 +257,13 @@ class VisionManager:
                 print(f"[VisionManager] === APPLY_CAMERA_CONFIG END (no-op) ===")
                 return
 
+            # Phase 6.14: Log when config changed (deterministic restart)
+            if self._last_config_hash is not None:
+                print(f"[VisionManager] Config CHANGED: {self._last_config_hash[:8]} → {new_hash[:8]} (will restart)")
+            else:
+                print(f"[VisionManager] Config hash (initial): {new_hash[:8]}")
+
             self._last_config_hash = new_hash
-            print(f"[VisionManager] Config hash: {new_hash[:8]}")
 
             self._do_apply_camera_config(cameras_to_update)
 
@@ -259,7 +271,13 @@ class VisionManager:
             self._apply_lock.release()
 
     def _do_apply_camera_config(self, cameras_to_update: list):
-        """Internal implementation of apply_camera_config."""
+        """
+        Internal implementation of apply_camera_config.
+
+        Phase 6.14: Deterministic STOP→CREATE→START lifecycle
+        - Always stops running sources before creating new ones
+        - Logs reason for restart (config_changed)
+        """
         # Refrescar flag ip_only desde config
         self._ip_only = self.config.is_ip_only()
         print(f"[VisionManager] ip_only={self._ip_only}")
@@ -272,15 +290,19 @@ class VisionManager:
         }
 
         # FASE 1: STOP todas las sources existentes PRIMERO
-        print(f"[VisionManager] PHASE 1: STOPPING existing sources...")
+        # Phase 6.14: This is the DETERMINISTIC restart - we always stop before recreating
+        print(f"[VisionManager] PHASE 1: STOPPING existing sources (reason=config_changed)...")
         for cam_name in cameras_to_update:
             loop = loop_map.get(cam_name)
             if loop and loop.source:
-                print(f"[VisionManager] {cam_name} STOPPING source...")
+                was_running = loop.source.is_opened()
+                print(f"[VisionManager] {cam_name} STOPPING source (was_running={was_running})...")
                 loop.source.stop()
                 loop.source = None
                 loop.has_valid_source = False
                 print(f"[VisionManager] {cam_name} STOPPED")
+            else:
+                print(f"[VisionManager] {cam_name} no source to stop")
 
         print(f"[VisionManager] Active threads after stop: {threading.active_count()}")
 
