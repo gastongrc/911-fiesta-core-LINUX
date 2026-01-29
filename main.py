@@ -1662,8 +1662,8 @@ class Main(QMainWindow):
         # === PANEL VISION SYSTEM PRO - 3 TABS INDEPENDIENTES ===
         if VISION_AVAILABLE and self.vision_manager:
             try:
-                # Tab 1: Haze Detector PRO
-                self.vision_haze_tab = VisionHazeTab(self.vision_manager, self)
+                # Tab 1: Haze Detector PRO (V16: pasa system_bridge para sync checkbox)
+                self.vision_haze_tab = VisionHazeTab(self.vision_manager, self, system_bridge=self.system_bridge)
                 self.tabs.addTab(self.vision_haze_tab, "Vision Haze")
                 print("[MAIN] VisionHazeTab añadido correctamente")
 

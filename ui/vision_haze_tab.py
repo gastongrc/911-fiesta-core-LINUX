@@ -66,9 +66,10 @@ class VisionHazeTab(QWidget):
     - FPS display
     """
 
-    def __init__(self, vision_manager, parent=None):
+    def __init__(self, vision_manager, parent=None, system_bridge=None):
         super().__init__(parent)
         self.vision_manager = vision_manager
+        self._system_bridge = system_bridge  # V16: para sync checkbox con calendario
 
         # Thread-safe frame buffer (Phase 6.9)
         self._frame_lock = threading.Lock()
@@ -380,6 +381,26 @@ class VisionHazeTab(QWidget):
             # FPS
             fps = state.get("system", {}).get("fps", 0.0)
             self.fps_label.setText(f"FPS: {fps:.1f}")
+
+            # V16: Sincronizar checkbox con estado REAL + bloquear si calendario gobierna
+            haze_enabled = haze_state.get("enabled", False)
+            calendar_governs = False
+
+            if self._system_bridge:
+                try:
+                    actions = self._system_bridge.get_current_actions()
+                    # Si hay actions activas, calendario está gobernando
+                    calendar_governs = len(actions) > 0
+                except Exception:
+                    pass
+
+            # Sincronizar checkbox sin disparar señales
+            self.haze_enabled_check.blockSignals(True)
+            self.haze_enabled_check.setChecked(haze_enabled)
+            self.haze_enabled_check.blockSignals(False)
+
+            # Bloquear checkbox si calendario gobierna (operador no puede pelear)
+            self.haze_enabled_check.setEnabled(not calendar_governs)
 
             # Estado detector
             status = haze_state.get("status", "READY")
