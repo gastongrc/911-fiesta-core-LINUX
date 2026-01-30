@@ -105,6 +105,10 @@ class MJPEGSource(CameraSource):
     Phase 6.11: Latest-frame buffer policy
     - Queue maxsize=1 with drop policy (always keep latest frame only)
     - Metrics: fps_read, drops, decode_ms
+
+    Phase 6.14: Config-aware restart
+    - get_config_signature() for config comparison
+    - start() with auto-restart if config changed
     """
 
     # Short read timeout to ensure thread can check stop_event frequently
@@ -165,11 +169,55 @@ class MJPEGSource(CameraSource):
         self._reconnect_count = 0
         self._max_reconnect_backoff = 10.0
 
-    def start(self) -> bool:
-        """Inicia el thread de captura MJPEG."""
+        # Phase 6.14: Config signature for change detection
+        self._config_signature = self._compute_config_signature()
+
+    def _compute_config_signature(self) -> str:
+        """Computes a signature from config params for change detection."""
+        return f"{self.url}|{self.username}|{self.password}|{self.fps_target}"
+
+    def get_config_signature(self) -> str:
+        """Returns current config signature for comparison."""
+        return self._config_signature
+
+    def start(self, new_url: str = None, new_username: str = None, new_password: str = None) -> bool:
+        """
+        Inicia el thread de captura MJPEG.
+
+        Phase 6.14: If already running, checks if config changed.
+        - Same config → log "Already running (same config)" and return True
+        - Different config → restart with new config
+
+        Args:
+            new_url: Optional new URL (for restart detection)
+            new_username: Optional new username
+            new_password: Optional new password
+        """
+        # Build new signature if params provided
+        check_url = new_url if new_url is not None else self.url
+        check_user = new_username if new_username is not None else self.username
+        check_pass = new_password if new_password is not None else self.password
+        new_signature = f"{check_url}|{check_user}|{check_pass}|{self.fps_target}"
+
         if self._thread and self._thread.is_alive():
-            print(f"[MJPEGSource] Ya está corriendo: {self.url}")
-            return True
+            # Check if config is the same
+            if new_signature == self._config_signature:
+                print(f"[MJPEGSource] Already running (same config): {self.url}")
+                return True
+            else:
+                # Config changed - do restart
+                print(f"[MJPEGSource] Config changed while running - restarting...")
+                print(f"[MJPEGSource] Old: {self._config_signature[:50]}")
+                print(f"[MJPEGSource] New: {new_signature[:50]}")
+                self.stop()
+                # Update config
+                if new_url is not None:
+                    self.url = new_url
+                if new_username is not None:
+                    self.username = new_username
+                if new_password is not None:
+                    self.password = new_password
+                self._config_signature = new_signature
 
         # Validar URL antes de intentar conectar
         if not self.url or "0.0.0.0" in self.url:
@@ -496,6 +544,10 @@ class RTSPSource(CameraSource):
     - stop() only signals, never touches _cap
     - _cap is released ONLY inside capture thread
     - request_reconnect() for soft reconnection without stop
+
+    Phase 6.14: Config-aware restart
+    - get_config_signature() for config comparison
+    - start() with auto-restart if config changed
     """
 
     # Consecutive errors threshold before triggering reconnect
@@ -565,11 +617,41 @@ class RTSPSource(CameraSource):
         # Backoff config
         self._max_reconnect_backoff = 10.0
 
-    def start(self) -> bool:
-        """Inicia el thread de captura RTSP."""
+        # Phase 6.14: Config signature for change detection
+        self._config_signature = self._compute_config_signature()
+
+    def _compute_config_signature(self) -> str:
+        """Computes a signature from config params for change detection."""
+        return f"{self.url}|{self.fps_target}"
+
+    def get_config_signature(self) -> str:
+        """Returns current config signature for comparison."""
+        return self._config_signature
+
+    def start(self, new_url: str = None) -> bool:
+        """
+        Inicia el thread de captura RTSP.
+
+        Phase 6.14: If already running, checks if config changed.
+        - Same config → log "Already running (same config)" and return True
+        - Different config → restart with new config
+        """
+        # Build new signature if params provided
+        check_url = new_url if new_url is not None else self.url
+        new_signature = f"{check_url}|{self.fps_target}"
+
         if self._thread and self._thread.is_alive():
-            print(f"[RTSPSource] Ya está corriendo: {self._safe_url()}")
-            return True
+            # Check if config is the same
+            if new_signature == self._config_signature:
+                print(f"[RTSPSource] Already running (same config): {self._safe_url()}")
+                return True
+            else:
+                # Config changed - do restart
+                print(f"[RTSPSource] Config changed while running - restarting...")
+                self.stop()
+                if new_url is not None:
+                    self.url = new_url
+                self._config_signature = new_signature
 
         # Validar URL
         if not self.url or not self.url.startswith("rtsp://"):
@@ -945,6 +1027,10 @@ class RTSPSourcePyAV(CameraSource):
     - Queue maxsize=1 with drop policy (latest frame only)
     - Thread-safe reconnection (maintains fix from Phase 6.12)
     - PTS-based latency estimation
+
+    Phase 6.14: Config-aware restart
+    - get_config_signature() for config comparison
+    - start() with auto-restart if config changed
     """
 
     # Consecutive errors threshold before triggering reconnect
@@ -1019,11 +1105,55 @@ class RTSPSourcePyAV(CameraSource):
         self._stall_detected = False
         self._max_reconnect_backoff = 10.0
 
-    def start(self) -> bool:
-        """Inicia el thread de captura RTSP PyAV."""
+        # Phase 6.14: Config signature for change detection
+        self._config_signature = self._compute_config_signature()
+
+    def _compute_config_signature(self) -> str:
+        """Computes a signature from config params for change detection."""
+        return f"{self.url}|{self.transport}|{self.low_latency}|{self.fps_target}"
+
+    def get_config_signature(self) -> str:
+        """Returns current config signature for comparison."""
+        return self._config_signature
+
+    def start(self, new_url: str = None, new_transport: str = None, new_low_latency: bool = None) -> bool:
+        """
+        Inicia el thread de captura RTSP PyAV.
+
+        Phase 6.14: If already running, checks if config changed.
+        - Same config → log "Already running (same config)" and return True
+        - Different config → restart with new config
+
+        Args:
+            new_url: Optional new URL (for restart detection)
+            new_transport: Optional new transport ("udp" or "tcp")
+            new_low_latency: Optional new low_latency flag
+        """
+        # Build new signature if params provided
+        check_url = new_url if new_url is not None else self.url
+        check_transport = new_transport if new_transport is not None else self.transport
+        check_low_latency = new_low_latency if new_low_latency is not None else self.low_latency
+        new_signature = f"{check_url}|{check_transport}|{check_low_latency}|{self.fps_target}"
+
         if self._thread and self._thread.is_alive():
-            print(f"[RTSPSourcePyAV] Already running: {self._safe_url()}")
-            return True
+            # Check if config is the same
+            if new_signature == self._config_signature:
+                print(f"[RTSPSourcePyAV] Already running (same config): {self._safe_url()}")
+                return True
+            else:
+                # Config changed - do restart
+                print(f"[RTSPSourcePyAV] Config changed while running - restarting...")
+                print(f"[RTSPSourcePyAV] Old config: {self._config_signature[:60]}")
+                print(f"[RTSPSourcePyAV] New config: {new_signature[:60]}")
+                self.stop()
+                # Update config
+                if new_url is not None:
+                    self.url = new_url
+                if new_transport is not None:
+                    self.transport = new_transport.lower()
+                if new_low_latency is not None:
+                    self.low_latency = new_low_latency
+                self._config_signature = new_signature
 
         if not self.url or not self.url.startswith("rtsp://"):
             print(f"[RTSPSourcePyAV] Invalid URL: {self._safe_url()}")

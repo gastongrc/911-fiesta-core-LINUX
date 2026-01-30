@@ -1,5 +1,5 @@
 """
-VisionManager PRO - Phase 6.11 + V9 Artist
+VisionManager PRO - Phase 6.14.1 + V9 Artist
 Manager centralizado del Vision System PRO
 Coordina: VisionConfig, VisionState, HazeDetector, DJDetector, ArtistDetector, CameraLoop
 Soporta: IP cameras (MJPEG Axis + RTSP H.264) - USB REMOVED
@@ -7,6 +7,10 @@ Integración con CueEngine para disparar cues
 
 V9 Artist: ArtistTracker replaced with ArtistDetector (YOLO-based, 8 zones, non-blocking)
 Phase 6.11: Soporte dual MJPEG + RTSP con baja latencia (queue maxsize=1, frame drops)
+Phase 6.14: Deterministic camera restart on config change (no more "SKIPPED" ghosting)
+Phase 6.14.1: Stop→Start always comes back with live cameras
+  - start() calls apply_camera_config(force=True) before starting loops
+  - apply_camera_config() detects dirty state (enabled+configured but source=None)
 """
 import threading
 import hashlib
@@ -228,13 +232,23 @@ class VisionManager:
 
         LIFECYCLE: STOP_OLD -> CREATE_NEW -> START_NEW (nunca al revés)
 
+        Phase 6.14: Deterministic restart behavior
+        - If config changed and camera running → stop → apply → start (restart limpio)
+        - If config unchanged → skip (no-op)
+        - Lock prevents concurrent calls, not camera restarts
+
+        Phase 6.14.1: Dirty state detection
+        - If enabled+configured but source=None → force apply (recover from stop)
+        - This guarantees Stop→Start always recreates sources
+
         Args:
             camera_name: Nombre de cámara específica, o None para todas
             force: Si True, forzar recreación aunque config no haya cambiado
         """
         # Intentar adquirir lock (no bloqueante para evitar deadlock)
         if not self._apply_lock.acquire(blocking=False):
-            print("[VisionManager] apply_camera_config SKIPPED (already running)")
+            # Phase 6.14: Clearer message - this is about concurrent calls, not camera state
+            print("[VisionManager] apply_camera_config SKIPPED (concurrent call in progress)")
             return
 
         try:
@@ -243,6 +257,14 @@ class VisionManager:
 
             cameras_to_update = [camera_name] if camera_name else ["haze", "dj", "artist"]
 
+            # Phase 6.14.1: Detect dirty state - enabled+configured but source=None
+            # This can happen after stop() which sets source=None
+            if not force:
+                dirty_cams = self._detect_dirty_sources(cameras_to_update)
+                if dirty_cams:
+                    print(f"[VisionManager] Dirty state detected: {dirty_cams} enabled+configured but source=None -> forcing apply")
+                    force = True
+
             # Check if config actually changed
             new_hash = self._get_cameras_config_hash(cameras_to_update)
             if not force and self._last_config_hash == new_hash:
@@ -250,16 +272,56 @@ class VisionManager:
                 print(f"[VisionManager] === APPLY_CAMERA_CONFIG END (no-op) ===")
                 return
 
+            # Phase 6.14: Log when config changed (deterministic restart)
+            if self._last_config_hash is not None:
+                print(f"[VisionManager] Config CHANGED: {self._last_config_hash[:8]} → {new_hash[:8]} (will restart)")
+            else:
+                print(f"[VisionManager] Config hash (initial): {new_hash[:8]}")
+
             self._last_config_hash = new_hash
-            print(f"[VisionManager] Config hash: {new_hash[:8]}")
 
             self._do_apply_camera_config(cameras_to_update)
 
         finally:
             self._apply_lock.release()
 
+    def _detect_dirty_sources(self, camera_names: list) -> list:
+        """
+        Phase 6.14.1: Detects cameras that are enabled+configured but have no source.
+        This "dirty state" happens after stop() which sets source=None.
+
+        Args:
+            camera_names: List of camera names to check
+
+        Returns:
+            list: Names of cameras in dirty state
+        """
+        loop_map = {
+            "haze": self.camera_loop_haze,
+            "dj": self.camera_loop_dj,
+            "artist": self.camera_loop_artist
+        }
+
+        dirty = []
+        for cam_name in camera_names:
+            cam_config = self.config.data.get("cameras", {}).get(cam_name, {})
+            enabled = cam_config.get("enabled", False)
+            configured = self.config.is_camera_configured(cam_name)
+            loop = loop_map.get(cam_name)
+
+            if enabled and configured and loop and loop.source is None:
+                dirty.append(cam_name)
+
+        return dirty
+
     def _do_apply_camera_config(self, cameras_to_update: list):
-        """Internal implementation of apply_camera_config."""
+        """
+        Internal implementation of apply_camera_config.
+
+        Phase 6.14: Deterministic STOP→CREATE→START lifecycle
+        - Always stops running sources before creating new ones
+        - Logs reason for restart (config_changed)
+        """
         # Refrescar flag ip_only desde config
         self._ip_only = self.config.is_ip_only()
         print(f"[VisionManager] ip_only={self._ip_only}")
@@ -272,15 +334,19 @@ class VisionManager:
         }
 
         # FASE 1: STOP todas las sources existentes PRIMERO
-        print(f"[VisionManager] PHASE 1: STOPPING existing sources...")
+        # Phase 6.14: This is the DETERMINISTIC restart - we always stop before recreating
+        print(f"[VisionManager] PHASE 1: STOPPING existing sources (reason=config_changed)...")
         for cam_name in cameras_to_update:
             loop = loop_map.get(cam_name)
             if loop and loop.source:
-                print(f"[VisionManager] {cam_name} STOPPING source...")
+                was_running = loop.source.is_opened()
+                print(f"[VisionManager] {cam_name} STOPPING source (was_running={was_running})...")
                 loop.source.stop()
                 loop.source = None
                 loop.has_valid_source = False
                 print(f"[VisionManager] {cam_name} STOPPED")
+            else:
+                print(f"[VisionManager] {cam_name} no source to stop")
 
         print(f"[VisionManager] Active threads after stop: {threading.active_count()}")
 
@@ -450,6 +516,7 @@ class VisionManager:
         Arranca el sistema de visión (todos los CameraLoops).
 
         V13: Agregado parámetro force para bypass de gating cuando calendario activa módulo.
+        V6.14.1: Llama apply_camera_config(force=True) para garantizar sources vivas.
 
         Args:
             force: Si True, ignora el gating de permisos (usado por calendario)
@@ -465,6 +532,12 @@ class VisionManager:
 
         try:
             print(f"[VisionManager] Iniciando 3 CameraLoops (MJPEG only) force={force}...")
+
+            # V6.14.1: ENSURE sources exist before starting loops
+            # This guarantees Stop→Start always comes back with live cameras
+            print("[VisionManager] start(): ensuring sources via apply_camera_config(force=True)")
+            self.apply_camera_config(force=True)
+
             self.camera_loop_haze.start()
             self.camera_loop_dj.start()
             self.camera_loop_artist.start()
