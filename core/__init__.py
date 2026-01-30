@@ -27,6 +27,18 @@ except ImportError as e:
     reset_system_bridge = None
     print(f"[Core] SystemBridge no disponible: {e}")
 
+# Boot Manager - Deterministic boot sequence
+try:
+    from .boot_manager import BootManager, BootState, create_boot_manager, get_boot_manager
+    BOOT_MANAGER_AVAILABLE = True
+except ImportError as e:
+    BOOT_MANAGER_AVAILABLE = False
+    BootManager = None
+    BootState = None
+    create_boot_manager = None
+    get_boot_manager = None
+    print(f"[Core] BootManager no disponible: {e}")
+
 __all__ = [
     # Vision
     'VisionRouter',
@@ -44,4 +56,10 @@ __all__ = [
     'get_system_bridge',
     'reset_system_bridge',
     'SYSTEM_BRIDGE_AVAILABLE',
+    # Boot Manager
+    'BootManager',
+    'BootState',
+    'create_boot_manager',
+    'get_boot_manager',
+    'BOOT_MANAGER_AVAILABLE',
 ]

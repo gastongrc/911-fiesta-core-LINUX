@@ -292,6 +292,17 @@ except Exception as e:
     print(f"[MAIN] SystemBridge no disponible: {e}")
     get_system_bridge = None
 
+# Boot Manager - Deterministic boot sequence
+try:
+    from core.boot_manager import create_boot_manager, get_boot_manager
+    BOOT_MANAGER_AVAILABLE = True
+    print("[MAIN] OK: BootManager import")
+except Exception as e:
+    BOOT_MANAGER_AVAILABLE = False
+    print(f"[MAIN] FAIL: BootManager no disponible: {e}")
+    create_boot_manager = None
+    get_boot_manager = None
+
 # Cues Monitor Tab
 
 # TAP Tempo / AutoClock v9 + KickPulseDetector V13
@@ -923,6 +934,50 @@ class Main(QMainWindow):
         self._start_loop_probe()
         self._start_health_timer()
 
+        # =====================================================================
+        # BOOT MANAGER v1.0 - AUTO LOAD SHOW
+        # =====================================================================
+        # Secuencia de boot determinística:
+        # 1. KILL ALL en consola (baseline limpio)
+        # 2. Calendar resolve con force=True
+        # 3. Vision sync con actions del calendario
+        # 4. CueEngine baseline (C41 dimmer)
+        # 5. Log READY con resumen de estado
+        # =====================================================================
+        if BOOT_MANAGER_AVAILABLE and create_boot_manager:
+            try:
+                self.boot_manager = create_boot_manager(
+                    avolites=self.avolites,
+                    cue_engine=self.cue_engine,
+                    calendar_manager=self.calendar_manager,
+                    vision_manager=self.vision_manager if hasattr(self, 'vision_manager') else None,
+                    system_bridge=self.system_bridge if hasattr(self, 'system_bridge') else None,
+                    state_manager=self.state_manager if hasattr(self, 'state_manager') else None,
+                    energy_detector=self.energy_detector if hasattr(self, 'energy_detector') else None,
+                )
+
+                # Ejecutar boot determinístico usando QTimer.singleShot para no bloquear UI
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(100, self._execute_boot)
+                print("[MAIN] BootManager scheduled for execution")
+
+            except Exception as e:
+                print(f"[MAIN] Error creating BootManager: {e}")
+                self.boot_manager = None
+        else:
+            self.boot_manager = None
+            print("[MAIN] BootManager not available")
+
+    def _execute_boot(self):
+        """Ejecuta el boot determinístico (llamado via QTimer.singleShot)."""
+        if self.boot_manager:
+            try:
+                success = self.boot_manager.boot_autoload_show()
+                if not success:
+                    print("[MAIN] Boot completed with errors")
+            except Exception as e:
+                print(f"[MAIN] Boot execution error: {e}")
+
     def _start_loop_probe(self):
         """Iniciar probe de latencia del event-loop"""
         if self._loop_probe is not None:
@@ -986,7 +1041,11 @@ class Main(QMainWindow):
                 last_send_ms = status.get("last_send_ms")
                 last_error_short = status.get("last_error_short")
                 last_fire_ts = status.get("last_fire_ts")
-                
+
+                # BootManager: Apply pending baseline if Titan reconnected
+                if connected and self.boot_manager and self.boot_manager.has_pending_baseline():
+                    self.boot_manager.apply_pending_baseline()
+
                 # Estado de conexión
                 if connected:
                     status_txt = "✔"
