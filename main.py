@@ -612,7 +612,8 @@ class Main(QMainWindow):
         self.resize(1200, 800)
 
         # Preset path - SINGLE PROFILE (source of truth)
-        self.preset_path = "presetv10 bajada v56.json"
+        # Default profile path - uses latest existing preset in project
+        self.preset_path = "presetv10 bajada v54.json"
 
         # Health monitoring
         self.health_enabled = True
@@ -629,6 +630,7 @@ class Main(QMainWindow):
         self._pending_initial_apply = False
         self._pending_apply_in_progress = False  # Lock to prevent double-firing
         self._boot_calendar_result = None  # Stored for re-apply on READY
+        self._first_audio_buffer_logged = False  # Log only first buffer
 
         self.energy_detector = EnergyDetector()
         self.avolites = AvolitesController(auto_connect=False)
@@ -1336,17 +1338,8 @@ class Main(QMainWindow):
         top_layout = QHBoxLayout(top)
         top_layout.setContentsMargins(8,8,8,8)
 
-        # V13: Only indicators in top bar - all controls moved to Red/Consola tab
-        if CUES_AVAILABLE:
-            self.btn_cues = QPushButton("Ir a Cues")
-        else:
-            self.btn_cues = QPushButton("Cues (No disponible)")
-            self.btn_cues.setEnabled(False)
-
-        top_layout.addWidget(self.btn_cues)
+        # V13: Only status indicators in top bar - all controls in Red/Consola tab
         top_layout.addStretch()
-
-        # Status indicators only
         self.lbl_info = QLabel("🎙 Sin conectar")
         self.vu_db = QLabel("Nivel: - dBFS")
         top_layout.addWidget(self.lbl_info)
@@ -2135,7 +2128,7 @@ class Main(QMainWindow):
             print(f"[AUDIO] Error listing devices: {e}")
 
     def _on_audio_connect(self):
-        """Connect to selected audio device"""
+        """Connect to selected audio device using canonical start() method."""
         try:
             idx = self.cmb_audio_device.currentData()
             if idx is None:
@@ -2146,20 +2139,23 @@ class Main(QMainWindow):
             if hasattr(self, 'engine') and self.engine:
                 self.stop()
 
-            # Start new engine
-            self.engine = AudioEngine(device_index=int(idx), ring_seconds=3.0)
-            self.engine.start()
+            # Use canonical start() - this initializes the full pipeline:
+            # engine + AudioMonitor + waveform + _clock + _acc + t_frame
+            self.start(device_index=idx)
 
-            # Update status - use samplerate (not sr)
+            # Verify engine actually started
+            if not self.engine:
+                self.lbl_audio_status.setText("● Error al conectar")
+                self.lbl_audio_status.setStyleSheet("color:#e74c3c; font-weight:700;")
+                return
+
+            # Update Red/Consola UI labels (start() updates top bar only)
             sr = getattr(self.engine, 'samplerate', None) or getattr(self.engine, 'sr', None) or 48000
             self.lbl_audio_status.setText("● Conectado")
             self.lbl_audio_status.setStyleSheet("color:#27ae60; font-weight:700;")
             self.lbl_audio_sr.setText(f"SR: {sr} Hz")
 
-            # Update top bar indicator
-            self.lbl_info.setText(f"🎙 Conectado (SR={sr})")
-
-            print(f"[AUDIO] Connected to device #{idx}")
+            print(f"[AUDIO] Pipeline started: device=#{idx} sr={sr} t_frame=running")
 
         except Exception as e:
             self.lbl_audio_status.setText(f"● Error: {e}")
@@ -2262,21 +2258,25 @@ class Main(QMainWindow):
 
                 if target_idx is not None:
                     try:
-                        self.engine = AudioEngine(device_index=int(target_idx), ring_seconds=3.0)
-                        self.engine.start()
-                        print(f"[PROFILE] applied audio: device=#{target_idx} connected")
+                        # Use canonical start() - initializes full pipeline:
+                        # engine + AudioMonitor + waveform + _clock + _acc + t_frame
+                        self.start(device_index=target_idx)
 
-                        # Update UI - use samplerate (not sr)
-                        sr = getattr(self.engine, 'samplerate', None) or getattr(self.engine, 'sr', None) or 48000
-                        if hasattr(self, 'cmb_audio_device'):
-                            for i in range(self.cmb_audio_device.count()):
-                                if self.cmb_audio_device.itemData(i) == target_idx:
-                                    self.cmb_audio_device.setCurrentIndex(i)
-                                    break
-                            self.lbl_audio_status.setText("● Conectado")
-                            self.lbl_audio_status.setStyleSheet("color:#27ae60; font-weight:700;")
-                            self.lbl_audio_sr.setText(f"SR: {sr} Hz")
-                        self.lbl_info.setText(f"🎙 Conectado (SR={sr})")
+                        if self.engine:
+                            sr = getattr(self.engine, 'samplerate', None) or getattr(self.engine, 'sr', None) or 48000
+                            print(f"[PROFILE] audio pipeline started: device=#{target_idx} sr={sr} t_frame=running")
+
+                            # Update Red/Consola UI labels
+                            if hasattr(self, 'cmb_audio_device'):
+                                for i in range(self.cmb_audio_device.count()):
+                                    if self.cmb_audio_device.itemData(i) == target_idx:
+                                        self.cmb_audio_device.setCurrentIndex(i)
+                                        break
+                                self.lbl_audio_status.setText("● Conectado")
+                                self.lbl_audio_status.setStyleSheet("color:#27ae60; font-weight:700;")
+                                self.lbl_audio_sr.setText(f"SR: {sr} Hz")
+                        else:
+                            print(f"[PROFILE] audio connect failed for device #{target_idx}")
                     except Exception as e:
                         print(f"[PROFILE] audio connect error: {e}")
 
@@ -2916,11 +2916,19 @@ class Main(QMainWindow):
         self._mount_waveform(self._active_tab_name)
 
     def start(self, device_index=None):
-        """Start audio engine.
+        """Start audio engine - CANONICAL method for audio pipeline.
+
+        This is the ONLY method that should initialize audio. It sets up:
+        - AudioEngine (stream)
+        - AudioMonitor (consumers)
+        - waveform samplerate
+        - _clock and _acc (timing)
+        - t_frame timer (main processing loop)
 
         V13: device_index parameter required (controls moved to Red/Consola tab).
         """
         if self.engine:
+            print("[AUDIO] start() called but engine already running")
             return
 
         # V13: If no device_index provided, try from Red/Consola combo
@@ -2931,31 +2939,39 @@ class Main(QMainWindow):
                 print("[AUDIO] No device selected - use Red/Consola tab")
                 return
 
+        print(f"[AUDIO] start() device=#{device_index}")
+
         try:
             self.engine = AudioEngine(device_index=int(device_index), ring_seconds=3.0)
             self.engine.start()
+            print(f"[AUDIO] stream opened OK")
         except Exception as e:
             QMessageBox.critical(self, "Audio", f"Error abriendo dispositivo:\n{e}")
             self.engine = None
             return
 
-        # Initialize AudioMonitor
+        # Initialize AudioMonitor (wires consumers to engine)
         try:
             config_path = os.path.join(BASE_DIR, "config", "audio_monitor.json")
             with open(config_path, "r") as f:
                 monitor_config = json.load(f)
             self.audio_monitor = AudioMonitor(self.engine, monitor_config)
+            print(f"[AUDIO] AudioMonitor wired OK")
         except Exception as e:
             print(f"[AUDIO_MONITOR] Error initializing: {e}")
             self.audio_monitor = None
 
         st = self.engine.get_status()
-        self.lbl_info.setText(f"🎙 Dev #{device_index} | SR {st['samplerate']} | BS {st['blocksize']}")
-        self.waveform.set_samplerate(st['samplerate'])
+        sr = st['samplerate']
+        bs = st['blocksize']
+        self.lbl_info.setText(f"🎙 Dev #{device_index} | SR {sr} | BS {bs}")
+        self.waveform.set_samplerate(sr)
 
+        # Start timing and main processing loop
         self._clock.restart()
         self._acc = {k: 0.0 for k in self.CADENCE.keys()}
         self.t_frame.start()
+        print(f"[AUDIO] t_frame started (main loop) sr={sr} bs={bs}")
 
     def stop(self):
         self.t_frame.stop()
@@ -2966,10 +2982,12 @@ class Main(QMainWindow):
             except:
                 pass
         self.engine = None
+        self._first_audio_buffer_logged = False  # Reset for next start
         self.lbl_info.setText("🎙 Sin conectar")
         self.vu_db.setText("Nivel: - dBFS")
         self.waveform.clear()
         self.vu_main.setValue(0)
+        print("[AUDIO] stopped")
 
     def calibrate(self):
         if self.engine:
@@ -3119,6 +3137,10 @@ class Main(QMainWindow):
 
         if needs_modules or needs_energy:
             block_modules = self.engine.get_recent(0.25)
+            # Log first buffer received (once only)
+            if block_modules is not None and block_modules.size > 0 and not self._first_audio_buffer_logged:
+                self._first_audio_buffer_logged = True
+                print(f"[AUDIO] first buffer received: {block_modules.size} samples")
         
         if needs_scope or needs_energy:
             block_scope = self.engine.get_recent(0.05)
