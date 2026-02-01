@@ -2124,6 +2124,222 @@ class Main(QMainWindow):
         data["net_panel"].update(patch)
         return data
 
+    # ========== PROFILE MANAGEMENT (SAFE SAVE/LOAD) ==========
+
+    # Canonical base preset (DO NOT MODIFY)
+    CANONICAL_BASE_PRESET = "presetv10 bajada v54.json"
+    # Critical keys that must exist in a valid preset
+    PRESET_CRITICAL_KEYS = {"version", "bajada", "base_golpe", "ataque", "brake", "enabled_flags"}
+    # Minimum file size for a valid preset (bytes)
+    PRESET_MIN_SIZE = 2000
+
+    def _deep_merge(self, base, patch):
+        """
+        Recursively merge patch into base. Only updates keys present in patch.
+        Does NOT delete keys that exist in base but not in patch.
+
+        Args:
+            base: Base dictionary (source of truth)
+            patch: Patch dictionary (updates to apply)
+
+        Returns:
+            Merged dictionary (base is modified in place and returned)
+        """
+        if not isinstance(base, dict) or not isinstance(patch, dict):
+            return patch
+
+        for key, value in patch.items():
+            if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+                # Recursive merge for nested dicts
+                self._deep_merge(base[key], value)
+            else:
+                # Overwrite or add key
+                base[key] = value
+
+        return base
+
+    def _ensure_profile_exists(self):
+        """
+        Ensure the profile file exists. If not, clone from canonical base.
+
+        Returns:
+            bool: True if profile exists (or was created), False on error
+        """
+        try:
+            # If profile already exists and has content, use it
+            if os.path.exists(self.preset_path):
+                size = os.path.getsize(self.preset_path)
+                if size >= self.PRESET_MIN_SIZE:
+                    # Verify it has critical keys
+                    try:
+                        data = self._load_preset(self.preset_path)
+                        missing = self.PRESET_CRITICAL_KEYS - set(data.keys())
+                        if not missing:
+                            print(f"[PROFILE] using existing: {self.preset_path} ({size} bytes)")
+                            return True
+                        else:
+                            print(f"[PROFILE][WARN] {self.preset_path} missing keys: {missing}")
+                    except:
+                        pass
+
+            # Profile doesn't exist or is invalid - clone from canonical base
+            base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), self.CANONICAL_BASE_PRESET)
+
+            if not os.path.exists(base_path):
+                print(f"[PROFILE][ERR] canonical base not found: {base_path}")
+                return False
+
+            # Load canonical base
+            base_data = self._load_preset(base_path)
+            if not base_data:
+                print(f"[PROFILE][ERR] failed to load canonical base")
+                return False
+
+            # Extend net_panel with new fields
+            base_data = self._ensure_net_panel_defaults(base_data)
+
+            # Save as new profile
+            if self._safe_save_preset(self.preset_path, base_data):
+                print(f"[PROFILE] created from canonical base: {self.preset_path}")
+                return True
+            else:
+                print(f"[PROFILE][ERR] failed to create profile")
+                return False
+
+        except Exception as e:
+            print(f"[PROFILE][ERR] _ensure_profile_exists: {e}")
+            return False
+
+    def _safe_save_preset(self, path, data):
+        """
+        Safely save preset with validation and atomic write.
+
+        Checks:
+        - Data has critical keys
+        - Serialized size >= minimum
+        - Atomic write (temp file + rename)
+
+        Args:
+            path: Target file path
+            data: Preset data dictionary
+
+        Returns:
+            bool: True if save succeeded
+        """
+        try:
+            # Validate critical keys
+            missing = self.PRESET_CRITICAL_KEYS - set(data.keys())
+            if missing:
+                print(f"[PROFILE][ERR] refusing to save - missing keys: {missing}")
+                return False
+
+            # Serialize to string first to check size
+            json_str = json.dumps(data, indent=2, ensure_ascii=False)
+            if len(json_str) < self.PRESET_MIN_SIZE:
+                print(f"[PROFILE][ERR] refusing to save - too small: {len(json_str)} bytes (min {self.PRESET_MIN_SIZE})")
+                return False
+
+            # Atomic write: write to temp file, then rename
+            temp_path = path + ".tmp"
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                f.write(json_str)
+
+            # Rename temp to final (atomic on most filesystems)
+            if os.path.exists(path):
+                os.replace(temp_path, path)
+            else:
+                os.rename(temp_path, path)
+
+            print(f"[PROFILE] saved: {path} ({len(json_str)} bytes)")
+            return True
+
+        except Exception as e:
+            print(f"[PROFILE][ERR] _safe_save_preset: {e}")
+            # Clean up temp file if it exists
+            try:
+                if os.path.exists(path + ".tmp"):
+                    os.remove(path + ".tmp")
+            except:
+                pass
+            return False
+
+    def _collect_ui_state_patch(self):
+        """
+        Collect current UI state as a patch dictionary.
+        Only includes fields that should be persisted.
+
+        Returns:
+            dict: Patch with modules, flags, and net_panel
+        """
+        patch = {
+            "version": 15,
+            "architecture": "modular_v4.2",
+            "cue_engine_modular_v42": True,
+            "brake_analyzer_real": True,
+        }
+
+        # Collect module states
+        try:
+            patch["bajada"] = {m.name: m.card.to_preset() for m in self.modules_bajada if hasattr(m, "card")}
+            patch["base_golpe"] = {m.name: m.card.to_preset() for m in self.modules_golpe if hasattr(m, "card")}
+            patch["ataque"] = {m.name: m.card.to_preset() for m in self.modules_ataque if hasattr(m, "card")}
+            patch["brake"] = {m.name: m.card.to_preset() for m in self.modules_brake if hasattr(m, "card")}
+            patch["enabled_flags"] = {
+                m.name: getattr(m, 'active', True)
+                for m in (self.modules_bajada + self.modules_golpe + self.modules_ataque + self.modules_brake)
+            }
+        except Exception as e:
+            print(f"[PROFILE][WARN] error collecting modules: {e}")
+
+        # Collect net_panel state
+        try:
+            net_patch = {}
+
+            # Console config
+            if hasattr(self, 'ed_console_ip'):
+                net_patch["console_ip"] = self.ed_console_ip.text().strip() or "10.0.0.1"
+            if hasattr(self, 'ed_console_port'):
+                net_patch["console_port"] = int(self.ed_console_port.text().strip() or "4430")
+            if hasattr(self, 'spin_cue_offset'):
+                net_patch["cue_offset"] = self.spin_cue_offset.value()
+            if hasattr(self, 'chk_auto_retry'):
+                net_patch["auto_retry"] = self.chk_auto_retry.isChecked()
+
+            # Transport
+            if hasattr(self, '_get_current_transport'):
+                net_patch["transport"] = self._get_current_transport()
+
+            # NIC config
+            if hasattr(self, 'cmb_nic'):
+                nic_data = self.cmb_nic.currentData()
+                if nic_data and len(nic_data) >= 3:
+                    name, ip, mac, *_ = nic_data
+                    net_patch["local_nic"] = name
+                    net_patch["local_nic_id"] = mac or ""
+                    net_patch["local_ip"] = ip or ""
+
+            # Audio config
+            if hasattr(self, 'cmb_audio_device'):
+                idx = self.cmb_audio_device.currentData()
+                text = self.cmb_audio_device.currentText()
+                sr = 48000
+                if self.engine:
+                    sr = getattr(self.engine, 'samplerate', None) or getattr(self.engine, 'sr', None) or 48000
+                net_patch["audio"] = {
+                    "input_device_name": text.split(" ", 1)[1] if " " in text else text,
+                    "input_device_index": idx,
+                    "sample_rate": sr,
+                    "auto_connect": True
+                }
+
+            if net_patch:
+                patch["net_panel"] = net_patch
+
+        except Exception as e:
+            print(f"[PROFILE][WARN] error collecting net_panel: {e}")
+
+        return patch
+
     def _populate_audio_devices(self):
         """Populate audio device combobox"""
         try:
@@ -2200,6 +2416,9 @@ class Main(QMainWindow):
 
     def _on_show_load(self):
         """Load preset from self.preset_path"""
+        # Ensure profile exists (clone from v54 if needed)
+        self._ensure_profile_exists()
+
         if not os.path.exists(self.preset_path):
             QMessageBox.warning(self, "Load Show", f"Archivo no encontrado:\n{self.preset_path}")
             return
@@ -2228,15 +2447,19 @@ class Main(QMainWindow):
         Apply profile settings on startup (autonomous boot).
 
         V13 Boot Sequence (100ms):
-        1. Load profile from preset_path
-        2. Apply audio config + auto-connect
-        3. Apply NIC config
-        4. Apply Avolites config + auto-connect
+        1. Ensure profile exists (clone from v54 if needed)
+        2. Load profile from preset_path
+        3. Apply audio config + auto-connect
+        4. Apply NIC config
+        5. Apply Avolites config + auto-connect
 
         Note: Cues are handled separately in _execute_bootstrap (500ms).
         """
         try:
             print("[PROFILE] ========== STARTUP AUTO-APPLY ==========")
+
+            # Ensure profile exists (clone from canonical v54 if needed)
+            self._ensure_profile_exists()
 
             if not os.path.exists(self.preset_path):
                 print(f"[PROFILE] Preset not found: {self.preset_path}")
@@ -3140,67 +3363,72 @@ class Main(QMainWindow):
             self.engine.calibrate_noise(1.0)
 
     def save_preset(self, filepath=None):
-        """Save preset to file. If filepath not provided, shows file dialog."""
+        """
+        Save preset using safe merge strategy.
+
+        Strategy:
+        1. Load existing preset (or canonical base if not exists)
+        2. Collect current UI state as patch
+        3. Deep merge patch into base (preserves all existing keys)
+        4. Validate and atomic write
+
+        This NEVER creates an empty/partial preset.
+        """
         if filepath:
             filename = filepath
         else:
             filename, _ = QFileDialog.getSaveFileName(self, "Guardar preset", "preset.json", "JSON (*.json)")
             if not filename:
                 return
-        data = {
-            "version": 15,
-            "bajada": {m.name: m.card.to_preset() for m in self.modules_bajada if hasattr(m, "card")},
-            "base_golpe": {m.name: m.card.to_preset() for m in self.modules_golpe if hasattr(m, "card")},
-            "ataque": {m.name: m.card.to_preset() for m in self.modules_ataque if hasattr(m, "card")},
-            "brake": {m.name: m.card.to_preset() for m in self.modules_brake if hasattr(m, "card")},
-            "cue_engine_modular_v42": True,
-            "brake_analyzer_real": True,
-            "architecture": "modular_v4.2",
-            "enabled_flags": {
-                m.name: getattr(m, 'active', True) 
-                for m in (self.modules_bajada + self.modules_golpe + self.modules_ataque + self.modules_brake)
-            }
-        }
-        
-        # Build current net_panel from UI state
+
         try:
-            # Start with existing net_panel if file exists
+            # Step 1: Load base (existing preset or canonical base)
+            base_data = None
+
             if os.path.exists(filename):
-                old_data = self._load_preset(filename)
-                if "net_panel" in old_data:
-                    data["net_panel"] = old_data["net_panel"]
+                base_data = self._load_preset(filename)
+                # Verify base is valid
+                if base_data and len(base_data) > 0:
+                    missing = self.PRESET_CRITICAL_KEYS - set(base_data.keys())
+                    if missing:
+                        print(f"[PROFILE][WARN] existing file missing keys: {missing}")
+                        base_data = None
 
-            # Ensure net_panel exists
-            if "net_panel" not in data:
-                data = self._ensure_net_panel_defaults(data)
+            # Fallback to canonical base
+            if not base_data:
+                base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), self.CANONICAL_BASE_PRESET)
+                if os.path.exists(base_path):
+                    base_data = self._load_preset(base_path)
+                    print(f"[PROFILE] using canonical base for save")
+                else:
+                    print(f"[PROFILE][ERR] canonical base not found: {base_path}")
+                    QMessageBox.critical(self, "Error", "No se encontró el preset base canónico")
+                    return
 
-            # Update with current UI values
-            net = data["net_panel"]
-            net["console_ip"] = self.ed_console_ip.text().strip()
-            net["console_port"] = int(self.ed_console_port.text().strip() or "4430")
-            net["cue_offset"] = self.spin_cue_offset.value()
-            net["auto_retry"] = self.chk_auto_retry.isChecked()
-            net["transport"] = self._get_current_transport()
+            if not base_data:
+                print(f"[PROFILE][ERR] no base data available")
+                QMessageBox.critical(self, "Error", "No hay datos base para guardar")
+                return
 
-            # Audio config
-            if hasattr(self, 'cmb_audio_device'):
-                idx = self.cmb_audio_device.currentData()
-                text = self.cmb_audio_device.currentText()
-                net["audio"] = {
-                    "input_device_name": text.split(" ", 1)[1] if " " in text else text,
-                    "input_device_index": idx,
-                    "sample_rate": getattr(self.engine, 'samplerate', None) or getattr(self.engine, 'sr', None) or 48000 if self.engine else 48000,
-                    "auto_connect": True
-                }
+            # Step 2: Collect current UI state as patch
+            patch = self._collect_ui_state_patch()
+
+            # Step 3: Deep merge (preserves existing keys not in patch)
+            merged = self._deep_merge(base_data, patch)
+
+            # Ensure net_panel has all required fields
+            merged = self._ensure_net_panel_defaults(merged)
+
+            # Step 4: Safe save with validation
+            if self._safe_save_preset(filename, merged):
+                print(f"[PROFILE] save_preset OK: {filename}")
+            else:
+                QMessageBox.critical(self, "Error", "Error guardando preset - ver consola")
 
         except Exception as e:
-            print(f"[PRESET] Error building net_panel: {e}")
-        
-        try:
-            with open(filename, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-            print(f"[PRESET] Guardado: {filename}")
-        except Exception as e:
+            print(f"[PROFILE][ERR] save_preset: {e}")
+            import traceback
+            traceback.print_exc()
             QMessageBox.critical(self, "Error", f"Error guardando preset:\n{e}")
 
     def load_preset(self, filepath=None):
