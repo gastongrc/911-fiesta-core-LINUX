@@ -632,6 +632,9 @@ class Main(QMainWindow):
         self._boot_calendar_result = None  # Stored for re-apply on READY
         self._first_audio_buffer_logged = False  # Log only first buffer
 
+        # NIC configuration
+        self.local_ip_effective = None  # Currently bound local IP
+
         self.energy_detector = EnergyDetector()
         self.avolites = AvolitesController(auto_connect=False)
         # ✅ SPRINT 1: Pasar energy_detector al StateManager
@@ -2081,7 +2084,8 @@ class Main(QMainWindow):
                 "console_port": 4430,
                 "cue_offset": 169,
                 "local_nic": "auto",
-                "local_ip": "",
+                "local_nic_id": "",      # MAC address for stable NIC identification
+                "local_ip": "",          # Resolved IP for this NIC
                 "auto_retry": True,
                 "transport": "http",
                 "audio": {
@@ -2108,6 +2112,9 @@ class Main(QMainWindow):
         # Ensure cue_offset exists (migration)
         if "cue_offset" not in data.get("net_panel", {}):
             data["net_panel"]["cue_offset"] = 169
+        # Ensure local_nic_id exists (migration for Windows NIC persistence)
+        if "local_nic_id" not in data.get("net_panel", {}):
+            data["net_panel"]["local_nic_id"] = ""
         return data
     
     def _merge_net_panel(self, data, patch):
@@ -2280,14 +2287,7 @@ class Main(QMainWindow):
                     except Exception as e:
                         print(f"[PROFILE] audio connect error: {e}")
 
-            # Apply NIC config
-            local_nic = net.get("local_nic", "auto")
-            if local_nic and local_nic != "auto":
-                # TODO: Apply NIC selection
-                pass
-            print(f"[PROFILE] applied network: nic={local_nic}")
-
-            # Apply Avolites config + auto-connect
+            # Apply Avolites config (without connecting yet)
             console_ip = net.get("console_ip", "10.0.0.1")
             console_port = net.get("console_port", 4430)
             cue_offset = net.get("cue_offset", 169)
@@ -2299,10 +2299,38 @@ class Main(QMainWindow):
             if hasattr(self.avolites, 'set_cue_offset'):
                 self.avolites.set_cue_offset(cue_offset)
 
+            # Apply NIC config BEFORE connecting (affects local bind)
+            local_nic_id = net.get("local_nic_id", "")
+            local_ip = net.get("local_ip", "")
+            local_nic_name = net.get("local_nic", "auto")
+
+            if local_nic_id or local_ip:
+                # Find NIC by MAC first, fallback to IP
+                nic_found = self._find_nic_by_id(local_nic_id, local_ip)
+                if nic_found:
+                    name, ip, mac, up = nic_found
+                    # Apply without persisting (already saved)
+                    self._apply_nic_config(name, ip, mac, persist=False)
+                    print(f"[PROFILE] applied NIC: {name} ({ip}) [{mac[:17] if mac else '?'}]")
+
+                    # Update combo selection
+                    if hasattr(self, 'cmb_nic'):
+                        for i in range(self.cmb_nic.count()):
+                            data = self.cmb_nic.itemData(i)
+                            if data and len(data) >= 3:
+                                if mac and data[2] and data[2].lower() == mac.lower():
+                                    self.cmb_nic.setCurrentIndex(i)
+                                    break
+                else:
+                    print(f"[PROFILE] NIC not found: id={local_nic_id} ip={local_ip}")
+            else:
+                print(f"[PROFILE] NIC config: auto (no saved NIC)")
+
+            # Now connect to Titan
             if net.get("auto_retry", True):
                 try:
                     self.avolites.connect()
-                    print(f"[PROFILE] applied avolites: {console_ip}:{console_port} [{transport}] offset={cue_offset}")
+                    print(f"[PROFILE] applied avolites: {console_ip}:{console_port} [{transport}] offset={cue_offset} local={self.local_ip_effective or 'auto'}")
                 except Exception as e:
                     print(f"[PROFILE] avolites connect error (will retry): {e}")
 
@@ -2384,11 +2412,20 @@ class Main(QMainWindow):
 
             self.avolites.config_manager.config["console_ip"] = str(net.get("console_ip", "10.0.0.1"))
             self.avolites.config_manager.config["console_port"] = int(net.get("console_port", 4430))
-            
-            local_nic = net.get("local_nic", "auto")
-            if local_nic != "auto":
-                self.avolites.config_manager.config["local_ip"] = local_nic
-            
+
+            # Load NIC config - use local_ip if available
+            local_ip = net.get("local_ip", "")
+            local_nic_id = net.get("local_nic_id", "")
+            if local_ip:
+                self.avolites.config_manager.config["local_ip"] = local_ip
+                self.local_ip_effective = local_ip
+            elif local_nic_id:
+                # Find IP from MAC
+                nic_found = self._find_nic_by_id(local_nic_id, None)
+                if nic_found:
+                    self.avolites.config_manager.config["local_ip"] = nic_found[1]
+                    self.local_ip_effective = nic_found[1]
+
             self._add_net_event(f"Config cargada: {net.get('console_ip')}:{net.get('console_port')} [{transport}]")
             print(f"[NET] Config cargada desde preset")
             
@@ -2474,72 +2511,140 @@ class Main(QMainWindow):
             QMessageBox.critical(self, "Red", f"Error: {e}")
     
     def _on_apply_nic(self):
-        """Aplicar interfaz de red seleccionada con limpieza de campos"""
+        """Aplicar interfaz de red seleccionada y persistir con ID estable (MAC)."""
         try:
             idx = self.cmb_nic.currentIndex()
             if idx < 0:
                 return
-            
+
             nic_data = self.cmb_nic.currentData()
             if not nic_data:
                 return
-            
+
             name, ip, mac, up = nic_data
-            
-            if not os.path.exists(self.preset_path):
-                QMessageBox.warning(self, "Red", f"Preset no encontrado: {self.preset_path}")
-                return
-            
-            # PERSISTIR en net_panel con limpieza de campos
-            data = self._load_preset(self.preset_path)
-            data = self._ensure_net_panel_defaults(data)
-            
-            # Determinar si es nombre de NIC o IP directa
-            if name == "auto" or not self._is_ip_address(name):
-                # Es nombre de NIC
-                patch = {
-                    "local_nic": name,
-                    "local_ip": ""  # Limpiar IP si usamos nombre
-                }
-                interface_value = name
+
+            # Use canonical apply method
+            success = self._apply_nic_config(name, ip, mac, persist=True)
+
+            if success:
+                self._add_net_event(f"NIC aplicada: {name} ({ip}) [{mac[:17] if mac else '?'}]")
             else:
-                # Es IP directa
+                self._add_net_event(f"NIC fallida: {name}")
+
+        except Exception as e:
+            print(f"[NET][ERR] {e}")
+            QMessageBox.critical(self, "Red", f"Error: {e}")
+
+    def _apply_nic_config(self, name, ip, mac, persist=False):
+        """
+        CANONICAL method to apply NIC configuration.
+
+        Args:
+            name: NIC display name (for logging)
+            ip: IP address to bind to
+            mac: MAC address for stable identification
+            persist: If True, save to preset file
+
+        Returns:
+            bool: True if NIC was applied successfully
+        """
+        try:
+            # Store effective IP for transport binding
+            if name == "auto":
+                self.local_ip_effective = None
+                interface_value = None
+            else:
+                self.local_ip_effective = ip
+                interface_value = ip  # Always use IP for binding (more reliable)
+
+            # Persist to preset if requested
+            if persist and os.path.exists(self.preset_path):
+                data = self._load_preset(self.preset_path)
+                data = self._ensure_net_panel_defaults(data)
+
                 patch = {
-                    "local_nic": "",  # Limpiar nombre si usamos IP
-                    "local_ip": name
+                    "local_nic": name,           # Display name (informational)
+                    "local_nic_id": mac or "",   # MAC for stable identification
+                    "local_ip": ip or ""         # Resolved IP
                 }
-                interface_value = name
-            
-            data = self._merge_net_panel(data, patch)
-            
-            if not self._save_preset(self.preset_path, data):
-                QMessageBox.critical(self, "Red", "Error guardando preset")
-                return
-            
-            print(f"[NET] nic set interface={interface_value}")
-            self.avolites.set_local_interface(interface_value)
-            
-            # SIEMPRE reconectar después de cambiar NIC
+                data = self._merge_net_panel(data, patch)
+
+                if not self._save_preset(self.preset_path, data):
+                    print(f"[NET][ERR] Failed to persist NIC config")
+                else:
+                    print(f"[NET] persisted: nic_id={mac} ip={ip}")
+
+            # Apply to Avolites controller
+            if interface_value:
+                print(f"[NET] applying interface: {interface_value}")
+                self.avolites.set_local_interface(interface_value)
+
+            # Reconnect with new NIC
             if hasattr(self.avolites, 'reconnect'):
                 self.avolites.reconnect()
             elif hasattr(self.avolites, 'connect'):
                 self.avolites.connect()
-            
-            # Actualizar UI y mostrar bind efectivo
-            self.lbl_local_ip.setText(ip)
-            
-            # Obtener IP local efectiva después del reconnect
+
+            # Update UI
+            self.lbl_local_ip.setText(ip if ip else "Auto")
+
+            # Verify effective bind
             try:
                 status = self.avolites.get_status()
                 effective_ip = status.get("local_ip", ip)
-                self._add_net_event(f"NIC aplicada: {name} | Bind: {effective_ip}")
+                if effective_ip and effective_ip != ip:
+                    print(f"[NET][WARN] requested bind={ip} but effective={effective_ip}")
+                else:
+                    print(f"[NET] bind OK: {effective_ip}")
             except:
-                self._add_net_event(f"NIC aplicada: {name} ({ip})")
-            
+                pass
+
+            return True
+
         except Exception as e:
-            print(f"[NET][ERR] {e}")
-            QMessageBox.critical(self, "Red", f"Error: {e}")
-    
+            print(f"[NET][ERR] _apply_nic_config: {e}")
+            return False
+
+    def _find_nic_by_id(self, nic_id, fallback_ip=None):
+        """
+        Find a NIC by its stable ID (MAC address) or fallback to IP.
+
+        Args:
+            nic_id: MAC address to search for
+            fallback_ip: IP address to try if MAC not found
+
+        Returns:
+            tuple: (name, ip, mac, up) or None if not found
+        """
+        try:
+            if not NETWORK_UTILS_AVAILABLE:
+                return None
+
+            interfaces = list_interfaces()
+
+            # First: try to match by MAC (stable ID)
+            if nic_id:
+                nic_id_clean = nic_id.lower().strip()
+                for name, ip, mac, up in interfaces:
+                    if mac and mac.lower().strip() == nic_id_clean:
+                        print(f"[NET] found NIC by MAC: {name} ({ip}) [{mac}]")
+                        return (name, ip, mac, up)
+
+            # Second: try to match by IP (fallback)
+            if fallback_ip:
+                ip_clean = fallback_ip.strip()
+                for name, ip, mac, up in interfaces:
+                    if ip and ip.strip() == ip_clean:
+                        print(f"[NET] found NIC by IP: {name} ({ip}) [{mac}]")
+                        return (name, ip, mac, up)
+
+            print(f"[NET] NIC not found: id={nic_id} ip={fallback_ip}")
+            return None
+
+        except Exception as e:
+            print(f"[NET][ERR] _find_nic_by_id: {e}")
+            return None
+
     def _is_ip_address(self, text):
         """Verifica si el texto es una dirección IPv4 válida"""
         try:
@@ -2754,22 +2859,62 @@ class Main(QMainWindow):
             self.ed_console_port.setText("6454")
     
     def _refresh_nics(self):
-        """Refrescar lista de interfaces de red"""
+        """Refrescar lista de interfaces de red y seleccionar NIC guardada"""
         try:
             self.cmb_nic.clear()
-            
+
             if NETWORK_UTILS_AVAILABLE:
                 interfaces = list_interfaces()
             else:
                 interfaces = [("Auto", "0.0.0.0", "00:00:00:00:00:00", True)]
-            
+
             self.cmb_nic.addItem("● Auto (detectar automáticamente)", ("auto", "0.0.0.0", "", True))
-            
+
             for name, ip, mac, up in interfaces:
                 status = "🟢" if up else "🔴"
                 label = f"{status} {name} ({ip}) [{mac[:17]}]"
                 self.cmb_nic.addItem(label, (name, ip, mac, up))
-            
+
+            # Load saved NIC config from preset
+            saved_nic_id = ""
+            saved_ip = ""
+            try:
+                if os.path.exists(self.preset_path):
+                    data = self._load_preset(self.preset_path)
+                    data = self._ensure_net_panel_defaults(data)
+                    net = data.get("net_panel", {})
+                    saved_nic_id = net.get("local_nic_id", "")
+                    saved_ip = net.get("local_ip", "")
+            except:
+                pass
+
+            # Priority 1: Select by saved MAC address
+            if saved_nic_id:
+                saved_mac_lower = saved_nic_id.lower().strip()
+                for i in range(self.cmb_nic.count()):
+                    data = self.cmb_nic.itemData(i)
+                    if data and len(data) >= 3:
+                        mac = data[2]
+                        if mac and mac.lower().strip() == saved_mac_lower:
+                            self.cmb_nic.setCurrentIndex(i)
+                            self.lbl_local_ip.setText(data[1])
+                            print(f"[NET] NIC selected by MAC: {data[0]} ({data[1]})")
+                            return
+
+            # Priority 2: Select by saved IP
+            if saved_ip:
+                saved_ip_clean = saved_ip.strip()
+                for i in range(self.cmb_nic.count()):
+                    data = self.cmb_nic.itemData(i)
+                    if data and len(data) >= 2:
+                        ip = data[1]
+                        if ip and ip.strip() == saved_ip_clean:
+                            self.cmb_nic.setCurrentIndex(i)
+                            self.lbl_local_ip.setText(ip)
+                            print(f"[NET] NIC selected by IP: {data[0]} ({ip})")
+                            return
+
+            # Priority 3: Select first 10.0.0.x NIC (Titan network)
             for i in range(self.cmb_nic.count()):
                 data = self.cmb_nic.itemData(i)
                 if data and len(data) >= 2:
@@ -2778,14 +2923,15 @@ class Main(QMainWindow):
                         self.cmb_nic.setCurrentIndex(i)
                         self.lbl_local_ip.setText(ip)
                         return
-            
+
+            # Priority 4: Select first UP interface
             for i in range(1, self.cmb_nic.count()):
                 data = self.cmb_nic.itemData(i)
                 if data and len(data) >= 4 and data[3]:
                     self.cmb_nic.setCurrentIndex(i)
                     self.lbl_local_ip.setText(data[1])
                     return
-                    
+
         except Exception as e:
             print(f"[NET][ERR] Error refrescando NICs: {e}")
     
