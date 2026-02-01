@@ -292,17 +292,6 @@ except Exception as e:
     print(f"[MAIN] SystemBridge no disponible: {e}")
     get_system_bridge = None
 
-# Boot Manager - Deterministic boot sequence
-try:
-    from core.boot_manager import create_boot_manager, get_boot_manager
-    BOOT_MANAGER_AVAILABLE = True
-    print("[MAIN] OK: BootManager import")
-except Exception as e:
-    BOOT_MANAGER_AVAILABLE = False
-    print(f"[MAIN] FAIL: BootManager no disponible: {e}")
-    create_boot_manager = None
-    get_boot_manager = None
-
 # Cues Monitor Tab
 
 # TAP Tempo / AutoClock v9 + KickPulseDetector V13
@@ -622,8 +611,8 @@ class Main(QMainWindow):
         self.setWindowTitle("911 Fiesta - Sistema Modular v4.2 + BRAKE ANALYZER REAL + RED PANEL + HEALTH")
         self.resize(1200, 800)
 
-        # Preset path - ACTUALIZADO
-        self.preset_path = "presetv10 bajada v39 red.json"
+        # Preset path - SINGLE PROFILE (source of truth)
+        self.preset_path = "presetv10 bajada v56.json"
 
         # Health monitoring
         self.health_enabled = True
@@ -633,6 +622,13 @@ class Main(QMainWindow):
         self._loop_probe_interval_s = 0.5
         self._loop_probe_last = None
         self._health_timer = None
+
+        # Boot flags
+        self._boot_ready = False
+        self._pending_console_baseline = False
+        self._pending_initial_apply = False
+        self._pending_apply_in_progress = False  # Lock to prevent double-firing
+        self._boot_calendar_result = None  # Stored for re-apply on READY
 
         self.energy_detector = EnergyDetector()
         self.avolites = AvolitesController(auto_connect=False)
@@ -935,48 +931,230 @@ class Main(QMainWindow):
         self._start_health_timer()
 
         # =====================================================================
-        # BOOT MANAGER v1.0 - AUTO LOAD SHOW
+        # V13 BOOT SEQUENCE - AUTONOMOUS PROFILE + DETERMINISTIC BOOTSTRAP
         # =====================================================================
-        # Secuencia de boot determinística:
-        # 1. KILL ALL en consola (baseline limpio)
-        # 2. Calendar resolve con force=True
-        # 3. Vision sync con actions del calendario
-        # 4. CueEngine baseline (C41 dimmer)
-        # 5. Log READY con resumen de estado
+        # PHASE 1 (100ms): _startup_auto_apply
+        #   - Load profile from preset_path
+        #   - Apply + auto-connect: Audio, NIC, Avolites
+        #
+        # PHASE 2 (500ms): _execute_bootstrap
+        #   - CueEngine reset
+        #   - Console baseline (KILL ALL + C41)
+        #   - Calendar bootstrap
+        #   - Vision sync
+        #   - Initial cues
+        #
+        # ORDER: load_profile → apply_profile → connections → cues
         # =====================================================================
-        if BOOT_MANAGER_AVAILABLE and create_boot_manager:
-            try:
-                self.boot_manager = create_boot_manager(
-                    avolites=self.avolites,
-                    cue_engine=self.cue_engine,
-                    calendar_manager=self.calendar_manager,
-                    vision_manager=self.vision_manager if hasattr(self, 'vision_manager') else None,
-                    system_bridge=self.system_bridge if hasattr(self, 'system_bridge') else None,
-                    state_manager=self.state_manager if hasattr(self, 'state_manager') else None,
-                    energy_detector=self.energy_detector if hasattr(self, 'energy_detector') else None,
-                )
+        QTimer.singleShot(100, self._startup_auto_apply)
+        QTimer.singleShot(500, self._execute_bootstrap)
 
-                # Ejecutar boot determinístico usando QTimer.singleShot para no bloquear UI
-                from PySide6.QtCore import QTimer
-                QTimer.singleShot(100, self._execute_boot)
-                print("[MAIN] BootManager scheduled for execution")
+    def _execute_bootstrap(self):
+        """
+        Bootstrap determinístico al arranque.
 
-            except Exception as e:
-                print(f"[MAIN] Error creating BootManager: {e}")
-                self.boot_manager = None
-        else:
-            self.boot_manager = None
-            print("[MAIN] BootManager not available")
+        Secuencia:
+        1. CueEngine silent_reset()
+        2. Console baseline: KILL ALL + C41 (si Titan READY, sino pending)
+        3. Calendar bootstrap_now() - resolve + apply forzado
+        4. Vision sync_runtime_to_actions() - sync a actions
+        5. Initial cues (CLIMA o BAJADA) - SOLO si Titan READY, sino pending
+        6. Marcar _boot_ready = True
 
-    def _execute_boot(self):
-        """Ejecuta el boot determinístico (llamado via QTimer.singleShot)."""
-        if self.boot_manager:
-            try:
-                success = self.boot_manager.boot_autoload_show()
-                if not success:
-                    print("[MAIN] Boot completed with errors")
-            except Exception as e:
-                print(f"[MAIN] Boot execution error: {e}")
+        Si Titan NOT READY: guarda calendar_result y marca pending_initial_apply.
+        Cuando Titan pasa a READY (en health tick): re-aplica baseline + initial cues.
+        """
+        print("[BOOT] ========== BOOTSTRAP START ==========")
+
+        titan_ready = False
+
+        try:
+            # === PASO 1: CueEngine silent_reset ===
+            print("[BOOT] PASO 1: CueEngine silent_reset")
+            if hasattr(self, 'cue_engine') and self.cue_engine:
+                if hasattr(self.cue_engine, 'silent_reset'):
+                    self.cue_engine.silent_reset()
+
+            # === PASO 2: Check Titan READY + Console baseline ===
+            print("[BOOT] PASO 2: Console baseline (KILL ALL + C41)")
+            if hasattr(self, 'avolites') and self.avolites:
+                try:
+                    titan_ready = self.avolites.is_ready() if hasattr(self.avolites, 'is_ready') else False
+
+                    if titan_ready:
+                        print("[BOOT] TITAN ready")
+                        self._apply_console_baseline()
+                    else:
+                        self._pending_console_baseline = True
+                        print("[BOOT] TITAN not_ready → baseline PENDING")
+                except Exception as e:
+                    self._pending_console_baseline = True
+                    print(f"[BOOT] Console baseline error: {e} → PENDING")
+
+            # === PASO 3: Calendar bootstrap ===
+            print("[BOOT] PASO 3: Calendar bootstrap_now()")
+            calendar_result = {"mode": "apagado", "actions": [], "day_key": "unknown"}
+            if hasattr(self, 'calendar_manager') and self.calendar_manager:
+                if hasattr(self.calendar_manager, 'bootstrap_now'):
+                    calendar_result = self.calendar_manager.bootstrap_now(force=True)
+
+            # Guardar para re-apply en READY
+            self._boot_calendar_result = calendar_result
+            mode = calendar_result.get("mode", "unknown")
+            actions = calendar_result.get("actions", [])
+            day = calendar_result.get("day_key", "unknown")
+            print(f"[BOOT] CALENDAR applied mode={mode} actions={actions}")
+
+            # === PASO 4: Vision sync ===
+            print("[BOOT] PASO 4: Vision sync_runtime_to_actions()")
+            if hasattr(self, 'vision_manager') and self.vision_manager:
+                if hasattr(self.vision_manager, 'sync_runtime_to_actions'):
+                    self.vision_manager.sync_runtime_to_actions(actions, force=True)
+
+            # === PASO 5: Initial cues (SOLO si Titan READY) ===
+            print("[BOOT] PASO 5: Initial cues (CLIMA/BAJADA)")
+            initial_cues_result = {"applied": False, "cues_fired": []}
+
+            if titan_ready:
+                # Titan READY → aplicar initial cues ahora
+                if hasattr(self, 'cue_engine') and self.cue_engine:
+                    if hasattr(self.cue_engine, 'boot_apply_initial_state'):
+                        initial_cues_result = self.cue_engine.boot_apply_initial_state(calendar_result)
+                        init_cues = initial_cues_result.get("cues_fired", [])
+                        print(f"[BOOT] INITIAL_CUES applied cues={init_cues}")
+            else:
+                # Titan NOT READY → marcar pending para re-apply cuando conecte
+                self._pending_initial_apply = True
+                print("[BOOT] INITIAL_CUES pending (Titan not ready)")
+
+            # === PASO 6: Marcar boot ready ===
+            self._boot_ready = True
+
+            # === Log único de resumen ===
+            titan_status = "READY" if titan_ready else "NOT_READY"
+            init_cues = initial_cues_result.get("cues_fired", [])
+            print(f"[BOOT] READY day={day} mode={mode} actions={actions} titan={titan_status} init_cues={init_cues}")
+
+        except Exception as e:
+            print(f"[BOOT] ERROR: {e}")
+            import traceback
+            traceback.print_exc()
+
+        print("[BOOT] ========== BOOTSTRAP COMPLETE ==========")
+
+    def _apply_pending_on_ready(self):
+        """
+        Unified method to apply pending operations when Titan becomes READY.
+
+        Sequence (deterministic):
+        1. Log READY transition detected
+        2. Apply baseline: KILL ALL → delay 300ms → C41
+        3. Apply initial cues (CLIMA or BAJADA) after baseline completes
+        4. Clear pending flags
+
+        Uses lock to prevent double-firing from health tick.
+        """
+        # Lock to prevent double-firing
+        if self._pending_apply_in_progress:
+            return
+        self._pending_apply_in_progress = True
+
+        print("[BOOT] READY transition detected")
+
+        # Start with baseline if pending
+        if self._pending_console_baseline:
+            self._apply_console_baseline()
+        elif self._pending_initial_apply:
+            # No baseline pending, go straight to initial cues
+            self._apply_initial_cues_sequence()
+
+    def _apply_console_baseline(self):
+        """
+        Aplica baseline de consola: KILL ALL + C41 con delay.
+
+        KILL ALL primero, luego C41 después de 300ms para asegurar
+        que la consola procesó el kill antes del baseline.
+        """
+        print("[BOOT] BASELINE apply start")
+        try:
+            # KILL ALL
+            if hasattr(self.avolites, 'kill_all_cues'):
+                self.avolites.kill_all_cues()
+
+            # C41 después de 300ms
+            QTimer.singleShot(300, self._fire_c41_baseline)
+
+        except Exception as e:
+            print(f"[BOOT] BASELINE KILL ALL error: {e}")
+            self._pending_console_baseline = True
+            self._pending_apply_in_progress = False
+
+    def _fire_c41_baseline(self):
+        """Dispara C41 (parte 2 del baseline), then chain to initial cues."""
+        try:
+            result = self.avolites.fire_cue(41)
+            if result:
+                self._pending_console_baseline = False
+                print("[BOOT] BASELINE OK")
+
+                # Chain to initial cues after 300ms if pending
+                if self._pending_initial_apply:
+                    QTimer.singleShot(300, self._apply_initial_cues_sequence)
+                else:
+                    # No initial cues pending, clear lock
+                    self._pending_apply_in_progress = False
+                    self._log_pending_cleared()
+            else:
+                # Retry later
+                self._pending_console_baseline = True
+                self._pending_apply_in_progress = False
+                print("[BOOT] BASELINE C41 failed, will retry")
+        except Exception as e:
+            self._pending_console_baseline = True
+            self._pending_apply_in_progress = False
+            print(f"[BOOT] BASELINE C41 error: {e}")
+
+    def _apply_initial_cues_sequence(self):
+        """
+        Aplica cues iniciales (CLIMA o BAJADA) después del baseline.
+
+        Se ejecuta después de que C41 se dispara exitosamente.
+        """
+        if not self._pending_initial_apply:
+            self._pending_apply_in_progress = False
+            return
+
+        calendar_result = self._boot_calendar_result
+        if not calendar_result:
+            self._pending_initial_apply = False
+            self._pending_apply_in_progress = False
+            return
+
+        mode = calendar_result.get("mode", "unknown")
+        print(f"[BOOT] INITIAL_CUES apply start mode={mode}")
+
+        try:
+            # Aplicar initial cues (CLIMA o BAJADA)
+            if hasattr(self, 'cue_engine') and self.cue_engine:
+                if hasattr(self.cue_engine, 'boot_apply_initial_state'):
+                    result = self.cue_engine.boot_apply_initial_state(calendar_result)
+                    init_cues = result.get("cues_fired", [])
+                    print(f"[BOOT] INITIAL_CUES OK cues={init_cues}")
+
+            self._pending_initial_apply = False
+            self._pending_apply_in_progress = False
+            self._log_pending_cleared()
+
+        except Exception as e:
+            print(f"[BOOT] INITIAL_CUES error: {e}")
+            self._pending_apply_in_progress = False
+            # Keep pending for retry
+
+    def _log_pending_cleared(self):
+        """Log when all pending operations are cleared."""
+        baseline_status = "done" if not self._pending_console_baseline else "pending"
+        initial_status = "done" if not self._pending_initial_apply else "pending"
+        print(f"[BOOT] PENDING cleared baseline={baseline_status} initial={initial_status}")
 
     def _start_loop_probe(self):
         """Iniciar probe de latencia del event-loop"""
@@ -1034,6 +1212,7 @@ class Main(QMainWindow):
                 status = self.avolites.get_status()
                 
                 connected = status.get("connected", False)
+                ready = status.get("ready", False)
                 transport = status.get("transport")
                 console_ip = status.get("console_ip")
                 console_port = status.get("console_port")
@@ -1042,9 +1221,9 @@ class Main(QMainWindow):
                 last_error_short = status.get("last_error_short")
                 last_fire_ts = status.get("last_fire_ts")
 
-                # BootManager: Apply pending baseline if Titan reconnected
-                if connected and self.boot_manager and self.boot_manager.has_pending_baseline():
-                    self.boot_manager.apply_pending_baseline()
+                # Hook: Apply pending operations when Titan becomes READY
+                if ready and (self._pending_console_baseline or self._pending_initial_apply):
+                    self._apply_pending_on_ready()
 
                 # Estado de conexión
                 if connected:
@@ -1157,30 +1336,17 @@ class Main(QMainWindow):
         top_layout = QHBoxLayout(top)
         top_layout.setContentsMargins(8,8,8,8)
 
-        self.cmb = QComboBox()
-        for i, d in enumerate(sd.query_devices()):
-            if d.get('max_input_channels', 0) > 0:
-                self.cmb.addItem(f"#{i} {d['name']}", i)
-
-        self.btn_start = QPushButton("Conectar")
-        self.btn_stop = QPushButton("Desconectar") 
-        self.btn_cal = QPushButton("Calibrar")
-        self.btn_save = QPushButton("Guardar")
-        self.btn_load = QPushButton("Cargar")
-
+        # V13: Only indicators in top bar - all controls moved to Red/Consola tab
         if CUES_AVAILABLE:
             self.btn_cues = QPushButton("Ir a Cues")
         else:
             self.btn_cues = QPushButton("Cues (No disponible)")
             self.btn_cues.setEnabled(False)
 
-        top_layout.addWidget(QLabel("Entrada:"))
-        top_layout.addWidget(self.cmb)
-        for btn in [self.btn_start, self.btn_stop, self.btn_cal, 
-                   self.btn_save, self.btn_load, self.btn_cues]:
-            top_layout.addWidget(btn)
-        
+        top_layout.addWidget(self.btn_cues)
         top_layout.addStretch()
+
+        # Status indicators only
         self.lbl_info = QLabel("🎙 Sin conectar")
         self.vu_db = QLabel("Nivel: - dBFS")
         top_layout.addWidget(self.lbl_info)
@@ -1449,7 +1615,83 @@ class Main(QMainWindow):
         ln = QVBoxLayout(tab_net)
         ln.setContentsMargins(12, 12, 12, 12)
         ln.setSpacing(12)
-        
+
+        # === Sección: LOAD SHOW (Perfil Único) ===
+        show_frame = QFrame()
+        show_frame.setStyleSheet("QFrame{background:#2a1a2a; border:1px solid #4a2a4a; border-radius:6px;}")
+        show_layout = QVBoxLayout(show_frame)
+        show_layout.setContentsMargins(12, 12, 12, 12)
+        show_layout.setSpacing(8)
+        show_title = QLabel("LOAD SHOW")
+        show_title.setStyleSheet("font-weight:700; color:#f8f; font-size:12px;")
+        show_layout.addWidget(show_title)
+
+        row_show_path = QHBoxLayout()
+        row_show_path.addWidget(QLabel("Perfil:"))
+        self.txt_show_path = QLineEdit()
+        self.txt_show_path.setText(self.preset_path)
+        self.txt_show_path.setReadOnly(True)
+        self.txt_show_path.setStyleSheet("background:#222; border:1px solid #444; border-radius:4px; padding:4px; color:#ccc;")
+        row_show_path.addWidget(self.txt_show_path, 2)
+        self.btn_show_browse = QPushButton("Elegir...")
+        self.btn_show_browse.setStyleSheet("QPushButton{background:#444; border:1px solid #666; border-radius:4px; padding:6px; color:#fff;} QPushButton:hover{background:#555;}")
+        row_show_path.addWidget(self.btn_show_browse)
+        show_layout.addLayout(row_show_path)
+
+        row_show_btns = QHBoxLayout()
+        self.btn_show_load = QPushButton("Cargar Perfil")
+        self.btn_show_load.setStyleSheet("QPushButton{background:#27ae60; border:1px solid #229954; border-radius:4px; padding:8px 16px; color:#fff; font-weight:700;} QPushButton:hover{background:#2ecc71;}")
+        self.btn_show_save = QPushButton("Guardar Perfil")
+        self.btn_show_save.setStyleSheet("QPushButton{background:#3498db; border:1px solid #2980b9; border-radius:4px; padding:8px 16px; color:#fff; font-weight:700;} QPushButton:hover{background:#5dade2;}")
+        row_show_btns.addWidget(self.btn_show_load)
+        row_show_btns.addWidget(self.btn_show_save)
+        row_show_btns.addStretch()
+        show_layout.addLayout(row_show_btns)
+        ln.addWidget(show_frame)
+
+        # === Sección: AUDIO DEVICE ===
+        audio_frame = QFrame()
+        audio_frame.setStyleSheet("QFrame{background:#1a2a1a; border:1px solid #2a4a2a; border-radius:6px;}")
+        audio_layout = QVBoxLayout(audio_frame)
+        audio_layout.setContentsMargins(12, 12, 12, 12)
+        audio_layout.setSpacing(8)
+        audio_title = QLabel("AUDIO DEVICE")
+        audio_title.setStyleSheet("font-weight:700; color:#8f8; font-size:12px;")
+        audio_layout.addWidget(audio_title)
+
+        row_audio_device = QHBoxLayout()
+        row_audio_device.addWidget(QLabel("Entrada:"))
+        self.cmb_audio_device = QComboBox()
+        self.cmb_audio_device.setMinimumWidth(300)
+        self._populate_audio_devices()
+        row_audio_device.addWidget(self.cmb_audio_device, 2)
+        self.lbl_audio_status = QLabel("● Sin conectar")
+        self.lbl_audio_status.setStyleSheet("color:#e74c3c; font-weight:700;")
+        row_audio_device.addWidget(self.lbl_audio_status)
+        row_audio_device.addStretch()
+        audio_layout.addLayout(row_audio_device)
+
+        row_audio_info = QHBoxLayout()
+        self.lbl_audio_sr = QLabel("SR: —")
+        self.lbl_audio_sr.setStyleSheet("color:#888;")
+        row_audio_info.addWidget(self.lbl_audio_sr)
+        self.lbl_audio_db = QLabel("dBFS: —")
+        self.lbl_audio_db.setStyleSheet("color:#888;")
+        row_audio_info.addWidget(self.lbl_audio_db)
+        row_audio_info.addStretch()
+        audio_layout.addLayout(row_audio_info)
+
+        row_audio_btns = QHBoxLayout()
+        self.btn_audio_connect = QPushButton("Conectar Audio")
+        self.btn_audio_connect.setStyleSheet("QPushButton{background:#27ae60; border:1px solid #229954; border-radius:4px; padding:6px; color:#fff;} QPushButton:hover{background:#2ecc71;}")
+        self.btn_audio_disconnect = QPushButton("Desconectar")
+        self.btn_audio_disconnect.setStyleSheet("QPushButton{background:#e74c3c; border:1px solid #c0392b; border-radius:4px; padding:6px; color:#fff;} QPushButton:hover{background:#ec7063;}")
+        row_audio_btns.addWidget(self.btn_audio_connect)
+        row_audio_btns.addWidget(self.btn_audio_disconnect)
+        row_audio_btns.addStretch()
+        audio_layout.addLayout(row_audio_btns)
+        ln.addWidget(audio_frame)
+
         # Encabezado con estado
         header_frame = QFrame()
         header_frame.setStyleSheet("QFrame{background:#1a1a1a; border:1px solid #333; border-radius:6px; padding:8px;}")
@@ -1803,11 +2045,15 @@ class Main(QMainWindow):
         main_layout.addWidget(scroll)
         self.setCentralWidget(body)
 
-        self.btn_start.clicked.connect(self.start)
-        self.btn_stop.clicked.connect(self.stop)
-        self.btn_cal.clicked.connect(self.calibrate)
-        self.btn_save.clicked.connect(self.save_preset)
-        self.btn_load.clicked.connect(self.load_preset)
+        # V13: Audio controls removed from top bar - use Red/Consola tab instead
+        # Audio section connections
+        self.btn_audio_connect.clicked.connect(self._on_audio_connect)
+        self.btn_audio_disconnect.clicked.connect(self._on_audio_disconnect)
+
+        # LOAD SHOW section connections
+        self.btn_show_browse.clicked.connect(self._on_show_browse)
+        self.btn_show_load.clicked.connect(self._on_show_load)
+        self.btn_show_save.clicked.connect(self._on_show_save)
 
         self._mount_waveform("bajada")
         self._refresh_nics()
@@ -1840,10 +2086,17 @@ class Main(QMainWindow):
                 "enabled": True,
                 "console_ip": "10.0.0.1",
                 "console_port": 4430,
+                "cue_offset": 169,
                 "local_nic": "auto",
                 "local_ip": "",
                 "auto_retry": True,
                 "transport": "http",
+                "audio": {
+                    "input_device_name": None,
+                    "input_device_index": None,
+                    "sample_rate": 48000,
+                    "auto_connect": True
+                },
                 "timeouts": {"connect_ms": 1500, "send_ms": 300},
                 "retries": {"max": 5, "backoff_ms": [500, 1000, 2000]},
                 "ui": {"show_latency": True, "show_events": True}
@@ -1851,6 +2104,17 @@ class Main(QMainWindow):
             if hasattr(self.avolites, 'set_transport'):
                 data["net_panel"]["sacn"] = {"universe": 1, "priority": 100}
                 data["net_panel"]["artnet"] = {"net": 0, "subnet": 0, "universe": 0}
+        # Ensure audio block exists (migration)
+        if "audio" not in data.get("net_panel", {}):
+            data["net_panel"]["audio"] = {
+                "input_device_name": None,
+                "input_device_index": None,
+                "sample_rate": 48000,
+                "auto_connect": True
+            }
+        # Ensure cue_offset exists (migration)
+        if "cue_offset" not in data.get("net_panel", {}):
+            data["net_panel"]["cue_offset"] = 169
         return data
     
     def _merge_net_panel(self, data, patch):
@@ -1859,7 +2123,196 @@ class Main(QMainWindow):
             data = self._ensure_net_panel_defaults(data)
         data["net_panel"].update(patch)
         return data
-    
+
+    def _populate_audio_devices(self):
+        """Populate audio device combobox"""
+        try:
+            self.cmb_audio_device.clear()
+            for i, d in enumerate(sd.query_devices()):
+                if d.get('max_input_channels', 0) > 0:
+                    self.cmb_audio_device.addItem(f"#{i} {d['name']}", i)
+        except Exception as e:
+            print(f"[AUDIO] Error listing devices: {e}")
+
+    def _on_audio_connect(self):
+        """Connect to selected audio device"""
+        try:
+            idx = self.cmb_audio_device.currentData()
+            if idx is None:
+                QMessageBox.warning(self, "Audio", "Selecciona un dispositivo de audio")
+                return
+
+            # Stop existing engine if running
+            if hasattr(self, 'engine') and self.engine:
+                self.stop()
+
+            # Start new engine
+            self.engine = AudioEngine(device_index=int(idx), ring_seconds=3.0)
+            self.engine.start()
+
+            # Update status - use samplerate (not sr)
+            sr = getattr(self.engine, 'samplerate', None) or getattr(self.engine, 'sr', None) or 48000
+            self.lbl_audio_status.setText("● Conectado")
+            self.lbl_audio_status.setStyleSheet("color:#27ae60; font-weight:700;")
+            self.lbl_audio_sr.setText(f"SR: {sr} Hz")
+
+            # Update top bar indicator
+            self.lbl_info.setText(f"🎙 Conectado (SR={sr})")
+
+            print(f"[AUDIO] Connected to device #{idx}")
+
+        except Exception as e:
+            self.lbl_audio_status.setText(f"● Error: {e}")
+            self.lbl_audio_status.setStyleSheet("color:#e74c3c; font-weight:700;")
+            print(f"[AUDIO] Connect error: {e}")
+
+    def _on_audio_disconnect(self):
+        """Disconnect audio device"""
+        try:
+            if hasattr(self, 'engine') and self.engine:
+                self.stop()
+            self.lbl_audio_status.setText("● Desconectado")
+            self.lbl_audio_status.setStyleSheet("color:#e74c3c; font-weight:700;")
+            self.lbl_audio_sr.setText("SR: —")
+            self.lbl_audio_db.setText("dBFS: —")
+            self.lbl_info.setText("🎙 Sin conectar")
+            print("[AUDIO] Disconnected")
+        except Exception as e:
+            print(f"[AUDIO] Disconnect error: {e}")
+
+    # ========== LOAD SHOW HANDLERS ==========
+
+    def _on_show_browse(self):
+        """Browse for a different preset file"""
+        filename, _ = QFileDialog.getOpenFileName(
+            self,
+            "Elegir Perfil",
+            os.path.dirname(self.preset_path) or ".",
+            "JSON (*.json)"
+        )
+        if filename:
+            self.preset_path = filename
+            self.txt_show_path.setText(filename)
+            print(f"[SHOW] Selected preset: {filename}")
+
+    def _on_show_load(self):
+        """Load preset from self.preset_path"""
+        if not os.path.exists(self.preset_path):
+            QMessageBox.warning(self, "Load Show", f"Archivo no encontrado:\n{self.preset_path}")
+            return
+
+        try:
+            # Load and apply preset
+            self.load_preset(filepath=self.preset_path)
+            QMessageBox.information(self, "Load Show", f"Perfil cargado:\n{os.path.basename(self.preset_path)}")
+            print(f"[SHOW] Loaded preset: {self.preset_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Load Show", f"Error cargando perfil:\n{e}")
+            print(f"[SHOW] Load error: {e}")
+
+    def _on_show_save(self):
+        """Save current state to self.preset_path"""
+        try:
+            self.save_preset(filepath=self.preset_path)
+            QMessageBox.information(self, "Save Show", f"Perfil guardado:\n{os.path.basename(self.preset_path)}")
+            print(f"[SHOW] Saved preset: {self.preset_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Save Show", f"Error guardando perfil:\n{e}")
+            print(f"[SHOW] Save error: {e}")
+
+    def _startup_auto_apply(self):
+        """
+        Apply profile settings on startup (autonomous boot).
+
+        V13 Boot Sequence (100ms):
+        1. Load profile from preset_path
+        2. Apply audio config + auto-connect
+        3. Apply NIC config
+        4. Apply Avolites config + auto-connect
+
+        Note: Cues are handled separately in _execute_bootstrap (500ms).
+        """
+        try:
+            print("[PROFILE] ========== STARTUP AUTO-APPLY ==========")
+
+            if not os.path.exists(self.preset_path):
+                print(f"[PROFILE] Preset not found: {self.preset_path}")
+                return
+
+            data = self._load_preset(self.preset_path)
+            data = self._ensure_net_panel_defaults(data)
+            net = data.get("net_panel", {})
+            print(f"[PROFILE] loaded from {self.preset_path}")
+
+            # Apply audio config
+            audio_cfg = net.get("audio", {})
+            if audio_cfg.get("auto_connect", True):
+                device_name = audio_cfg.get("input_device_name")
+                device_idx = audio_cfg.get("input_device_index")
+
+                # Find device
+                target_idx = None
+                if device_name:
+                    for i, d in enumerate(sd.query_devices()):
+                        if d.get('max_input_channels', 0) > 0 and device_name in d['name']:
+                            target_idx = i
+                            break
+                if target_idx is None and device_idx is not None:
+                    target_idx = device_idx
+
+                if target_idx is not None:
+                    try:
+                        self.engine = AudioEngine(device_index=int(target_idx), ring_seconds=3.0)
+                        self.engine.start()
+                        print(f"[PROFILE] applied audio: device=#{target_idx} connected")
+
+                        # Update UI - use samplerate (not sr)
+                        sr = getattr(self.engine, 'samplerate', None) or getattr(self.engine, 'sr', None) or 48000
+                        if hasattr(self, 'cmb_audio_device'):
+                            for i in range(self.cmb_audio_device.count()):
+                                if self.cmb_audio_device.itemData(i) == target_idx:
+                                    self.cmb_audio_device.setCurrentIndex(i)
+                                    break
+                            self.lbl_audio_status.setText("● Conectado")
+                            self.lbl_audio_status.setStyleSheet("color:#27ae60; font-weight:700;")
+                            self.lbl_audio_sr.setText(f"SR: {sr} Hz")
+                        self.lbl_info.setText(f"🎙 Conectado (SR={sr})")
+                    except Exception as e:
+                        print(f"[PROFILE] audio connect error: {e}")
+
+            # Apply NIC config
+            local_nic = net.get("local_nic", "auto")
+            if local_nic and local_nic != "auto":
+                # TODO: Apply NIC selection
+                pass
+            print(f"[PROFILE] applied network: nic={local_nic}")
+
+            # Apply Avolites config + auto-connect
+            console_ip = net.get("console_ip", "10.0.0.1")
+            console_port = net.get("console_port", 4430)
+            cue_offset = net.get("cue_offset", 169)
+            transport = net.get("transport", "http")
+
+            self.avolites.config_manager.config["console_ip"] = console_ip
+            self.avolites.config_manager.config["console_port"] = console_port
+
+            if hasattr(self.avolites, 'set_cue_offset'):
+                self.avolites.set_cue_offset(cue_offset)
+
+            if net.get("auto_retry", True):
+                try:
+                    self.avolites.connect()
+                    print(f"[PROFILE] applied avolites: {console_ip}:{console_port} [{transport}] offset={cue_offset}")
+                except Exception as e:
+                    print(f"[PROFILE] avolites connect error (will retry): {e}")
+
+            print("[PROFILE] ========== STARTUP COMPLETE ==========")
+
+        except Exception as e:
+            print(f"[PROFILE] Startup auto-apply error: {e}")
+            import traceback
+            traceback.print_exc()
+
     def _load_net_panel_from_preset(self):
         """Carga configuración de red desde preset al inicio"""
         try:
@@ -1894,13 +2347,40 @@ class Main(QMainWindow):
                     self.spin_artnet_subnet.setValue(artnet.get("subnet", 0))
                     self.spin_artnet_universe.setValue(artnet.get("universe", 0))
 
-            # Cargar cue offset desde avolites_config.json
+            # Cargar cue offset desde profile (net_panel.cue_offset)
             try:
-                offset = int(self.avolites.config_manager.config.get("user_number_offset", 169))
+                offset = int(net.get("cue_offset", 169))
                 self.spin_cue_offset.setValue(offset)
                 self._on_cue_offset_changed()  # Actualizar ejemplo
+                # Sync to avolites
+                if hasattr(self.avolites, 'set_cue_offset'):
+                    self.avolites.set_cue_offset(offset)
             except Exception as e:
                 print(f"[NET] Error cargando cue_offset: {e}")
+
+            # Cargar audio device desde profile (net_panel.audio)
+            try:
+                audio_cfg = net.get("audio", {})
+                device_name = audio_cfg.get("input_device_name")
+                device_idx = audio_cfg.get("input_device_index")
+
+                # Seleccionar device en combo si existe
+                if hasattr(self, 'cmb_audio_device'):
+                    found = False
+                    if device_name:
+                        for i in range(self.cmb_audio_device.count()):
+                            if device_name in self.cmb_audio_device.itemText(i):
+                                self.cmb_audio_device.setCurrentIndex(i)
+                                found = True
+                                break
+                    if not found and device_idx is not None:
+                        for i in range(self.cmb_audio_device.count()):
+                            if self.cmb_audio_device.itemData(i) == device_idx:
+                                self.cmb_audio_device.setCurrentIndex(i)
+                                break
+                print(f"[PROFILE] audio config loaded: device={device_name}")
+            except Exception as e:
+                print(f"[PROFILE] Error loading audio: {e}")
 
             self.avolites.config_manager.config["console_ip"] = str(net.get("console_ip", "10.0.0.1"))
             self.avolites.config_manager.config["console_port"] = int(net.get("console_port", 4430))
@@ -2435,12 +2915,24 @@ class Main(QMainWindow):
         
         self._mount_waveform(self._active_tab_name)
 
-    def start(self):
+    def start(self, device_index=None):
+        """Start audio engine.
+
+        V13: device_index parameter required (controls moved to Red/Consola tab).
+        """
         if self.engine:
             return
-        idx = self.cmb.currentData()
+
+        # V13: If no device_index provided, try from Red/Consola combo
+        if device_index is None:
+            if hasattr(self, 'cmb_audio_device'):
+                device_index = self.cmb_audio_device.currentData()
+            if device_index is None:
+                print("[AUDIO] No device selected - use Red/Consola tab")
+                return
+
         try:
-            self.engine = AudioEngine(device_index=int(idx), ring_seconds=3.0)
+            self.engine = AudioEngine(device_index=int(device_index), ring_seconds=3.0)
             self.engine.start()
         except Exception as e:
             QMessageBox.critical(self, "Audio", f"Error abriendo dispositivo:\n{e}")
@@ -2458,9 +2950,9 @@ class Main(QMainWindow):
             self.audio_monitor = None
 
         st = self.engine.get_status()
-        self.lbl_info.setText(f"🎙 Dev #{idx} | SR {st['samplerate']} | BS {st['blocksize']}")
+        self.lbl_info.setText(f"🎙 Dev #{device_index} | SR {st['samplerate']} | BS {st['blocksize']}")
         self.waveform.set_samplerate(st['samplerate'])
-        
+
         self._clock.restart()
         self._acc = {k: 0.0 for k in self.CADENCE.keys()}
         self.t_frame.start()
@@ -2483,10 +2975,14 @@ class Main(QMainWindow):
         if self.engine:
             self.engine.calibrate_noise(1.0)
 
-    def save_preset(self):
-        filename, _ = QFileDialog.getSaveFileName(self, "Guardar preset", "preset.json", "JSON (*.json)")
-        if not filename:
-            return
+    def save_preset(self, filepath=None):
+        """Save preset to file. If filepath not provided, shows file dialog."""
+        if filepath:
+            filename = filepath
+        else:
+            filename, _ = QFileDialog.getSaveFileName(self, "Guardar preset", "preset.json", "JSON (*.json)")
+            if not filename:
+                return
         data = {
             "version": 15,
             "bajada": {m.name: m.card.to_preset() for m in self.modules_bajada if hasattr(m, "card")},
@@ -2502,13 +2998,39 @@ class Main(QMainWindow):
             }
         }
         
+        # Build current net_panel from UI state
         try:
+            # Start with existing net_panel if file exists
             if os.path.exists(filename):
                 old_data = self._load_preset(filename)
                 if "net_panel" in old_data:
                     data["net_panel"] = old_data["net_panel"]
-        except:
-            pass
+
+            # Ensure net_panel exists
+            if "net_panel" not in data:
+                data = self._ensure_net_panel_defaults(data)
+
+            # Update with current UI values
+            net = data["net_panel"]
+            net["console_ip"] = self.ed_console_ip.text().strip()
+            net["console_port"] = int(self.ed_console_port.text().strip() or "4430")
+            net["cue_offset"] = self.spin_cue_offset.value()
+            net["auto_retry"] = self.chk_auto_retry.isChecked()
+            net["transport"] = self._get_current_transport()
+
+            # Audio config
+            if hasattr(self, 'cmb_audio_device'):
+                idx = self.cmb_audio_device.currentData()
+                text = self.cmb_audio_device.currentText()
+                net["audio"] = {
+                    "input_device_name": text.split(" ", 1)[1] if " " in text else text,
+                    "input_device_index": idx,
+                    "sample_rate": getattr(self.engine, 'samplerate', None) or getattr(self.engine, 'sr', None) or 48000 if self.engine else 48000,
+                    "auto_connect": True
+                }
+
+        except Exception as e:
+            print(f"[PRESET] Error building net_panel: {e}")
         
         try:
             with open(filename, "w", encoding="utf-8") as f:
@@ -2517,10 +3039,14 @@ class Main(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Error guardando preset:\n{e}")
 
-    def load_preset(self):
-        filename, _ = QFileDialog.getOpenFileName(self, "Cargar preset", "", "JSON (*.json)")
-        if not filename:
-            return
+    def load_preset(self, filepath=None):
+        """Load preset from file. If filepath not provided, shows file dialog."""
+        if filepath:
+            filename = filepath
+        else:
+            filename, _ = QFileDialog.getOpenFileName(self, "Cargar preset", "", "JSON (*.json)")
+            if not filename:
+                return
         try:
             with open(filename, "r", encoding="utf-8") as f:
                 data = json.load(f)
