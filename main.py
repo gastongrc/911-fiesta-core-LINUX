@@ -2228,6 +2228,7 @@ class Main(QMainWindow):
         Returns:
             bool: True if save succeeded
         """
+        print(f"[AUDIT] _safe_save_preset ENTRY path={path}")
         try:
             # Validate critical keys
             missing = self.PRESET_CRITICAL_KEYS - set(data.keys())
@@ -2796,15 +2797,18 @@ class Main(QMainWindow):
         Auto-persist NIC when combo changes (no button required).
         Updates UI and saves to preset immediately.
         """
+        print(f"[AUDIT] _on_nic_combo_changed ENTRY index={index}")
         if index < 0:
             return
 
         try:
             nic_data = self.cmb_nic.currentData()
             if not nic_data:
+                print(f"[AUDIT] _on_nic_combo_changed: no nic_data, returning")
                 return
 
             name, ip, mac, up = nic_data
+            print(f"[AUDIT] _on_nic_combo_changed: name={name} ip={ip} mac={mac[:17] if mac else 'none'}")
 
             # Update UI label
             if name == "auto":
@@ -2848,6 +2852,8 @@ class Main(QMainWindow):
         Called automatically on combo change.
         """
         try:
+            abs_path = os.path.abspath(self.preset_path)
+            print(f"[AUDIT] _persist_nic_to_preset ENTRY: preset_path={abs_path} exists={os.path.exists(abs_path)}")
             if not os.path.exists(self.preset_path):
                 print(f"[NET] preset not found, skip persist")
                 return
