@@ -2017,6 +2017,8 @@ class Main(QMainWindow):
         self.radio_http.toggled.connect(self._on_transport_radio_changed)
         self.radio_artnet.toggled.connect(self._on_transport_radio_changed)
         self.radio_sacn.toggled.connect(self._on_transport_radio_changed)
+        # NIC combo change auto-persists
+        self.cmb_nic.currentIndexChanged.connect(self._on_nic_combo_changed)
         
         self._net_timer = QTimer(self)
         self._net_timer.setInterval(1500)
@@ -2309,14 +2311,22 @@ class Main(QMainWindow):
             if hasattr(self, '_get_current_transport'):
                 net_patch["transport"] = self._get_current_transport()
 
-            # NIC config
+            # NIC config (with stable ID generation)
             if hasattr(self, 'cmb_nic'):
                 nic_data = self.cmb_nic.currentData()
                 if nic_data and len(nic_data) >= 3:
                     name, ip, mac, *_ = nic_data
-                    net_patch["local_nic"] = name
-                    net_patch["local_nic_id"] = mac or ""
-                    net_patch["local_ip"] = ip or ""
+                    if name == "auto":
+                        # Auto mode: clear NIC config
+                        net_patch["local_nic"] = "auto"
+                        net_patch["local_nic_id"] = ""
+                        net_patch["local_ip"] = ""
+                    else:
+                        # Generate stable ID (MAC or hash fallback)
+                        stable_id = self._generate_stable_nic_id(name, ip, mac)
+                        net_patch["local_nic"] = name
+                        net_patch["local_nic_id"] = stable_id
+                        net_patch["local_ip"] = ip or ""
 
             # Audio config
             if hasattr(self, 'cmb_audio_device'):
@@ -2779,6 +2789,91 @@ class Main(QMainWindow):
             print(f"[NET][ERR] {e}")
             QMessageBox.critical(self, "Red", f"Error: {e}")
 
+    def _on_nic_combo_changed(self, index):
+        """
+        Auto-persist NIC when combo changes (no button required).
+        Updates UI and saves to preset immediately.
+        """
+        if index < 0:
+            return
+
+        try:
+            nic_data = self.cmb_nic.currentData()
+            if not nic_data:
+                return
+
+            name, ip, mac, up = nic_data
+
+            # Update UI label
+            if name == "auto":
+                self.lbl_local_ip.setText("Auto")
+                self.local_ip_effective = None
+            else:
+                self.lbl_local_ip.setText(ip if ip else "—")
+                self.local_ip_effective = ip
+
+            # Generate stable ID (MAC preferred, fallback to hash)
+            stable_id = self._generate_stable_nic_id(name, ip, mac)
+
+            # Persist to preset (without triggering reconnect)
+            self._persist_nic_to_preset(name, ip, stable_id)
+
+        except Exception as e:
+            print(f"[NET][ERR] _on_nic_combo_changed: {e}")
+
+    def _generate_stable_nic_id(self, name, ip, mac):
+        """
+        Generate a stable ID for NIC matching across boots.
+        Priority: MAC address > hash(name+ip)
+        """
+        import hashlib
+
+        # If MAC exists and is valid, use it
+        if mac and mac.strip() and mac != "00:00:00:00:00:00":
+            return mac.lower()
+
+        # Fallback: generate stable hash from name+ip
+        if name and name != "auto":
+            stable_str = f"{name}:{ip or '0.0.0.0'}"
+            hash_id = hashlib.sha1(stable_str.encode()).hexdigest()[:16]
+            return f"hash:{hash_id}"
+
+        return ""
+
+    def _persist_nic_to_preset(self, name, ip, stable_id):
+        """
+        Persist NIC config to preset file (atomic, merge-safe).
+        Called automatically on combo change.
+        """
+        try:
+            if not os.path.exists(self.preset_path):
+                print(f"[NET] preset not found, skip persist")
+                return
+
+            # Load current preset
+            data = self._load_preset(self.preset_path)
+            data = self._ensure_net_panel_defaults(data)
+
+            # Update NIC fields only
+            if name == "auto":
+                # Clear NIC config for auto mode
+                data["net_panel"]["local_nic"] = "auto"
+                data["net_panel"]["local_nic_id"] = ""
+                data["net_panel"]["local_ip"] = ""
+            else:
+                data["net_panel"]["local_nic"] = name
+                data["net_panel"]["local_nic_id"] = stable_id
+                data["net_panel"]["local_ip"] = ip or ""
+
+            # Atomic save
+            if self._safe_save_preset(self.preset_path, data):
+                print(f"[NET] persisted nic: name={name} ip={ip or 'auto'} id={stable_id[:17] if stable_id else 'none'}")
+            else:
+                print(f"[NET][ERR] failed to persist nic")
+
+        except Exception as e:
+            print(f"[NET][ERR] _persist_nic_to_preset: {e}")
+
     def _apply_nic_config(self, name, ip, mac, persist=False):
         """
         CANONICAL method to apply NIC configuration.
@@ -2851,11 +2946,11 @@ class Main(QMainWindow):
 
     def _find_nic_by_id(self, nic_id, fallback_ip=None):
         """
-        Find a NIC by its stable ID (MAC address) or fallback to IP.
+        Find a NIC by its stable ID (MAC or hash) or fallback to IP.
 
         Args:
-            nic_id: MAC address to search for
-            fallback_ip: IP address to try if MAC not found
+            nic_id: MAC address or hash:XXXX to search for
+            fallback_ip: IP address to try if ID not found
 
         Returns:
             tuple: (name, ip, mac, up) or None if not found
@@ -2866,20 +2961,31 @@ class Main(QMainWindow):
 
             interfaces = list_interfaces()
 
-            # First: try to match by MAC (stable ID)
+            # First: try to match by ID
             if nic_id:
                 nic_id_clean = nic_id.lower().strip()
-                for name, ip, mac, up in interfaces:
-                    if mac and mac.lower().strip() == nic_id_clean:
-                        print(f"[NET] found NIC by MAC: {name} ({ip}) [{mac}]")
-                        return (name, ip, mac, up)
+
+                # Check if this is a hash-based ID
+                if nic_id_clean.startswith("hash:"):
+                    # Match by regenerating hash for each interface
+                    for name, ip, mac, up in interfaces:
+                        generated_id = self._generate_stable_nic_id(name, ip, mac)
+                        if generated_id and generated_id.lower() == nic_id_clean:
+                            print(f"[NET] selected nic by id/ip: {name} ({ip}) [hash match]")
+                            return (name, ip, mac, up)
+                else:
+                    # Match by MAC address
+                    for name, ip, mac, up in interfaces:
+                        if mac and mac.lower().strip() == nic_id_clean:
+                            print(f"[NET] selected nic by id/ip: {name} ({ip}) [{mac}]")
+                            return (name, ip, mac, up)
 
             # Second: try to match by IP (fallback)
             if fallback_ip:
                 ip_clean = fallback_ip.strip()
                 for name, ip, mac, up in interfaces:
                     if ip and ip.strip() == ip_clean:
-                        print(f"[NET] found NIC by IP: {name} ({ip}) [{mac}]")
+                        print(f"[NET] selected nic by id/ip: {name} ({ip}) [by IP]")
                         return (name, ip, mac, up)
 
             print(f"[NET] NIC not found: id={nic_id} ip={fallback_ip}")
