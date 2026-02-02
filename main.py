@@ -2446,11 +2446,11 @@ class Main(QMainWindow):
         """
         Apply profile settings on startup (autonomous boot).
 
-        V13 Boot Sequence (100ms):
+        V14 Boot Sequence (100ms):
         1. Ensure profile exists (clone from v54 if needed)
-        2. Load profile from preset_path
+        2. FULL LOAD: load_preset() applies modules/analyzers/enabled_flags
         3. Apply audio config + auto-connect
-        4. Apply NIC config
+        4. Apply NIC config (BEFORE Titan connect)
         5. Apply Avolites config + auto-connect
 
         Note: Cues are handled separately in _execute_bootstrap (500ms).
@@ -2465,10 +2465,23 @@ class Main(QMainWindow):
                 print(f"[PROFILE] Preset not found: {self.preset_path}")
                 return
 
+            # ============================================================
+            # PHASE 1: FULL PRESET LOAD (modules, analyzers, enabled_flags)
+            # This is the KEY step that applies all module configurations!
+            # ============================================================
+            try:
+                self._load_preset_silent(self.preset_path)
+                print(f"[PROFILE] preset applied: modules/analyzers/flags OK")
+            except Exception as e:
+                print(f"[PROFILE] preset load error: {e}")
+
+            # ============================================================
+            # PHASE 2: NET_PANEL (audio, NIC, avolites)
+            # ============================================================
             data = self._load_preset(self.preset_path)
             data = self._ensure_net_panel_defaults(data)
             net = data.get("net_panel", {})
-            print(f"[PROFILE] loaded from {self.preset_path}")
+            print(f"[PROFILE] loaded net_panel from {self.preset_path}")
 
             # Apply audio config
             audio_cfg = net.get("audio", {})
@@ -2527,14 +2540,18 @@ class Main(QMainWindow):
             local_ip = net.get("local_ip", "")
             local_nic_name = net.get("local_nic", "auto")
 
+            nic_applied = False
             if local_nic_id or local_ip:
                 # Find NIC by MAC first, fallback to IP
                 nic_found = self._find_nic_by_id(local_nic_id, local_ip)
                 if nic_found:
                     name, ip, mac, up = nic_found
-                    # Apply without persisting (already saved)
-                    self._apply_nic_config(name, ip, mac, persist=False)
-                    print(f"[PROFILE] applied NIC: {name} ({ip}) [{mac[:17] if mac else '?'}]")
+                    # Set local_ip_effective BEFORE connecting
+                    self.local_ip_effective = ip
+                    # Configure avolites with local interface
+                    if ip:
+                        self.avolites.set_local_interface(ip)
+                    print(f"[NET] bind local_ip_effective={ip} mac={mac[:17] if mac else '?'}")
 
                     # Update combo selection
                     if hasattr(self, 'cmb_nic'):
@@ -2544,16 +2561,20 @@ class Main(QMainWindow):
                                 if mac and data[2] and data[2].lower() == mac.lower():
                                     self.cmb_nic.setCurrentIndex(i)
                                     break
+                    if hasattr(self, 'lbl_local_ip'):
+                        self.lbl_local_ip.setText(ip if ip else "Auto")
+                    nic_applied = True
                 else:
-                    print(f"[PROFILE] NIC not found: id={local_nic_id} ip={local_ip}")
+                    print(f"[NET] NIC not found: id={local_nic_id} ip={local_ip}")
             else:
-                print(f"[PROFILE] NIC config: auto (no saved NIC)")
+                print(f"[NET] NIC config: auto (no saved NIC)")
 
-            # Now connect to Titan
+            # Now connect to Titan (only once)
             if net.get("auto_retry", True):
                 try:
+                    print(f"[TITAN] connecting to {console_ip}:{console_port} from {self.local_ip_effective or 'auto'}")
                     self.avolites.connect()
-                    print(f"[PROFILE] applied avolites: {console_ip}:{console_port} [{transport}] offset={cue_offset} local={self.local_ip_effective or 'auto'}")
+                    print(f"[PROFILE] avolites connected: {console_ip}:{console_port} [{transport}] offset={cue_offset}")
                 except Exception as e:
                     print(f"[PROFILE] avolites connect error (will retry): {e}")
 
@@ -3492,6 +3513,65 @@ class Main(QMainWindow):
             print(f"[PRESET] Cargado: {filename}")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Error:\n{e}")
+
+    def _load_preset_silent(self, filepath):
+        """
+        Load preset silently (no dialogs). Used for boot autoload.
+        Applies: modules, analyzers, enabled_flags, net_panel.
+        """
+        if not filepath or not os.path.exists(filepath):
+            raise FileNotFoundError(f"Preset not found: {filepath}")
+
+        with open(filepath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        version = data.get("version", 1)
+        if version < 10:
+            print(f"[PRESET][WARN] Loading old preset v{version}")
+
+        enabled_flags = data.get("enabled_flags", {})
+
+        groups = [
+            ("bajada", self.modules_bajada),
+            ("base_golpe", self.modules_golpe),
+            ("ataque", self.modules_ataque),
+            ("brake", self.modules_brake)
+        ]
+
+        modules_applied = 0
+        for group_key, modules in groups:
+            group_data = data.get(group_key, {})
+            by_name = {m.name: m for m in modules if hasattr(m, "card")}
+            for name, cfg in group_data.items():
+                if name in by_name:
+                    try:
+                        by_name[name].card.from_preset(cfg)
+                        modules_applied += 1
+
+                        # Apply enabled_flags
+                        if name in enabled_flags:
+                            is_enabled = enabled_flags[name]
+                            if not is_enabled:
+                                by_name[name].disabled_by_preset = True
+                                by_name[name].active = False
+                                if hasattr(by_name[name].card, 'mark_as_disabled'):
+                                    by_name[name].card.mark_as_disabled()
+
+                        # Apply inline enabled flag
+                        if "enabled" in cfg and not cfg["enabled"]:
+                            by_name[name].disabled_by_preset = True
+                            by_name[name].active = False
+                            if hasattr(by_name[name].card, 'mark_as_disabled'):
+                                by_name[name].card.mark_as_disabled()
+
+                    except Exception as e:
+                        print(f"[PRESET] Error applying {name}: {e}")
+
+        self.preset_path = filepath
+        self._load_net_panel_from_preset()
+        self._log_analyzer_stats()
+
+        print(f"[PRESET] autoload: {filepath} ({modules_applied} modules applied)")
 
     def _frame_tick(self):
         if not self.engine:
