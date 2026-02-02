@@ -2467,6 +2467,7 @@ class Main(QMainWindow):
         """
         try:
             print("[PROFILE] ========== STARTUP AUTO-APPLY ==========")
+            print(f"[AUDIT] preset_path={self.preset_path} exists={os.path.exists(self.preset_path)} cwd={os.getcwd()}")
 
             # Ensure profile exists (clone from canonical v54 if needed)
             self._ensure_profile_exists()
@@ -2492,6 +2493,7 @@ class Main(QMainWindow):
             data = self._ensure_net_panel_defaults(data)
             net = data.get("net_panel", {})
             print(f"[PROFILE] loaded net_panel from {self.preset_path}")
+            print(f"[AUDIT] net_panel loaded: local_nic={net.get('local_nic')} local_ip={net.get('local_ip')} local_nic_id={net.get('local_nic_id')}")
 
             # Apply audio config
             audio_cfg = net.get("audio", {})
@@ -2850,6 +2852,8 @@ class Main(QMainWindow):
                 print(f"[NET] preset not found, skip persist")
                 return
 
+            print(f"[AUDIT] _persist_nic_to_preset: BEFORE name={name} ip={ip} id={stable_id}")
+
             # Load current preset
             data = self._load_preset(self.preset_path)
             data = self._ensure_net_panel_defaults(data)
@@ -2867,7 +2871,10 @@ class Main(QMainWindow):
 
             # Atomic save
             if self._safe_save_preset(self.preset_path, data):
-                print(f"[NET] persisted nic: name={name} ip={ip or 'auto'} id={stable_id[:17] if stable_id else 'none'}")
+                # POST-SAVE VALIDATION: Re-read and confirm
+                verify_data = self._load_preset(self.preset_path)
+                verify_net = verify_data.get("net_panel", {})
+                print(f"[AUDIT][POST_SAVE_READ] local_nic={verify_net.get('local_nic')} local_ip={verify_net.get('local_ip')} local_nic_id={verify_net.get('local_nic_id')}")
             else:
                 print(f"[NET][ERR] failed to persist nic")
 
@@ -2901,9 +2908,12 @@ class Main(QMainWindow):
                 data = self._load_preset(self.preset_path)
                 data = self._ensure_net_panel_defaults(data)
 
+                # Generate stable ID (MAC or hash fallback)
+                stable_id = self._generate_stable_nic_id(name, ip, mac)
+
                 patch = {
                     "local_nic": name,           # Display name (informational)
-                    "local_nic_id": mac or "",   # MAC for stable identification
+                    "local_nic_id": stable_id,   # Stable ID (MAC or hash)
                     "local_ip": ip or ""         # Resolved IP
                 }
                 data = self._merge_net_panel(data, patch)
@@ -2911,7 +2921,7 @@ class Main(QMainWindow):
                 if not self._save_preset(self.preset_path, data):
                     print(f"[NET][ERR] Failed to persist NIC config")
                 else:
-                    print(f"[NET] persisted: nic_id={mac} ip={ip}")
+                    print(f"[NET] persisted: nic_id={stable_id} ip={ip}")
 
             # Apply to Avolites controller
             if interface_value:
@@ -3211,6 +3221,9 @@ class Main(QMainWindow):
     def _refresh_nics(self):
         """Refrescar lista de interfaces de red y seleccionar NIC guardada"""
         try:
+            # Block signal to prevent overwriting saved NIC on selection
+            self.cmb_nic.blockSignals(True)
+
             self.cmb_nic.clear()
 
             if NETWORK_UTILS_AVAILABLE:
@@ -3235,54 +3248,81 @@ class Main(QMainWindow):
                     net = data.get("net_panel", {})
                     saved_nic_id = net.get("local_nic_id", "")
                     saved_ip = net.get("local_ip", "")
+                    print(f"[AUDIT] _refresh_nics: saved_nic_id={saved_nic_id} saved_ip={saved_ip}")
             except:
                 pass
 
-            # Priority 1: Select by saved MAC address
+            # Priority 1: Select by saved ID (MAC or hash)
             if saved_nic_id:
-                saved_mac_lower = saved_nic_id.lower().strip()
-                for i in range(self.cmb_nic.count()):
-                    data = self.cmb_nic.itemData(i)
-                    if data and len(data) >= 3:
-                        mac = data[2]
-                        if mac and mac.lower().strip() == saved_mac_lower:
-                            self.cmb_nic.setCurrentIndex(i)
-                            self.lbl_local_ip.setText(data[1])
-                            print(f"[NET] NIC selected by MAC: {data[0]} ({data[1]})")
-                            return
+                saved_id_lower = saved_nic_id.lower().strip()
+
+                # Handle hash-based IDs
+                if saved_id_lower.startswith("hash:"):
+                    for i in range(self.cmb_nic.count()):
+                        item_data = self.cmb_nic.itemData(i)
+                        if item_data and len(item_data) >= 3:
+                            name, ip, mac, *_ = item_data
+                            # Regenerate hash for this interface and compare
+                            generated_id = self._generate_stable_nic_id(name, ip, mac)
+                            if generated_id and generated_id.lower() == saved_id_lower:
+                                self.cmb_nic.setCurrentIndex(i)
+                                self.lbl_local_ip.setText(ip)
+                                print(f"[NET] NIC selected by hash: {name} ({ip})")
+                                self.cmb_nic.blockSignals(False)
+                                return
+                else:
+                    # Handle MAC-based IDs
+                    for i in range(self.cmb_nic.count()):
+                        item_data = self.cmb_nic.itemData(i)
+                        if item_data and len(item_data) >= 3:
+                            mac = item_data[2]
+                            if mac and mac.lower().strip() == saved_id_lower:
+                                self.cmb_nic.setCurrentIndex(i)
+                                self.lbl_local_ip.setText(item_data[1])
+                                print(f"[NET] NIC selected by MAC: {item_data[0]} ({item_data[1]})")
+                                self.cmb_nic.blockSignals(False)
+                                return
 
             # Priority 2: Select by saved IP
             if saved_ip:
                 saved_ip_clean = saved_ip.strip()
                 for i in range(self.cmb_nic.count()):
-                    data = self.cmb_nic.itemData(i)
-                    if data and len(data) >= 2:
-                        ip = data[1]
+                    item_data = self.cmb_nic.itemData(i)
+                    if item_data and len(item_data) >= 2:
+                        ip = item_data[1]
                         if ip and ip.strip() == saved_ip_clean:
                             self.cmb_nic.setCurrentIndex(i)
                             self.lbl_local_ip.setText(ip)
-                            print(f"[NET] NIC selected by IP: {data[0]} ({ip})")
+                            print(f"[NET] NIC selected by IP: {item_data[0]} ({ip})")
+                            self.cmb_nic.blockSignals(False)
                             return
 
-            # Priority 3: Select first 10.0.0.x NIC (Titan network)
+            # Priority 3: Select first 10.0.0.x NIC (Titan network) - NO PERSIST
             for i in range(self.cmb_nic.count()):
-                data = self.cmb_nic.itemData(i)
-                if data and len(data) >= 2:
-                    ip = data[1]
+                item_data = self.cmb_nic.itemData(i)
+                if item_data and len(item_data) >= 2:
+                    ip = item_data[1]
                     if ip.startswith("10.0.0."):
                         self.cmb_nic.setCurrentIndex(i)
                         self.lbl_local_ip.setText(ip)
+                        print(f"[NET] NIC selected by 10.0.0.x fallback: {item_data[0]} ({ip}) [NOT PERSISTED]")
+                        self.cmb_nic.blockSignals(False)
                         return
 
-            # Priority 4: Select first UP interface
+            # Priority 4: Select first UP interface - NO PERSIST
             for i in range(1, self.cmb_nic.count()):
-                data = self.cmb_nic.itemData(i)
-                if data and len(data) >= 4 and data[3]:
+                item_data = self.cmb_nic.itemData(i)
+                if item_data and len(item_data) >= 4 and item_data[3]:
                     self.cmb_nic.setCurrentIndex(i)
-                    self.lbl_local_ip.setText(data[1])
+                    self.lbl_local_ip.setText(item_data[1])
+                    print(f"[NET] NIC selected by first-UP fallback: {item_data[0]} [NOT PERSISTED]")
+                    self.cmb_nic.blockSignals(False)
                     return
 
+            self.cmb_nic.blockSignals(False)
+
         except Exception as e:
+            self.cmb_nic.blockSignals(False)
             print(f"[NET][ERR] Error refrescando NICs: {e}")
     
     def _poll_net_status(self):
