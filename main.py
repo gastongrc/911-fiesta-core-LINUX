@@ -1708,78 +1708,119 @@ class Main(QMainWindow):
             header_layout.addWidget(btn)
         ln.addWidget(header_frame)
         
-        # Sección: Destino (Consola)
-        dest_frame = QFrame()
-        dest_frame.setStyleSheet("QFrame{background:#1a1a1a; border:1px solid #333; border-radius:6px;}")
-        dest_layout = QVBoxLayout(dest_frame)
-        dest_layout.setContentsMargins(12, 12, 12, 12)
-        dest_layout.setSpacing(8)
-        dest_title = QLabel("DESTINO (CONSOLA)")
-        dest_title.setStyleSheet("font-weight:700; color:#ddd; font-size:12px;")
-        dest_layout.addWidget(dest_title)
-        
+        # ================================================================
+        # TARJETA UNIFICADA: RED / CONSOLA (Titan)
+        # Contiene: Destino + NIC local + Transporte + Auto-connect
+        # ================================================================
+        net_card = QFrame()
+        net_card.setStyleSheet("QFrame{background:#1a1a1a; border:1px solid #444; border-radius:8px;}")
+        net_card_layout = QVBoxLayout(net_card)
+        net_card_layout.setContentsMargins(16, 16, 16, 16)
+        net_card_layout.setSpacing(12)
+
+        # Título de la tarjeta
+        net_card_title = QLabel("RED / CONSOLA (Titan)")
+        net_card_title.setStyleSheet("font-weight:700; color:#fff; font-size:14px; border:none;")
+        net_card_layout.addWidget(net_card_title)
+
+        # Separador visual
+        sep1 = QFrame()
+        sep1.setFrameShape(QFrame.HLine)
+        sep1.setStyleSheet("background:#444; border:none;")
+        sep1.setFixedHeight(1)
+        net_card_layout.addWidget(sep1)
+
+        # --- Subsección: Destino Consola ---
+        dest_subtitle = QLabel("Destino Consola")
+        dest_subtitle.setStyleSheet("font-weight:600; color:#3498db; font-size:11px; border:none;")
+        net_card_layout.addWidget(dest_subtitle)
+
         row_ip = QHBoxLayout()
-        row_ip.addWidget(QLabel("IP Consola:"))
+        lbl_ip = QLabel("IP:")
+        lbl_ip.setStyleSheet("color:#ccc; border:none;")
+        row_ip.addWidget(lbl_ip)
         self.ed_console_ip = QLineEdit()
         self.ed_console_ip.setPlaceholderText("10.0.0.1")
-        row_ip.addWidget(self.ed_console_ip, 2)
-        row_ip.addWidget(QLabel("Puerto:"))
+        self.ed_console_ip.setMaximumWidth(140)
+        row_ip.addWidget(self.ed_console_ip)
+        lbl_port = QLabel("Puerto:")
+        lbl_port.setStyleSheet("color:#ccc; border:none;")
+        row_ip.addWidget(lbl_port)
         self.ed_console_port = QLineEdit()
         self.ed_console_port.setPlaceholderText("4430")
-        row_ip.addWidget(self.ed_console_port, 1)
-        dest_layout.addLayout(row_ip)
-        
+        self.ed_console_port.setMaximumWidth(70)
+        row_ip.addWidget(self.ed_console_port)
+        row_ip.addStretch()
+        net_card_layout.addLayout(row_ip)
+
         row_dest_btns = QHBoxLayout()
         self.btn_save_reconnect = QPushButton("Guardar y Reconectar")
-        self.btn_save_reconnect.setStyleSheet("QPushButton{background:#27ae60; border:1px solid #229954; border-radius:4px; padding:8px; color:#fff; font-weight:700;} QPushButton:hover{background:#2ecc71;}")
+        self.btn_save_reconnect.setStyleSheet("QPushButton{background:#27ae60; border:1px solid #229954; border-radius:4px; padding:6px 12px; color:#fff; font-weight:700;} QPushButton:hover{background:#2ecc71;}")
         row_dest_btns.addWidget(self.btn_save_reconnect)
         self.chk_auto_retry = QCheckBox("Auto-reintento")
         self.chk_auto_retry.setStyleSheet("color:#ccc;")
         row_dest_btns.addWidget(self.chk_auto_retry)
         row_dest_btns.addStretch()
-        dest_layout.addLayout(row_dest_btns)
-        ln.addWidget(dest_frame)
-        
-        # Sección: Interfaz de Red (Local)
-        nic_frame = QFrame()
-        nic_frame.setStyleSheet("QFrame{background:#1a1a1a; border:1px solid #333; border-radius:6px;}")
-        nic_layout = QVBoxLayout(nic_frame)
-        nic_layout.setContentsMargins(12, 12, 12, 12)
-        nic_layout.setSpacing(8)
-        nic_title = QLabel("INTERFAZ DE RED (LOCAL)")
-        nic_title.setStyleSheet("font-weight:700; color:#ddd; font-size:12px;")
-        nic_layout.addWidget(nic_title)
-        
+        net_card_layout.addLayout(row_dest_btns)
+
+        # Separador
+        sep2 = QFrame()
+        sep2.setFrameShape(QFrame.HLine)
+        sep2.setStyleSheet("background:#333; border:none;")
+        sep2.setFixedHeight(1)
+        net_card_layout.addWidget(sep2)
+
+        # --- Subsección: NIC Local ---
+        nic_subtitle = QLabel("NIC Local (bind)")
+        nic_subtitle.setStyleSheet("font-weight:600; color:#e67e22; font-size:11px; border:none;")
+        net_card_layout.addWidget(nic_subtitle)
+
         row_nic = QHBoxLayout()
-        row_nic.addWidget(QLabel("NIC:"))
+        lbl_nic = QLabel("NIC:")
+        lbl_nic.setStyleSheet("color:#ccc; border:none;")
+        row_nic.addWidget(lbl_nic)
         self.cmb_nic = QComboBox()
-        self.cmb_nic.setMinimumWidth(300)
+        self.cmb_nic.setMinimumWidth(280)
         row_nic.addWidget(self.cmb_nic, 2)
-        row_nic.addWidget(QLabel("IP Local efectiva:"))
+        lbl_eff = QLabel("IP efectiva:")
+        lbl_eff.setStyleSheet("color:#ccc; border:none;")
+        row_nic.addWidget(lbl_eff)
         self.lbl_local_ip = QLabel("—")
-        self.lbl_local_ip.setStyleSheet("color:#27ae60; font-weight:700;")
+        self.lbl_local_ip.setStyleSheet("color:#27ae60; font-weight:700; border:none;")
         row_nic.addWidget(self.lbl_local_ip)
         row_nic.addStretch()
-        nic_layout.addLayout(row_nic)
-        
+        net_card_layout.addLayout(row_nic)
+
         row_nic_btns = QHBoxLayout()
-        self.btn_apply_nic = QPushButton("Aplicar NIC")
-        self.btn_apply_nic.setStyleSheet("QPushButton{background:#3498db; border:1px solid #2980b9; border-radius:4px; padding:6px; color:#fff;} QPushButton:hover{background:#5dade2;}")
+        self.btn_apply_nic = QPushButton("Guardar NIC")
+        self.btn_apply_nic.setStyleSheet("QPushButton{background:#e67e22; border:1px solid #d35400; border-radius:4px; padding:6px 12px; color:#fff;} QPushButton:hover{background:#f39c12;}")
         row_nic_btns.addWidget(self.btn_apply_nic)
+        self.chk_nic_auto_connect = QCheckBox("Auto-connect al iniciar")
+        self.chk_nic_auto_connect.setChecked(True)
+        self.chk_nic_auto_connect.setStyleSheet("color:#ccc;")
+        self.chk_nic_auto_connect.setToolTip("Si está marcado, aplica esta NIC automáticamente al reiniciar la app")
+        row_nic_btns.addWidget(self.chk_nic_auto_connect)
         row_nic_btns.addStretch()
-        nic_layout.addLayout(row_nic_btns)
-        ln.addWidget(nic_frame)
-        
-        # Sección: Transporte (solo si soportado)
+        net_card_layout.addLayout(row_nic_btns)
+
+        # Separador
+        sep3 = QFrame()
+        sep3.setFrameShape(QFrame.HLine)
+        sep3.setStyleSheet("background:#333; border:none;")
+        sep3.setFixedHeight(1)
+        net_card_layout.addWidget(sep3)
+
+        # --- Subsección: Transporte (solo si soportado) ---
         self.transport_frame = QFrame()
-        self.transport_frame.setStyleSheet("QFrame{background:#1a1a1a; border:1px solid #333; border-radius:6px;}")
+        self.transport_frame.setStyleSheet("border:none;")
         transport_layout = QVBoxLayout(self.transport_frame)
-        transport_layout.setContentsMargins(12, 12, 12, 12)
+        transport_layout.setContentsMargins(0, 0, 0, 0)
         transport_layout.setSpacing(8)
-        transport_title = QLabel("TRANSPORTE")
-        transport_title.setStyleSheet("font-weight:700; color:#ddd; font-size:12px;")
-        transport_layout.addWidget(transport_title)
-        
+
+        transport_subtitle = QLabel("Transporte")
+        transport_subtitle.setStyleSheet("font-weight:600; color:#9b59b6; font-size:11px; border:none;")
+        transport_layout.addWidget(transport_subtitle)
+
         row_transport = QHBoxLayout()
         self.transport_group = QButtonGroup()
         self.radio_http = QRadioButton("HTTP")
@@ -1797,37 +1838,49 @@ class Main(QMainWindow):
         row_transport.addWidget(self.radio_sacn)
         row_transport.addStretch()
         transport_layout.addLayout(row_transport)
-        
+
         # Subparámetros sACN
         self.sacn_params = QFrame()
+        self.sacn_params.setStyleSheet("border:none;")
         sacn_layout = QHBoxLayout(self.sacn_params)
         sacn_layout.setContentsMargins(0, 0, 0, 0)
-        sacn_layout.addWidget(QLabel("Universe:"))
+        lbl_univ = QLabel("Universe:")
+        lbl_univ.setStyleSheet("color:#ccc; border:none;")
+        sacn_layout.addWidget(lbl_univ)
         self.spin_sacn_universe = QSpinBox()
         self.spin_sacn_universe.setRange(1, 63999)
         self.spin_sacn_universe.setValue(1)
         sacn_layout.addWidget(self.spin_sacn_universe)
-        sacn_layout.addWidget(QLabel("Priority:"))
+        lbl_prio = QLabel("Priority:")
+        lbl_prio.setStyleSheet("color:#ccc; border:none;")
+        sacn_layout.addWidget(lbl_prio)
         self.spin_sacn_priority = QSpinBox()
         self.spin_sacn_priority.setRange(0, 200)
         self.spin_sacn_priority.setValue(100)
         sacn_layout.addWidget(self.spin_sacn_priority)
         sacn_layout.addStretch()
         transport_layout.addWidget(self.sacn_params)
-        
+
         # Subparámetros Art-Net
         self.artnet_params = QFrame()
+        self.artnet_params.setStyleSheet("border:none;")
         artnet_layout = QHBoxLayout(self.artnet_params)
         artnet_layout.setContentsMargins(0, 0, 0, 0)
-        artnet_layout.addWidget(QLabel("Net:"))
+        lbl_net = QLabel("Net:")
+        lbl_net.setStyleSheet("color:#ccc; border:none;")
+        artnet_layout.addWidget(lbl_net)
         self.spin_artnet_net = QSpinBox()
         self.spin_artnet_net.setRange(0, 127)
         artnet_layout.addWidget(self.spin_artnet_net)
-        artnet_layout.addWidget(QLabel("Subnet:"))
+        lbl_sub = QLabel("Subnet:")
+        lbl_sub.setStyleSheet("color:#ccc; border:none;")
+        artnet_layout.addWidget(lbl_sub)
         self.spin_artnet_subnet = QSpinBox()
         self.spin_artnet_subnet.setRange(0, 15)
         artnet_layout.addWidget(self.spin_artnet_subnet)
-        artnet_layout.addWidget(QLabel("Universe:"))
+        lbl_univ2 = QLabel("Universe:")
+        lbl_univ2.setStyleSheet("color:#ccc; border:none;")
+        artnet_layout.addWidget(lbl_univ2)
         self.spin_artnet_universe = QSpinBox()
         self.spin_artnet_universe.setRange(0, 15)
         artnet_layout.addWidget(self.spin_artnet_universe)
@@ -1835,18 +1888,20 @@ class Main(QMainWindow):
         transport_layout.addWidget(self.artnet_params)
         self.artnet_params.setVisible(False)
         self.sacn_params.setVisible(False)
-        
+
         row_transport_btn = QHBoxLayout()
         self.btn_apply_transport = QPushButton("Aplicar Transporte")
-        self.btn_apply_transport.setStyleSheet("QPushButton{background:#9b59b6; border:1px solid #8e44ad; border-radius:4px; padding:6px; color:#fff;} QPushButton:hover{background:#a569bd;}")
+        self.btn_apply_transport.setStyleSheet("QPushButton{background:#9b59b6; border:1px solid #8e44ad; border-radius:4px; padding:6px 12px; color:#fff;} QPushButton:hover{background:#a569bd;}")
         row_transport_btn.addWidget(self.btn_apply_transport)
         row_transport_btn.addStretch()
         transport_layout.addLayout(row_transport_btn)
-        
-        if not hasattr(self.avolites, 'set_transport'):
-            self.transport_frame.setVisible(False)
+
+        if hasattr(self.avolites, 'set_transport'):
+            net_card_layout.addWidget(self.transport_frame)
         else:
-            ln.addWidget(self.transport_frame)
+            self.transport_frame.setVisible(False)
+
+        ln.addWidget(net_card)
 
         # === Sección: Avolites Cue Offset ===
         offset_frame = QFrame()
@@ -2354,6 +2409,11 @@ class Main(QMainWindow):
             # NIC config (nested block like audio)
             if hasattr(self, 'cmb_nic'):
                 nic_data = self.cmb_nic.currentData()
+                # Read auto_connect from checkbox (defaults to True)
+                nic_auto_connect = True
+                if hasattr(self, 'chk_nic_auto_connect'):
+                    nic_auto_connect = self.chk_nic_auto_connect.isChecked()
+
                 if nic_data and len(nic_data) >= 3:
                     name, ip, mac, *_ = nic_data
                     if name == "auto":
@@ -2362,7 +2422,7 @@ class Main(QMainWindow):
                             "local_nic_name": "auto",
                             "local_nic_id": "",
                             "local_ip": "",
-                            "auto_connect": True
+                            "auto_connect": nic_auto_connect
                         }
                     else:
                         # Generate stable ID (MAC or hash fallback)
@@ -2371,7 +2431,7 @@ class Main(QMainWindow):
                             "local_nic_name": name,
                             "local_nic_id": stable_id,
                             "local_ip": ip or "",
-                            "auto_connect": True
+                            "auto_connect": nic_auto_connect
                         }
 
             # Audio config
@@ -2601,18 +2661,22 @@ class Main(QMainWindow):
             local_nic_name = nic_cfg.get("local_nic_name", "auto")
             nic_auto_connect = nic_cfg.get("auto_connect", True)
 
+            # P0 audit: log loaded NIC config
+            print(f"[NET] loaded nic -> ip={local_ip} name={local_nic_name} auto={nic_auto_connect}")
+
             nic_applied = False
             if nic_auto_connect and (local_nic_id or local_ip):
                 # Find NIC by MAC first, fallback to IP
                 nic_found = self._find_nic_by_id(local_nic_id, local_ip)
                 if nic_found:
                     name, ip, mac, up = nic_found
+                    # P0 audit: log applying NIC bind BEFORE Titan connect
+                    print(f"[NET] applying nic bind -> {name} ({ip}) [before Titan connect]")
                     # Set local_ip_effective BEFORE connecting
                     self.local_ip_effective = ip
                     # Configure avolites with local interface
                     if ip:
                         self.avolites.set_local_interface(ip)
-                    print(f"[NIC] bind local_ip_effective={ip} mac={mac[:17] if mac else '?'}")
 
                     # Update combo selection (block signals to prevent re-save during boot)
                     if hasattr(self, 'cmb_nic'):
@@ -2727,6 +2791,11 @@ class Main(QMainWindow):
                 local_nic_name = nic_cfg.get("local_nic_name", "auto")
                 local_nic_id = nic_cfg.get("local_nic_id", "")
                 local_ip = nic_cfg.get("local_ip", "")
+                nic_auto_connect = nic_cfg.get("auto_connect", True)
+
+                # Update auto_connect checkbox
+                if hasattr(self, 'chk_nic_auto_connect'):
+                    self.chk_nic_auto_connect.setChecked(nic_auto_connect)
 
                 # Select NIC in combo if exists (same pattern as audio combo)
                 if hasattr(self, 'cmb_nic'):
@@ -2872,9 +2941,10 @@ class Main(QMainWindow):
 
             name, ip, mac, up = nic_data
             stable_id = self._generate_stable_nic_id(name, ip, mac)
+            auto_connect = self.chk_nic_auto_connect.isChecked() if hasattr(self, 'chk_nic_auto_connect') else True
 
             # Log: apply clicked
-            print(f"[NIC] apply clicked -> name={name} ip={ip} id={stable_id}")
+            print(f"[NIC] Guardar NIC clicked -> name={name} ip={ip} id={stable_id} auto_connect={auto_connect}")
 
             # Apply NIC to runtime
             success = self._apply_nic_config(name, ip, mac)
@@ -2883,15 +2953,15 @@ class Main(QMainWindow):
                 # Save to preset (same as audio button pattern)
                 self.save_preset(filepath=self.preset_path)
 
-                # Post-save verification: re-read and log
+                # Post-save verification: re-read and log (P0 audit requirement)
                 try:
                     data = self._load_preset(self.preset_path)
                     saved_nic = data.get("net_panel", {}).get("nic", {})
-                    print(f"[NIC] saved -> net_panel.nic={saved_nic}")
-                except:
-                    pass
+                    print(f"[NET] saved nic -> {saved_nic}")
+                except Exception as verify_err:
+                    print(f"[NET][WARN] post-save verify failed: {verify_err}")
 
-                self._add_net_event(f"NIC aplicada: {name} ({ip})")
+                self._add_net_event(f"NIC guardada: {name} ({ip})")
             else:
                 self._add_net_event(f"NIC fallida: {name}")
 
@@ -2903,7 +2973,7 @@ class Main(QMainWindow):
         """
         Combo change handler (same pattern as audio combo).
         Changing combo only updates UI label - does NOT apply or save.
-        Use the "Aplicar NIC" button to apply + save.
+        Use the "Guardar NIC" button to apply + save.
         """
         if index < 0:
             return
