@@ -1,41 +1,49 @@
-# 911 Fiesta Control WebApp
+# 911 Fiesta Control Room V7
 
 Professional web-based control interface for the 911 Fiesta lighting system.
+
+## Quick Start
+
+```bash
+# 1. Start backend (from project root)
+python main.py
+
+# 2. Start frontend (in another terminal)
+cd webapp
+npm install
+npm run dev
+```
+
+- **Backend API**: http://localhost:8000
+- **Frontend**: http://localhost:3000 (Vite)
+- **Vision Server**: http://localhost:5000 (Flask)
 
 ## Features
 
 ### Pages
 
 1. **Home (Dashboard)**
-   - Real-time system status
-   - State monitoring (BAJADA, BASE_GOLPE, ATAQUE, BRAKE)
-   - Energy level display (BAJA, MEDIA, ALTA)
-   - Audio engine status
-   - Avolites connection status
-   - CueEngine statistics
-   - System uptime
+   - Real-time system status via SSE (with polling fallback)
+   - 5 status blocks: Audio, Avolites, Cameras, System, Calendar
+   - Connection indicator (SSE/Polling)
+   - Auto-refresh every 500ms
 
-2. **Analyze**
-   - Real-time analyzer visualization
-   - Animated bars for value/threshold comparison
-   - Match indicators
-   - Active/inactive module status
-   - Organized by system state
-   - Energy detector with thresholds
+2. **Calendar**
+   - **Status Tab**: Current mode, timeline, override status
+   - **Schedule Tab**: Week schedule viewer, save functionality
+   - **Control Tab**: GO buttons, +5/10/15 extend, override controls
+   - Calendar is "AUTO HARD" - always controls the show
 
-3. **Cues**
-   - Interactive cue grid (1-300 cues)
-   - Fire cue (normal mode)
-   - Force fire (bypass READY check)
-   - Kill all cues
-   - Active cues display
-   - CueEngine status
+3. **Vision**
+   - Camera status (haze, people, tracking)
+   - Reference only - no editing, no firing
+   - FPS and online status for each camera
 
 4. **Network**
    - Network interface selection
    - Avolites console IP/port configuration
    - Ping tool with latency measurement
-   - Interface list with IP addresses
+   - Windows-safe (never 500 errors)
 
 5. **Presets**
    - List available presets
@@ -48,6 +56,10 @@ Professional web-based control interface for the 911 Fiesta lighting system.
    - Module enable/disable
    - System configuration by section
    - Audio, Avolites, State, Modules config
+
+### Removed in V7
+- **Cues**: Dangerous during live show
+- **Analyze**: Unnecessary in Control Room
 
 ## Tech Stack
 
@@ -136,9 +148,9 @@ webapp/
 │   │   └── Layout.jsx    # Main layout with navigation
 │   │
 │   ├── pages/            # Page components
-│   │   ├── Home.jsx      # Dashboard
-│   │   ├── Analyze.jsx   # Analyzer visualization
-│   │   ├── Cues.jsx      # Cue control
+│   │   ├── Home.jsx      # Dashboard (5 status blocks + SSE)
+│   │   ├── Calendar.jsx  # Calendar control (3 tabs)
+│   │   ├── Vision.jsx    # Camera reference (read-only)
 │   │   ├── Network.jsx   # Network configuration
 │   │   ├── Presets.jsx   # Preset management
 │   │   └── Config.jsx    # System configuration
@@ -165,14 +177,22 @@ webapp/
 
 The webapp communicates with the FastAPI backend at `/api/v1/*` endpoints.
 
-### Polling
+### Real-time Updates
 
-Real-time data is fetched via polling:
-- **Status**: 1000ms interval
-- **Analyzers**: 500ms interval
-- **Cues**: 1000ms interval
+V7 uses Server-Sent Events (SSE) for real-time updates:
+- **Primary**: SSE stream at `/api/v1/stream` (500ms updates)
+- **Fallback**: Polling at `/api/v1/status/unified` (1000ms)
 
-Polling is automatically managed by the Zustand store and starts/stops when navigating between pages.
+The connection type is shown in the Home dashboard header.
+
+### Key Endpoints
+
+- `GET /api/v1/status/unified` - Unified status (audio, avolites, cameras, system, calendar)
+- `GET /api/v1/stream` - SSE real-time stream
+- `GET /api/v1/calendar/status` - Full calendar state
+- `POST /api/v1/calendar/go` - Manual GO with optional delay
+- `POST /api/v1/calendar/extend` - Extend current block
+- `POST /api/v1/calendar/override` - Activate override
 
 ## Design Philosophy
 
@@ -327,5 +347,5 @@ For issues related to this webapp, check:
 
 ---
 
-**Version**: 8.0.0
-**Last Updated**: 2025-11-21
+**Version**: 8.0.0 (Control Room V7)
+**Last Updated**: 2026-02-03

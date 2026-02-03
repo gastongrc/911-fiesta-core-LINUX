@@ -1,8 +1,23 @@
+/**
+ * Router V7 - Control Room Navigation
+ *
+ * Páginas:
+ * - Home (dashboard con 5 bloques de estado)
+ * - Calendar (control del calendario inteligente)
+ * - Vision (visualización de cámaras - solo referencia)
+ * - Network (configuración de red)
+ * - Config (configuración del sistema)
+ * - Presets (gestión de presets)
+ *
+ * ELIMINADAS:
+ * - Cues (peligroso en show)
+ * - Analyze (innecesario en Control Room)
+ */
 import { createBrowserRouter } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
-import { Analyze } from './pages/Analyze';
-import { Cues } from './pages/Cues';
+import { Calendar } from './pages/Calendar';
+import { Vision } from './pages/Vision';
 import { Network } from './pages/Network';
 import { Presets } from './pages/Presets';
 import { Config } from './pages/Config';
@@ -13,12 +28,12 @@ export const router = createBrowserRouter([
     element: <Layout><Home /></Layout>,
   },
   {
-    path: '/analyze',
-    element: <Layout><Analyze /></Layout>,
+    path: '/calendar',
+    element: <Layout><Calendar /></Layout>,
   },
   {
-    path: '/cues',
-    element: <Layout><Cues /></Layout>,
+    path: '/vision',
+    element: <Layout><Vision /></Layout>,
   },
   {
     path: '/network',

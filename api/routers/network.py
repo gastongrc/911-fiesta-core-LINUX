@@ -22,10 +22,16 @@ async def list_network_interfaces(
 ):
     """
     Listar todas las interfaces de red disponibles.
-    """
-    import network_utils
 
+    NOTA: Este endpoint NUNCA devuelve 500 en Windows.
+    Si falla psutil/netifaces, devuelve lista vacía con mensaje de error.
+    """
+    interfaces = []
+    error_msg = None
+
+    # Intentar obtener interfaces
     try:
+        import network_utils
         interfaces_data = network_utils.list_interfaces()
 
         interfaces = [
@@ -37,24 +43,26 @@ async def list_network_interfaces(
             )
             for iface in interfaces_data
         ]
-
-        # Obtener interfaz actual
-        current = None
-        if app_state.avolites:
-            try:
-                current = app_state.avolites.config_manager.config.get("local_ip")
-            except Exception:
-                pass
-
-        return NetworkInterfacesResponse(
-            interfaces=interfaces,
-            current_interface=current
-        )
+    except ImportError as e:
+        error_msg = f"network_utils not available: {e}"
+        print(f"[WEBAPI][NET] {error_msg}")
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error listing interfaces: {str(e)}"
-        )
+        error_msg = f"no_interfaces_detected: {e}"
+        print(f"[WEBAPI][NET] no interfaces detected (windows safe fallback): {e}")
+
+    # Obtener interfaz actual (siempre intentar, independiente del error)
+    current = None
+    if app_state.avolites:
+        try:
+            current = app_state.avolites.config_manager.config.get("local_ip")
+        except Exception:
+            pass
+
+    # NUNCA 500 - siempre devolver respuesta válida
+    return NetworkInterfacesResponse(
+        interfaces=interfaces,
+        current_interface=current
+    )
 
 
 @router.post("/network/interface")

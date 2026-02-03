@@ -1,8 +1,19 @@
+/**
+ * Layout V7 - Control Room Navigation
+ *
+ * Navegación:
+ * - Home (dashboard)
+ * - Calendar (calendario inteligente)
+ * - Vision (cámaras - solo referencia)
+ * - Network (configuración de red)
+ * - Config (configuración)
+ * - Presets (presets)
+ */
 import { Link, useLocation } from 'react-router-dom';
 import {
   Home,
-  Activity,
-  Radio,
+  Calendar,
+  Eye,
   Network,
   Save,
   Settings
@@ -11,8 +22,8 @@ import { cn } from '../lib/utils';
 
 const navItems = [
   { path: '/', icon: Home, label: 'Home' },
-  { path: '/analyze', icon: Activity, label: 'Analyze' },
-  { path: '/cues', icon: Radio, label: 'Cues' },
+  { path: '/calendar', icon: Calendar, label: 'Calendar' },
+  { path: '/vision', icon: Eye, label: 'Vision' },
   { path: '/network', icon: Network, label: 'Network' },
   { path: '/presets', icon: Save, label: 'Presets' },
   { path: '/config', icon: Settings, label: 'Config' },
@@ -25,22 +36,22 @@ export function Layout({ children }) {
     <div className="flex flex-col h-screen bg-background">
       {/* Header */}
       <header className="border-b border-border bg-card">
-        <div className="container mx-auto px-4 py-4">
-          <h1 className="text-2xl font-bold text-primary">911 Fiesta Control</h1>
+        <div className="container mx-auto px-4 py-3">
+          <h1 className="text-xl font-bold text-primary">911 Fiesta Control Room</h1>
         </div>
       </header>
 
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar Navigation */}
-        <aside className="w-64 border-r border-border bg-card hidden md:block">
-          <nav className="flex flex-col gap-2 p-4">
+        <aside className="w-56 border-r border-border bg-card hidden md:block">
+          <nav className="flex flex-col gap-1 p-3">
             {navItems.map(({ path, icon: Icon, label }) => (
               <Link
                 key={path}
                 to={path}
                 className={cn(
-                  "flex items-center gap-3 px-4 py-3 rounded-lg transition-colors",
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
                   "hover:bg-accent hover:text-accent-foreground",
                   location.pathname === path
                     ? "bg-primary text-primary-foreground"
@@ -70,7 +81,7 @@ export function Layout({ children }) {
               key={path}
               to={path}
               className={cn(
-                "flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-colors min-w-0",
+                "flex flex-col items-center gap-1 px-2 py-2 rounded-lg transition-colors min-w-0",
                 location.pathname === path
                   ? "text-primary"
                   : "text-muted-foreground hover:text-foreground"

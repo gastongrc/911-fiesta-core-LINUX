@@ -269,6 +269,111 @@ class PresetLoadResponse(BaseModel):
     applied_sections: List[Optional[str]]
 
 
+# ==================== UNIFIED STATUS MODELS (V7 Control Room) ====================
+
+class AudioHealthStatus(BaseModel):
+    """Estado de salud del audio para Control Room"""
+    silence: bool = False
+    clipping: bool = False
+    level: float = 0.0
+    device: Optional[str] = None
+
+
+class AvolitesHealthStatus(BaseModel):
+    """Estado de Avolites para Control Room"""
+    connected: bool = False
+    console_ip: str = ""
+    port: int = 4430
+    latency_ms: Optional[int] = None
+
+
+class CameraStatus(BaseModel):
+    """Estado de una cámara"""
+    name: str
+    ip: str
+    online: bool = False
+    fps: int = 0
+
+
+class SystemResourcesStatus(BaseModel):
+    """Estado de recursos del sistema"""
+    cpu: int = 0
+    ram: int = 0
+    gpu: int = 0
+    temp: int = 0
+
+
+class CalendarStatusBrief(BaseModel):
+    """Estado resumido del calendario para Control Room"""
+    day: str = ""
+    time: str = ""
+    current_mode: str = "apagado"
+    next_mode: Optional[str] = None
+    time_remaining_s: int = -1
+    time_to_next_s: int = -1
+    override_active: bool = False
+    auto: bool = True
+
+
+class UnifiedStatus(BaseModel):
+    """
+    Estado unificado para Control Room V7.
+    Un solo endpoint con todo lo que la web necesita.
+    """
+    ts: int
+    audio: AudioHealthStatus
+    avolites: AvolitesHealthStatus
+    cameras: List[CameraStatus] = []
+    system: SystemResourcesStatus
+    calendar: CalendarStatusBrief
+
+
+# ==================== CALENDAR MODELS (V7 Control Room) ====================
+
+class CalendarGoRequest(BaseModel):
+    """Request para GO manual"""
+    mode: str
+    delay_minutes: int = Field(default=0, ge=0, le=60)
+
+
+class CalendarExtendRequest(BaseModel):
+    """Request para extender bloque actual"""
+    minutes: int = Field(..., ge=5, le=60)
+
+
+class CalendarOverrideRequest(BaseModel):
+    """Request para override"""
+    mode: str
+    duration_minutes: int = Field(default=30, ge=5, le=480)
+    reason: str = ""
+
+
+class CalendarSaveRequest(BaseModel):
+    """Request para guardar schedule"""
+    week: Dict[str, List[Dict[str, Any]]]
+
+
+class CalendarStatusResponse(BaseModel):
+    """Respuesta completa de estado del calendario"""
+    current_mode: str
+    next_mode: Optional[str]
+    source: str
+    since: str
+    time_remaining_s: int
+    time_to_next_s: int
+    progress: float
+    override: Optional[Dict[str, Any]]
+    alert: Optional[Dict[str, Any]]
+    pending_go: Optional[Dict[str, Any]]
+    auto_mode_enabled: bool
+    available_modes: List[str]
+
+
+class CalendarWeekResponse(BaseModel):
+    """Schedule de la semana"""
+    week: Dict[str, List[Dict[str, Any]]]
+
+
 # ==================== ERROR MODELS ====================
 
 class ErrorResponse(BaseModel):
