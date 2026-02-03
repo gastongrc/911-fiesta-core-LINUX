@@ -1,98 +1,139 @@
 /**
- * Layout V7 - Control Room Navigation
+ * Layout V7 - Control Room Navigation (Estilo Industrial)
  *
  * Navegación:
  * - Home (dashboard)
- * - Calendar (calendario inteligente)
+ * - Calendar (calendario)
  * - Vision (cámaras - solo referencia)
  * - Network (configuración de red)
- * - Config (configuración)
  * - Presets (presets)
+ * - Config (configuración)
  */
 import { Link, useLocation } from 'react-router-dom';
-import {
-  Home,
-  Calendar,
-  Eye,
-  Network,
-  Save,
-  Settings
-} from 'lucide-react';
-import { cn } from '../lib/utils';
 
 const navItems = [
-  { path: '/', icon: Home, label: 'Home' },
-  { path: '/calendar', icon: Calendar, label: 'Calendar' },
-  { path: '/vision', icon: Eye, label: 'Vision' },
-  { path: '/network', icon: Network, label: 'Network' },
-  { path: '/presets', icon: Save, label: 'Presets' },
-  { path: '/config', icon: Settings, label: 'Config' },
+  { path: '/', label: 'HOME' },
+  { path: '/calendar', label: 'CALENDAR' },
+  { path: '/vision', label: 'VISION' },
+  { path: '/network', label: 'NETWORK' },
+  { path: '/presets', label: 'PRESETS' },
+  { path: '/config', label: 'CONFIG' },
 ];
 
 export function Layout({ children }) {
   const location = useLocation();
 
   return (
-    <div className="flex flex-col h-screen bg-background">
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100vh',
+      background: '#0d1117',
+      color: '#ecf0f1',
+    }}>
       {/* Header */}
-      <header className="border-b border-border bg-card">
-        <div className="container mx-auto px-4 py-3">
-          <h1 className="text-xl font-bold text-primary">911 Fiesta Control Room</h1>
-        </div>
+      <header style={{
+        background: '#1e272e',
+        borderBottom: '1px solid #34495e',
+        padding: '10px 16px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}>
+        <h1 style={{
+          margin: 0,
+          fontSize: '16px',
+          fontWeight: 'bold',
+          color: '#ecf0f1',
+          letterSpacing: '1px',
+        }}>
+          911 FIESTA CONTROL ROOM
+        </h1>
+        <span style={{
+          color: '#7f8c8d',
+          fontSize: '10px',
+        }}>
+          V7
+        </span>
       </header>
 
-      {/* Main Content */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar Navigation */}
-        <aside className="w-56 border-r border-border bg-card hidden md:block">
-          <nav className="flex flex-col gap-1 p-3">
-            {navItems.map(({ path, icon: Icon, label }) => (
+      {/* Main */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        {/* Sidebar */}
+        <aside style={{
+          width: '180px',
+          background: '#1e272e',
+          borderRight: '1px solid #34495e',
+          padding: '12px 8px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '4px',
+        }}>
+          {navItems.map(({ path, label }) => {
+            const isActive = location.pathname === path;
+            return (
               <Link
                 key={path}
                 to={path}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
-                  "hover:bg-accent hover:text-accent-foreground",
-                  location.pathname === path
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground"
-                )}
+                style={{
+                  display: 'block',
+                  padding: '10px 12px',
+                  borderRadius: '6px',
+                  textDecoration: 'none',
+                  fontSize: '11px',
+                  fontWeight: 'bold',
+                  letterSpacing: '0.5px',
+                  background: isActive ? '#27ae60' : 'transparent',
+                  color: isActive ? '#ffffff' : '#7f8c8d',
+                  border: isActive ? 'none' : '1px solid transparent',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isActive) {
+                    e.target.style.background = '#2c3e50';
+                    e.target.style.color = '#ecf0f1';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) {
+                    e.target.style.background = 'transparent';
+                    e.target.style.color = '#7f8c8d';
+                  }
+                }}
               >
-                <Icon className="h-5 w-5" />
-                <span className="font-medium">{label}</span>
+                {label}
               </Link>
-            ))}
-          </nav>
+            );
+          })}
         </aside>
 
-        {/* Page Content */}
-        <main className="flex-1 overflow-auto">
-          <div className="container mx-auto p-4 md:p-6 max-w-7xl">
-            {children}
-          </div>
+        {/* Content */}
+        <main style={{
+          flex: 1,
+          overflow: 'auto',
+          background: '#0d1117',
+        }}>
+          {children}
         </main>
       </div>
 
-      {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden border-t border-border bg-card">
-        <div className="flex justify-around items-center p-2">
-          {navItems.map(({ path, icon: Icon, label }) => (
-            <Link
-              key={path}
-              to={path}
-              className={cn(
-                "flex flex-col items-center gap-1 px-2 py-2 rounded-lg transition-colors min-w-0",
-                location.pathname === path
-                  ? "text-primary"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <Icon className="h-5 w-5 flex-shrink-0" />
-              <span className="text-xs font-medium truncate">{label}</span>
-            </Link>
-          ))}
-        </div>
+      {/* Mobile Bottom Nav */}
+      <nav style={{
+        display: 'none',
+        background: '#1e272e',
+        borderTop: '1px solid #34495e',
+        padding: '8px',
+      }}>
+        {/* Se activa en mobile via media query si es necesario */}
       </nav>
+
+      {/* Mobile CSS */}
+      <style>{`
+        @media (max-width: 768px) {
+          aside { display: none !important; }
+          nav { display: flex !important; justify-content: space-around; }
+        }
+      `}</style>
     </div>
   );
 }

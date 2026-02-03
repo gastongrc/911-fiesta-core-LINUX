@@ -1,126 +1,87 @@
 /**
- * Home V7 - Control Room Dashboard
+ * Home V7 - Control Room Dashboard (Estilo Industrial)
  *
- * 5 bloques obligatorios:
- * 1. Audio Health (silence, clipping, level, device)
- * 2. Avolites (connected, IP, latency)
- * 3. Cámaras (online/offline, fps)
- * 4. Sistema (CPU, RAM, GPU, Temp)
- * 5. Calendario (día, hora, modo actual, próximo, timeline, AUTO/OVERRIDE)
+ * SOLO muestra:
+ * - Audio: silence / clipping
+ * - Avolites: connected
+ * - Cámaras: haze / people / tracking (OK/FAIL)
+ * - Sistema: CPU / RAM / energía
+ * - Calendario: día, hora BIOS, modo actual, timeline, próximo
  *
- * Tiempo real: SSE con fallback a polling
+ * Estilo: Oscuro, denso, técnico (consola industrial)
  */
 import { useEffect, useState, useRef } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
-import { Badge } from '../components/ui/Badge';
-import {
-  Music,
-  Radio,
-  Camera,
-  Cpu,
-  Calendar,
-  Wifi,
-  WifiOff,
-  AlertTriangle,
-  CheckCircle,
-  Clock
-} from 'lucide-react';
 
-// Colores por modo de calendario
-const modeColors = {
-  clima_1: 'bg-blue-500',
-  clima_2: 'bg-cyan-500',
-  clima_3: 'bg-teal-500',
-  clima_4: 'bg-green-500',
-  boliche_inicio: 'bg-purple-500',
-  boliche_desarrollo: 'bg-pink-500',
-  boliche_fin: 'bg-red-500',
-  apagado: 'bg-gray-500',
-  teatro: 'bg-amber-500',
-  artista: 'bg-orange-500',
+// Colores por modo (del calendario viejo)
+const MODE_COLORS = {
+  clima_1: '#1abc9c',
+  clima_2: '#16a085',
+  clima_3: '#2ecc71',
+  clima_4: '#27ae60',
+  teatro: '#3498db',
+  artista: '#9b59b6',
+  boliche_inicio: '#f39c12',
+  boliche_desarrollo: '#e67e22',
+  boliche_fin: '#e74c3c',
+  apagado: '#7f8c8d',
 };
 
-// Formatear tiempo restante
-function formatTime(seconds) {
-  if (seconds < 0) return '—';
-  if (seconds < 60) return `${seconds}s`;
-  const mins = Math.floor(seconds / 60);
-  if (mins < 60) return `${mins}m`;
-  const hours = Math.floor(mins / 60);
-  const remainMins = mins % 60;
-  return `${hours}h ${remainMins}m`;
-}
+const DAY_NAMES = {
+  monday: 'LUNES', tuesday: 'MARTES', wednesday: 'MIÉRCOLES',
+  thursday: 'JUEVES', friday: 'VIERNES', saturday: 'SÁBADO', sunday: 'DOMINGO'
+};
 
 // Hook para SSE con fallback a polling
 function useUnifiedStatus() {
   const [status, setStatus] = useState(null);
-  const [connectionType, setConnectionType] = useState('none'); // 'sse' | 'polling' | 'none'
+  const [connectionType, setConnectionType] = useState('none');
   const eventSourceRef = useRef(null);
   const pollingRef = useRef(null);
 
   useEffect(() => {
     let mounted = true;
 
-    // Intentar SSE primero
     const connectSSE = () => {
       try {
         const es = new EventSource('/api/v1/stream');
-
         es.onopen = () => {
           if (mounted) {
-            console.log('[SSE] connected');
             setConnectionType('sse');
-            // Cancelar polling si estaba activo
             if (pollingRef.current) {
               clearInterval(pollingRef.current);
               pollingRef.current = null;
             }
           }
         };
-
         es.onmessage = (event) => {
           if (mounted) {
             try {
-              const data = JSON.parse(event.data);
-              setStatus(data);
-            } catch (e) {
-              console.error('[SSE] parse error:', e);
-            }
+              setStatus(JSON.parse(event.data));
+            } catch (e) {}
           }
         };
-
-        es.onerror = (error) => {
-          console.warn('[SSE] error, falling back to polling');
+        es.onerror = () => {
           es.close();
           if (mounted) {
             setConnectionType('polling');
             startPolling();
           }
         };
-
         eventSourceRef.current = es;
       } catch (e) {
-        console.warn('[SSE] not available, using polling');
         setConnectionType('polling');
         startPolling();
       }
     };
 
-    // Fallback: polling cada 1s
     const startPolling = () => {
       const poll = async () => {
         try {
           const res = await fetch('/api/v1/status/unified');
-          if (res.ok && mounted) {
-            const data = await res.json();
-            setStatus(data);
-          }
-        } catch (e) {
-          console.error('[POLL] error:', e);
-        }
+          if (res.ok && mounted) setStatus(await res.json());
+        } catch (e) {}
       };
-
-      poll(); // Primera carga inmediata
+      poll();
       pollingRef.current = setInterval(poll, 1000);
     };
 
@@ -128,280 +89,334 @@ function useUnifiedStatus() {
 
     return () => {
       mounted = false;
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-      }
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-      }
+      if (eventSourceRef.current) eventSourceRef.current.close();
+      if (pollingRef.current) clearInterval(pollingRef.current);
     };
   }, []);
 
   return { status, connectionType };
 }
 
-// Componente de tarjeta genérica
-function StatusCard({ icon: Icon, title, children, badge, className = '' }) {
+// Formatea segundos a display
+function formatTime(seconds) {
+  if (seconds < 0) return '---';
+  if (seconds < 60) return `${seconds}s`;
+  const mins = Math.floor(seconds / 60);
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  return `${hours}h ${mins % 60}m`;
+}
+
+// Panel genérico estilo industrial
+function Panel({ title, children, status, statusColor }) {
   return (
-    <Card className={className}>
-      <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-        <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <Icon className="h-4 w-4 text-muted-foreground" />
+    <div style={{
+      background: '#1e272e',
+      borderRadius: '8px',
+      border: '1px solid #34495e',
+      padding: '12px',
+    }}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '10px',
+        borderBottom: '1px solid #34495e',
+        paddingBottom: '8px',
+      }}>
+        <span style={{ color: '#7f8c8d', fontSize: '10px', fontWeight: 'bold', letterSpacing: '1px' }}>
           {title}
-        </CardTitle>
-        {badge}
-      </CardHeader>
-      <CardContent>
-        {children}
-      </CardContent>
-    </Card>
+        </span>
+        {status && (
+          <span style={{
+            color: statusColor || '#2ecc71',
+            fontSize: '10px',
+            fontWeight: 'bold',
+            background: `${statusColor || '#2ecc71'}20`,
+            padding: '2px 8px',
+            borderRadius: '4px',
+          }}>
+            {status}
+          </span>
+        )}
+      </div>
+      {children}
+    </div>
   );
 }
 
-// Bloque 1: Audio Health
-function AudioBlock({ audio }) {
-  if (!audio) return null;
+// Indicador simple
+function Indicator({ label, value, ok }) {
+  return (
+    <div style={{
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: '4px 0',
+    }}>
+      <span style={{ color: '#7f8c8d', fontSize: '11px' }}>{label}</span>
+      <span style={{
+        color: ok === true ? '#2ecc71' : ok === false ? '#e74c3c' : '#ecf0f1',
+        fontSize: '11px',
+        fontWeight: 'bold',
+      }}>
+        {value}
+      </span>
+    </div>
+  );
+}
 
-  const isHealthy = !audio.silence && !audio.clipping;
-  const levelPercent = Math.round((audio.level || 0) * 100);
+// Bloque Audio
+function AudioPanel({ audio }) {
+  if (!audio) return null;
+  const isOk = !audio.silence && !audio.clipping;
+  return (
+    <Panel
+      title="AUDIO"
+      status={audio.silence ? 'SILENCE' : audio.clipping ? 'CLIPPING' : 'OK'}
+      statusColor={isOk ? '#2ecc71' : '#e74c3c'}
+    >
+      <Indicator label="Silence" value={audio.silence ? 'YES' : 'NO'} ok={!audio.silence} />
+      <Indicator label="Clipping" value={audio.clipping ? 'YES' : 'NO'} ok={!audio.clipping} />
+      <Indicator label="Device" value={audio.device || '---'} />
+    </Panel>
+  );
+}
+
+// Bloque Avolites
+function AvolitesPanel({ avolites }) {
+  if (!avolites) return null;
+  return (
+    <Panel
+      title="AVOLITES"
+      status={avolites.connected ? 'CONNECTED' : 'OFFLINE'}
+      statusColor={avolites.connected ? '#2ecc71' : '#e74c3c'}
+    >
+      <Indicator label="Connected" value={avolites.connected ? 'YES' : 'NO'} ok={avolites.connected} />
+      <Indicator label="Console IP" value={avolites.console_ip || '---'} />
+      <Indicator label="Port" value={avolites.port || '---'} />
+      {avolites.latency_ms != null && (
+        <Indicator label="Latency" value={`${avolites.latency_ms}ms`} />
+      )}
+    </Panel>
+  );
+}
+
+// Bloque Cámaras
+function CamerasPanel({ cameras }) {
+  const camTypes = ['haze', 'people', 'tracking'];
+  const camMap = {};
+  (cameras || []).forEach(c => { camMap[c.name] = c; });
+
+  const allOk = camTypes.every(t => camMap[t]?.online);
 
   return (
-    <StatusCard
-      icon={Music}
-      title="Audio"
-      badge={
-        isHealthy ? (
-          <Badge className="bg-green-500">OK</Badge>
-        ) : (
-          <Badge className="bg-red-500">
-            {audio.silence ? 'SILENCE' : 'CLIPPING'}
-          </Badge>
-        )
-      }
+    <Panel
+      title="CÁMARAS"
+      status={allOk ? 'ALL OK' : 'FAIL'}
+      statusColor={allOk ? '#2ecc71' : '#e74c3c'}
     >
-      <div className="space-y-2">
-        <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">Device</span>
-          <span className="font-medium truncate max-w-[150px]">
-            {audio.device || '—'}
+      {camTypes.map(type => {
+        const cam = camMap[type];
+        const online = cam?.online;
+        return (
+          <Indicator
+            key={type}
+            label={type.toUpperCase()}
+            value={online ? `OK (${cam.fps} fps)` : 'FAIL'}
+            ok={online}
+          />
+        );
+      })}
+    </Panel>
+  );
+}
+
+// Bloque Sistema
+function SystemPanel({ system }) {
+  if (!system) return null;
+  const cpuHigh = system.cpu > 80;
+  const ramHigh = system.ram > 80;
+
+  return (
+    <Panel title="SISTEMA">
+      <div style={{ marginBottom: '8px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+          <span style={{ color: '#7f8c8d', fontSize: '10px' }}>CPU</span>
+          <span style={{ color: cpuHigh ? '#e74c3c' : '#ecf0f1', fontSize: '10px', fontWeight: 'bold' }}>
+            {system.cpu}%
           </span>
         </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">Level</span>
-          <span className="font-medium">{levelPercent}%</span>
-        </div>
-        <div className="w-full bg-secondary rounded-full h-2">
-          <div
-            className={`h-2 rounded-full transition-all ${
-              audio.clipping ? 'bg-red-500' : audio.silence ? 'bg-yellow-500' : 'bg-green-500'
-            }`}
-            style={{ width: `${Math.min(100, levelPercent)}%` }}
-          />
+        <div style={{
+          background: '#2c3e50',
+          borderRadius: '4px',
+          height: '6px',
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            background: cpuHigh ? '#e74c3c' : '#3498db',
+            height: '100%',
+            width: `${Math.min(100, system.cpu)}%`,
+            transition: 'width 0.3s',
+          }} />
         </div>
       </div>
-    </StatusCard>
+      <div style={{ marginBottom: '8px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+          <span style={{ color: '#7f8c8d', fontSize: '10px' }}>RAM</span>
+          <span style={{ color: ramHigh ? '#e74c3c' : '#ecf0f1', fontSize: '10px', fontWeight: 'bold' }}>
+            {system.ram}%
+          </span>
+        </div>
+        <div style={{
+          background: '#2c3e50',
+          borderRadius: '4px',
+          height: '6px',
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            background: ramHigh ? '#e74c3c' : '#9b59b6',
+            height: '100%',
+            width: `${Math.min(100, system.ram)}%`,
+            transition: 'width 0.3s',
+          }} />
+        </div>
+      </div>
+      {system.gpu > 0 && <Indicator label="GPU" value={`${system.gpu}%`} />}
+      {system.temp > 0 && <Indicator label="Temp" value={`${system.temp}°C`} ok={system.temp < 75} />}
+    </Panel>
   );
 }
 
-// Bloque 2: Avolites
-function AvolitesBlock({ avolites }) {
-  if (!avolites) return null;
-
-  return (
-    <StatusCard
-      icon={Radio}
-      title="Avolites"
-      badge={
-        avolites.connected ? (
-          <Badge className="bg-green-500 flex items-center gap-1">
-            <Wifi className="h-3 w-3" /> Connected
-          </Badge>
-        ) : (
-          <Badge className="bg-red-500 flex items-center gap-1">
-            <WifiOff className="h-3 w-3" /> Offline
-          </Badge>
-        )
-      }
-    >
-      <div className="space-y-2">
-        <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">Console IP</span>
-          <span className="font-medium">{avolites.console_ip || '—'}</span>
-        </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">Port</span>
-          <span className="font-medium">{avolites.port}</span>
-        </div>
-        {avolites.latency_ms !== null && (
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Latency</span>
-            <span className="font-medium">{avolites.latency_ms}ms</span>
-          </div>
-        )}
-      </div>
-    </StatusCard>
-  );
-}
-
-// Bloque 3: Cámaras
-function CamerasBlock({ cameras }) {
-  if (!cameras || cameras.length === 0) {
-    return (
-      <StatusCard icon={Camera} title="Cameras">
-        <p className="text-sm text-muted-foreground">No cameras configured</p>
-      </StatusCard>
-    );
-  }
-
-  const onlineCount = cameras.filter(c => c.online).length;
-
-  return (
-    <StatusCard
-      icon={Camera}
-      title="Cameras"
-      badge={
-        <Badge className={onlineCount === cameras.length ? 'bg-green-500' : 'bg-yellow-500'}>
-          {onlineCount}/{cameras.length} online
-        </Badge>
-      }
-    >
-      <div className="space-y-2">
-        {cameras.map((cam) => (
-          <div key={cam.name} className="flex justify-between items-center text-sm">
-            <span className="text-muted-foreground capitalize">{cam.name}</span>
-            <div className="flex items-center gap-2">
-              {cam.online ? (
-                <>
-                  <span className="text-green-500">{cam.fps} fps</span>
-                  <CheckCircle className="h-3 w-3 text-green-500" />
-                </>
-              ) : (
-                <>
-                  <span className="text-red-500">offline</span>
-                  <AlertTriangle className="h-3 w-3 text-red-500" />
-                </>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </StatusCard>
-  );
-}
-
-// Bloque 4: Sistema
-function SystemBlock({ system }) {
-  if (!system) return null;
-
-  const metrics = [
-    { label: 'CPU', value: system.cpu, color: system.cpu > 80 ? 'bg-red-500' : 'bg-blue-500' },
-    { label: 'RAM', value: system.ram, color: system.ram > 80 ? 'bg-red-500' : 'bg-purple-500' },
-    { label: 'GPU', value: system.gpu, color: system.gpu > 80 ? 'bg-red-500' : 'bg-green-500' },
-  ];
-
-  return (
-    <StatusCard icon={Cpu} title="System">
-      <div className="space-y-3">
-        {metrics.map(({ label, value, color }) => (
-          <div key={label}>
-            <div className="flex justify-between text-sm mb-1">
-              <span className="text-muted-foreground">{label}</span>
-              <span className="font-medium">{value}%</span>
-            </div>
-            <div className="w-full bg-secondary rounded-full h-1.5">
-              <div
-                className={`h-1.5 rounded-full transition-all ${color}`}
-                style={{ width: `${Math.min(100, value)}%` }}
-              />
-            </div>
-          </div>
-        ))}
-        {system.temp > 0 && (
-          <div className="flex justify-between text-sm pt-1">
-            <span className="text-muted-foreground">Temp</span>
-            <span className={`font-medium ${system.temp > 75 ? 'text-red-500' : ''}`}>
-              {system.temp}°C
-            </span>
-          </div>
-        )}
-      </div>
-    </StatusCard>
-  );
-}
-
-// Bloque 5: Calendario
-function CalendarBlock({ calendar }) {
+// Bloque Calendario (principal, más grande)
+function CalendarPanel({ calendar }) {
   if (!calendar) return null;
 
-  const modeColor = modeColors[calendar.current_mode] || 'bg-gray-500';
+  const modeColor = MODE_COLORS[calendar.current_mode] || '#7f8c8d';
+  const dayName = DAY_NAMES[calendar.day?.toLowerCase()] || calendar.day?.toUpperCase() || '---';
 
   return (
-    <StatusCard
-      icon={Calendar}
-      title="Calendar"
-      badge={
-        calendar.override_active ? (
-          <Badge className="bg-orange-500">OVERRIDE</Badge>
-        ) : calendar.auto ? (
-          <Badge className="bg-green-500">AUTO</Badge>
-        ) : (
-          <Badge className="bg-gray-500">MANUAL</Badge>
-        )
-      }
-      className="md:col-span-2"
-    >
-      <div className="space-y-3">
-        {/* Fecha y hora */}
-        <div className="flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground capitalize">{calendar.day}</span>
-          </div>
-          <span className="text-lg font-mono">{calendar.time}</span>
-        </div>
-
-        {/* Modo actual */}
-        <div className="flex justify-between items-center">
-          <span className="text-sm text-muted-foreground">Current Mode</span>
-          <Badge className={`${modeColor} text-white`}>
-            {calendar.current_mode}
-          </Badge>
-        </div>
-
-        {/* Próximo modo */}
-        {calendar.next_mode && (
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-muted-foreground">Next Mode</span>
-            <div className="flex items-center gap-2">
-              <Badge variant="outline">
-                {calendar.next_mode}
-              </Badge>
-              <span className="text-xs text-muted-foreground">
-                in {formatTime(calendar.time_to_next_s)}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Timeline progress */}
-        {calendar.time_remaining_s > 0 && (
-          <div>
-            <div className="flex justify-between text-xs text-muted-foreground mb-1">
-              <span>Block progress</span>
-              <span>{formatTime(calendar.time_remaining_s)} remaining</span>
-            </div>
-            <div className="w-full bg-secondary rounded-full h-2">
-              <div
-                className={`h-2 rounded-full transition-all ${modeColor}`}
-                style={{
-                  width: `${Math.max(5, 100 - (calendar.time_remaining_s / 36))}%`
-                }}
-              />
-            </div>
-          </div>
-        )}
+    <div style={{
+      background: 'linear-gradient(to bottom, #2c3e50, #1a252f)',
+      borderRadius: '10px',
+      border: '1px solid #34495e',
+      padding: '16px',
+      gridColumn: 'span 2',
+    }}>
+      {/* Header: Día y Hora */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '12px',
+      }}>
+        <span style={{ color: '#ecf0f1', fontSize: '14px', fontWeight: 'bold' }}>
+          {dayName}
+        </span>
+        <span style={{
+          color: '#ecf0f1',
+          fontSize: '32px',
+          fontWeight: 'bold',
+          fontFamily: 'monospace',
+        }}>
+          {calendar.time || '--:--:--'}
+        </span>
       </div>
-    </StatusCard>
+
+      {/* Separador */}
+      <div style={{ background: '#34495e', height: '1px', marginBottom: '12px' }} />
+
+      {/* Modo actual */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '12px',
+      }}>
+        <span style={{ color: '#7f8c8d', fontSize: '10px' }}>CALENDARIO</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <span style={{
+            color: modeColor,
+            fontSize: '18px',
+            fontWeight: 'bold',
+          }}>
+            {calendar.current_mode}
+          </span>
+          {calendar.override_active && (
+            <span style={{
+              color: '#e74c3c',
+              fontSize: '9px',
+              fontWeight: 'bold',
+              background: 'rgba(231,76,60,0.2)',
+              padding: '2px 6px',
+              borderRadius: '3px',
+            }}>
+              OVERRIDE
+            </span>
+          )}
+          <span style={{
+            color: calendar.auto ? '#2ecc71' : '#f39c12',
+            fontSize: '9px',
+            fontWeight: 'bold',
+            background: calendar.auto ? 'rgba(46,204,113,0.2)' : 'rgba(243,156,18,0.2)',
+            padding: '2px 6px',
+            borderRadius: '3px',
+          }}>
+            {calendar.auto ? 'AUTO' : 'MANUAL'}
+          </span>
+        </div>
+      </div>
+
+      {/* Timeline */}
+      <div style={{
+        background: '#1e272e',
+        borderRadius: '6px',
+        padding: '10px',
+        border: '1px solid #34495e',
+      }}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          marginBottom: '6px',
+        }}>
+          <span style={{ color: '#7f8c8d', fontSize: '9px' }}>TIMELINE</span>
+          <span style={{ color: '#2ecc71', fontSize: '9px', fontWeight: 'bold' }}>ACTIVO</span>
+        </div>
+        {/* Barra de progreso */}
+        <div style={{
+          background: '#2c3e50',
+          borderRadius: '6px',
+          height: '12px',
+          overflow: 'hidden',
+          marginBottom: '8px',
+        }}>
+          <div style={{
+            background: modeColor,
+            height: '100%',
+            width: calendar.time_remaining_s > 0
+              ? `${Math.max(5, 100 - (calendar.time_remaining_s / 36))}%`
+              : '0%',
+            transition: 'width 0.3s',
+            borderRadius: '6px',
+          }} />
+        </div>
+        {/* Info */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          fontSize: '10px',
+        }}>
+          <span style={{ color: '#7f8c8d' }}>
+            Restante: {formatTime(calendar.time_remaining_s)}
+          </span>
+          {calendar.next_mode && (
+            <span style={{ color: '#95a5a6' }}>
+              Próximo: <strong style={{ color: '#ecf0f1' }}>{calendar.next_mode}</strong> en {formatTime(calendar.time_to_next_s)}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -411,32 +426,63 @@ export function Home() {
 
   if (!status) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Connecting to system...</p>
-        </div>
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100%',
+        color: '#7f8c8d',
+      }}>
+        <div style={{
+          width: '40px',
+          height: '40px',
+          border: '3px solid #34495e',
+          borderTopColor: '#3498db',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite',
+        }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <p style={{ marginTop: '16px' }}>Conectando al sistema...</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header con indicador de conexión */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Dashboard</h2>
-        <Badge variant="outline" className="text-xs">
-          {connectionType === 'sse' ? '● SSE' : connectionType === 'polling' ? '○ Polling' : '○ Offline'}
-        </Badge>
+    <div style={{ padding: '16px' }}>
+      {/* Header */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '16px',
+      }}>
+        <h2 style={{ color: '#ecf0f1', fontSize: '18px', fontWeight: 'bold', margin: 0 }}>
+          CONTROL ROOM
+        </h2>
+        <span style={{
+          color: connectionType === 'sse' ? '#2ecc71' : connectionType === 'polling' ? '#f39c12' : '#e74c3c',
+          fontSize: '10px',
+          fontWeight: 'bold',
+          background: connectionType === 'sse' ? 'rgba(46,204,113,0.2)' : 'rgba(243,156,18,0.2)',
+          padding: '4px 8px',
+          borderRadius: '4px',
+        }}>
+          {connectionType === 'sse' ? '● SSE' : connectionType === 'polling' ? '○ POLLING' : '○ OFFLINE'}
+        </span>
       </div>
 
-      {/* Grid de 5 bloques */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <AudioBlock audio={status.audio} />
-        <AvolitesBlock avolites={status.avolites} />
-        <CamerasBlock cameras={status.cameras} />
-        <SystemBlock system={status.system} />
-        <CalendarBlock calendar={status.calendar} />
+      {/* Grid de paneles */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gap: '12px',
+      }}>
+        <AudioPanel audio={status.audio} />
+        <AvolitesPanel avolites={status.avolites} />
+        <CamerasPanel cameras={status.cameras} />
+        <SystemPanel system={status.system} />
+        <CalendarPanel calendar={status.calendar} />
       </div>
     </div>
   );

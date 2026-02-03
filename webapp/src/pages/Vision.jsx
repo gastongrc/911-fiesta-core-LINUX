@@ -1,192 +1,249 @@
 /**
- * Vision V7 - Camera Reference View
+ * Vision V7 - Camera Reference View (Estilo Industrial)
  *
  * SOLO REFERENCIA - No edición, no disparos
  *
  * Muestra:
- * - Stream de cada cámara (haze, people, tracking)
- * - Overlay de zonas guardadas
+ * - Estado de cada cámara (haze, people, tracking)
+ * - Overlay zonas (visual)
  * - Estado ON/OFF
+ * - FPS
  */
 import { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
-import { Badge } from '../components/ui/Badge';
-import {
-  Eye,
-  Camera,
-  Users,
-  Target,
-  Cloud,
-  CheckCircle,
-  XCircle,
-  RefreshCw
-} from 'lucide-react';
-import { Button } from '../components/ui/Button';
+
+const API_BASE = '/api/v1';
 
 // Tipos de cámara
 const CAMERA_TYPES = [
-  { id: 'haze', name: 'Haze Detection', icon: Cloud, color: 'blue' },
-  { id: 'people', name: 'People Counter', icon: Users, color: 'green' },
-  { id: 'tracking', name: 'DJ Tracking', icon: Target, color: 'purple' },
+  { id: 'haze', name: 'HAZE DETECTION', desc: 'Detección de humo' },
+  { id: 'people', name: 'PEOPLE COUNTER', desc: 'Contador de personas' },
+  { id: 'tracking', name: 'DJ TRACKING', desc: 'Seguimiento DJ' },
 ];
 
-// Hook para estado de Vision
-function useVisionStatus() {
-  const [cameras, setCameras] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const refresh = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Intentar obtener estado desde /api/v1/status/unified
-      const res = await fetch('/api/v1/status/unified');
-      if (res.ok) {
-        const data = await res.json();
-        setCameras(data.cameras || []);
-      } else {
-        setError('Failed to load vision status');
-      }
-    } catch (e) {
-      console.error('[VISION] status error:', e);
-      setError('Connection error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    refresh();
-    const interval = setInterval(refresh, 5000); // Refresh cada 5s
-    return () => clearInterval(interval);
-  }, []);
-
-  return { cameras, loading, error, refresh };
+// Panel industrial
+function Panel({ title, status, statusColor, children }) {
+  return (
+    <div style={{
+      background: '#1e272e',
+      borderRadius: '8px',
+      border: '1px solid #34495e',
+      overflow: 'hidden',
+    }}>
+      <div style={{
+        background: '#2c3e50',
+        padding: '10px 12px',
+        borderBottom: '1px solid #34495e',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}>
+        <span style={{ color: '#ecf0f1', fontSize: '11px', fontWeight: 'bold' }}>
+          {title}
+        </span>
+        {status && (
+          <span style={{
+            color: statusColor || '#2ecc71',
+            fontSize: '9px',
+            fontWeight: 'bold',
+            background: `${statusColor || '#2ecc71'}20`,
+            padding: '2px 8px',
+            borderRadius: '4px',
+          }}>
+            {status}
+          </span>
+        )}
+      </div>
+      <div style={{ padding: '12px' }}>
+        {children}
+      </div>
+    </div>
+  );
 }
 
-// Componente de cámara individual
+// Indicador
+function Indicator({ label, value, ok }) {
+  return (
+    <div style={{
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: '4px 0',
+    }}>
+      <span style={{ color: '#7f8c8d', fontSize: '10px' }}>{label}</span>
+      <span style={{
+        color: ok === true ? '#2ecc71' : ok === false ? '#e74c3c' : '#ecf0f1',
+        fontSize: '10px',
+        fontWeight: 'bold',
+      }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+// Card de cámara
 function CameraCard({ type, cameraData }) {
-  const Icon = type.icon;
   const isOnline = cameraData?.online || false;
   const fps = cameraData?.fps || 0;
-  const ip = cameraData?.ip || '—';
 
   return (
-    <Card className={`${isOnline ? '' : 'opacity-60'}`}>
-      <CardHeader className="pb-2">
-        <CardTitle className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Icon className={`h-5 w-5 text-${type.color}-500`} />
-            {type.name}
+    <Panel
+      title={type.name}
+      status={isOnline ? 'ONLINE' : 'OFFLINE'}
+      statusColor={isOnline ? '#2ecc71' : '#e74c3c'}
+    >
+      {/* Stream placeholder */}
+      <div style={{
+        background: '#1a1a2e',
+        borderRadius: '6px',
+        aspectRatio: '16/9',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: '12px',
+        border: '1px solid #34495e',
+      }}>
+        {isOnline ? (
+          <div style={{ textAlign: 'center' }}>
+            <div style={{
+              width: '50px',
+              height: '50px',
+              borderRadius: '50%',
+              background: 'rgba(46,204,113,0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 8px',
+            }}>
+              <span style={{ fontSize: '24px' }}>📹</span>
+            </div>
+            <p style={{ color: '#7f8c8d', fontSize: '10px' }}>
+              Stream via Flask Vision
+            </p>
+            <p style={{ color: '#95a5a6', fontSize: '9px' }}>
+              localhost:5000
+            </p>
           </div>
-          {isOnline ? (
-            <Badge className="bg-green-500 flex items-center gap-1">
-              <CheckCircle className="h-3 w-3" /> Online
-            </Badge>
-          ) : (
-            <Badge className="bg-red-500 flex items-center gap-1">
-              <XCircle className="h-3 w-3" /> Offline
-            </Badge>
-          )}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {/* Placeholder para stream */}
-        <div className="aspect-video bg-black/50 rounded-lg flex items-center justify-center mb-4">
-          {isOnline ? (
-            <div className="text-center">
-              <Camera className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">
-                Stream available via Flask Vision server
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                (Port 5000)
-              </p>
+        ) : (
+          <div style={{ textAlign: 'center' }}>
+            <div style={{
+              width: '50px',
+              height: '50px',
+              borderRadius: '50%',
+              background: 'rgba(231,76,60,0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 8px',
+            }}>
+              <span style={{ fontSize: '24px', filter: 'grayscale(1)' }}>📹</span>
             </div>
-          ) : (
-            <div className="text-center">
-              <XCircle className="h-12 w-12 text-red-500 mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">Camera offline</p>
-            </div>
-          )}
-        </div>
+            <p style={{ color: '#e74c3c', fontSize: '10px', fontWeight: 'bold' }}>
+              OFFLINE
+            </p>
+          </div>
+        )}
+      </div>
 
-        {/* Info */}
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">IP</span>
-            <span className="font-mono">{ip}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">FPS</span>
-            <span className={isOnline ? 'text-green-500' : 'text-muted-foreground'}>
-              {fps}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Status</span>
-            <span className={isOnline ? 'text-green-500' : 'text-red-500'}>
-              {isOnline ? 'Running' : 'Stopped'}
-            </span>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+      {/* Info */}
+      <Indicator label="Estado" value={isOnline ? 'Running' : 'Stopped'} ok={isOnline} />
+      <Indicator label="FPS" value={fps > 0 ? fps : '---'} ok={fps > 0} />
+      <Indicator label="Tipo" value={type.desc} />
+
+      {/* Zonas overlay (visual) */}
+      <div style={{
+        marginTop: '8px',
+        padding: '6px',
+        background: 'rgba(52,152,219,0.1)',
+        borderRadius: '4px',
+        border: '1px solid rgba(52,152,219,0.3)',
+      }}>
+        <span style={{ color: '#3498db', fontSize: '9px' }}>
+          Zonas configuradas via Qt UI
+        </span>
+      </div>
+    </Panel>
   );
 }
 
 // Página principal
 export function Vision() {
-  const { cameras, loading, error, refresh } = useVisionStatus();
+  const [cameras, setCameras] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // Mapear cameras por nombre
-  const getCameraData = (id) => {
-    return cameras.find(c => c.name === id) || null;
-  };
+  // Cargar estado
+  useEffect(() => {
+    const fetchCameras = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/status/unified`);
+        if (res.ok) {
+          const data = await res.json();
+          setCameras(data.cameras || []);
+        }
+      } catch (e) {}
+      setLoading(false);
+    };
+    fetchCameras();
+    const interval = setInterval(fetchCameras, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Obtener datos por ID
+  const getCameraData = (id) => cameras.find(c => c.name === id) || null;
+
+  const onlineCount = cameras.filter(c => c.online).length;
+  const totalCount = cameras.length || CAMERA_TYPES.length;
 
   return (
-    <div className="space-y-6">
+    <div style={{ padding: '16px' }}>
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold flex items-center gap-2">
-          <Eye className="h-6 w-6" />
-          Vision System
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '16px',
+      }}>
+        <h2 style={{ color: '#ecf0f1', fontSize: '18px', fontWeight: 'bold', margin: 0 }}>
+          VISION SYSTEM
         </h2>
-        <div className="flex items-center gap-2">
-          {cameras.filter(c => c.online).length > 0 && (
-            <Badge className="bg-green-500">
-              {cameras.filter(c => c.online).length}/{cameras.length} online
-            </Badge>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <span style={{
+            color: onlineCount > 0 ? '#2ecc71' : '#e74c3c',
+            fontSize: '10px',
+            fontWeight: 'bold',
+            background: onlineCount > 0 ? 'rgba(46,204,113,0.2)' : 'rgba(231,76,60,0.2)',
+            padding: '4px 8px',
+            borderRadius: '4px',
+          }}>
+            {onlineCount}/{totalCount} ONLINE
+          </span>
+          {loading && (
+            <span style={{ color: '#3498db', fontSize: '10px' }}>Cargando...</span>
           )}
-          <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
         </div>
       </div>
 
-      {/* Error message */}
-      {error && (
-        <Card className="border-red-500 bg-red-500/10">
-          <CardContent className="py-4">
-            <p className="text-red-500 text-center">{error}</p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Info banner */}
-      <Card className="bg-blue-500/10 border-blue-500">
-        <CardContent className="py-4">
-          <p className="text-sm text-center text-blue-400">
-            Vision is <strong>reference only</strong> in Control Room.
-            For zone editing and camera configuration, use the Qt UI.
-          </p>
-        </CardContent>
-      </Card>
+      {/* Banner info */}
+      <div style={{
+        background: 'rgba(52,152,219,0.1)',
+        border: '1px solid rgba(52,152,219,0.3)',
+        borderRadius: '6px',
+        padding: '10px 12px',
+        marginBottom: '16px',
+      }}>
+        <p style={{ color: '#3498db', fontSize: '10px', margin: 0, textAlign: 'center' }}>
+          Vision es <strong>SOLO REFERENCIA</strong> en Control Room.
+          Para edición de zonas y configuración, usar Qt UI.
+        </p>
+      </div>
 
       {/* Grid de cámaras */}
-      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+        gap: '12px',
+        marginBottom: '16px',
+      }}>
         {CAMERA_TYPES.map(type => (
           <CameraCard
             key={type.id}
@@ -197,20 +254,28 @@ export function Vision() {
       </div>
 
       {/* Footer info */}
-      <Card>
-        <CardContent className="py-4">
-          <div className="text-sm text-muted-foreground space-y-2">
-            <p><strong>Flask Vision Server:</strong> http://localhost:5000</p>
-            <p><strong>Endpoints:</strong></p>
-            <ul className="list-disc list-inside ml-4 text-xs">
-              <li>/vision/status - System status</li>
-              <li>/vision/devices - Available cameras</li>
-              <li>/vision/frame/&lt;id&gt; - JPEG frame</li>
-              <li>/vision/detections/&lt;id&gt; - Current detections</li>
-            </ul>
-          </div>
-        </CardContent>
-      </Card>
+      <div style={{
+        background: '#1e272e',
+        borderRadius: '8px',
+        padding: '12px',
+        border: '1px solid #34495e',
+      }}>
+        <div style={{ marginBottom: '8px' }}>
+          <span style={{ color: '#7f8c8d', fontSize: '10px', fontWeight: 'bold' }}>
+            FLASK VISION SERVER
+          </span>
+        </div>
+        <div style={{ color: '#95a5a6', fontSize: '10px' }}>
+          <p style={{ margin: '4px 0' }}>URL: http://localhost:5000</p>
+          <p style={{ margin: '4px 0', color: '#7f8c8d' }}>Endpoints:</p>
+          <ul style={{ margin: '4px 0 0 16px', padding: 0, listStyleType: 'disc' }}>
+            <li>/vision/status - Estado del sistema</li>
+            <li>/vision/devices - Cámaras disponibles</li>
+            <li>/vision/frame/&lt;id&gt; - Frame JPEG</li>
+            <li>/vision/detections/&lt;id&gt; - Detecciones actuales</li>
+          </ul>
+        </div>
+      </div>
     </div>
   );
 }

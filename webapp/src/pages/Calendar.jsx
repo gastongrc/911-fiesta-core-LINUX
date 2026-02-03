@@ -1,601 +1,628 @@
 /**
- * Calendar V7 - Control Room Calendar Page
+ * Calendar V7 - Control Room Calendar (Estilo Viejo Industrial)
  *
- * 3 tabs:
- * 1. Estado - Timeline con progreso, modo actual/próximo
- * 2. Horarios - Editor visual de la semana
- * 3. Control - GO, +5/+10/+15, Override
+ * 3 Tabs:
+ * - ESTADO: Timeline + acciones activas + permisos derivados
+ * - HORARIOS: Editor semanal (7 columnas, cards por día)
+ * - CONTROL: GO / +5/+10/+15 / override
+ *
+ * SAVE: Verde si hay cambios, Gris si sincronizado
+ * Estilo: Oscuro, denso, técnico (consola industrial)
  */
-import { useEffect, useState, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
-import { Badge } from '../components/ui/Badge';
-import { Button } from '../components/ui/Button';
-import {
-  Calendar as CalendarIcon,
-  Clock,
-  Play,
-  Plus,
-  Pause,
-  AlertTriangle,
-  Check,
-  Save,
-  RefreshCw
-} from 'lucide-react';
+import { useEffect, useState } from 'react';
 
-// Modos disponibles
-const AVAILABLE_MODES = [
-  'clima_1', 'clima_2', 'clima_3', 'clima_4',
-  'boliche_inicio', 'boliche_desarrollo', 'boliche_fin',
-  'apagado', 'extra_1', 'extra_2', 'extra_3'
-];
+const API_BASE = '/api/v1';
 
 // Colores por modo
-const modeColors = {
-  clima_1: 'bg-blue-500',
-  clima_2: 'bg-cyan-500',
-  clima_3: 'bg-teal-500',
-  clima_4: 'bg-green-500',
-  boliche_inicio: 'bg-purple-500',
-  boliche_desarrollo: 'bg-pink-500',
-  boliche_fin: 'bg-red-500',
-  apagado: 'bg-gray-500',
-  extra_1: 'bg-amber-500',
-  extra_2: 'bg-orange-500',
-  extra_3: 'bg-rose-500',
+const MODE_COLORS = {
+  clima_1: '#1abc9c', clima_2: '#16a085', clima_3: '#2ecc71', clima_4: '#27ae60',
+  teatro: '#3498db', artista: '#9b59b6',
+  boliche_inicio: '#f39c12', boliche_desarrollo: '#e67e22', boliche_fin: '#e74c3c',
+  apagado: '#7f8c8d',
 };
 
-// Días de la semana
-const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-const DAYS_ES = {
-  monday: 'Lunes', tuesday: 'Martes', wednesday: 'Miércoles',
-  thursday: 'Jueves', friday: 'Viernes', saturday: 'Sábado', sunday: 'Domingo'
+const CANONICAL_MODES = [
+  'clima_1', 'clima_2', 'clima_3', 'clima_4',
+  'boliche_inicio', 'boliche_desarrollo', 'boliche_fin', 'apagado'
+];
+
+const EXTRA_ACTIONS = ['vision_haze', 'vision_dj', 'vision_artista'];
+const EXTRA_DISPLAY = { vision_haze: 'Haze', vision_dj: 'DJ', vision_artista: 'Artista' };
+
+const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const DAY_NAMES = {
+  monday: 'LUN', tuesday: 'MAR', wednesday: 'MIÉ',
+  thursday: 'JUE', friday: 'VIE', saturday: 'SÁB', sunday: 'DOM'
 };
 
-// Formatear tiempo
-function formatTime(seconds) {
-  if (seconds < 0) return '—';
-  if (seconds < 60) return `${seconds}s`;
-  const mins = Math.floor(seconds / 60);
-  if (mins < 60) return `${mins}m`;
-  const hours = Math.floor(mins / 60);
-  const remainMins = mins % 60;
-  return `${hours}h ${remainMins}m`;
+// Formatea segundos
+function formatTime(s) {
+  if (s < 0) return '---';
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
-// Hook para cargar estado del calendario
-function useCalendarStatus() {
-  const [status, setStatus] = useState(null);
-  const [loading, setLoading] = useState(true);
+// ==================== TAB ESTADO ====================
+function TabEstado({ status }) {
+  if (!status) return <div style={{ color: '#7f8c8d', padding: '20px' }}>Cargando...</div>;
 
-  const refresh = useCallback(async () => {
-    try {
-      const res = await fetch('/api/v1/calendar/status');
-      if (res.ok) {
-        const data = await res.json();
-        setStatus(data);
-      }
-    } catch (e) {
-      console.error('[CALENDAR] status error:', e);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    refresh();
-    const interval = setInterval(refresh, 2000);
-    return () => clearInterval(interval);
-  }, [refresh]);
-
-  return { status, loading, refresh };
-}
-
-// Hook para cargar schedule de la semana
-function useCalendarWeek() {
-  const [week, setWeek] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [dirty, setDirty] = useState(false);
-
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch('/api/v1/calendar/week');
-      if (res.ok) {
-        const data = await res.json();
-        setWeek(data.week || {});
-        setDirty(false);
-      }
-    } catch (e) {
-      console.error('[CALENDAR] week error:', e);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const updateDay = (day, blocks) => {
-    setWeek(prev => ({ ...prev, [day]: blocks }));
-    setDirty(true);
-  };
-
-  const save = async () => {
-    try {
-      const res = await fetch('/api/v1/calendar/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ week })
-      });
-      if (res.ok) {
-        setDirty(false);
-        return true;
-      }
-    } catch (e) {
-      console.error('[CALENDAR] save error:', e);
-    }
-    return false;
-  };
-
-  return { week, loading, dirty, updateDay, save, reload: load };
-}
-
-// Tab 1: Estado
-function StatusTab({ status }) {
-  if (!status) return <p className="text-muted-foreground">Loading...</p>;
-
-  const modeColor = modeColors[status.current_mode] || 'bg-gray-500';
+  const modeColor = MODE_COLORS[status.current_mode] || '#7f8c8d';
 
   return (
-    <div className="space-y-6">
-      {/* Estado actual */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="h-5 w-5" />
-            Current State
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Modo actual */}
-          <div className="flex justify-between items-center">
-            <span className="text-muted-foreground">Mode</span>
-            <Badge className={`${modeColor} text-white text-lg px-4 py-1`}>
+    <div style={{ padding: '16px' }}>
+      {/* Header: Modo actual */}
+      <div style={{
+        background: 'linear-gradient(to right, #2c3e50, #1a252f)',
+        borderRadius: '8px',
+        padding: '16px',
+        marginBottom: '16px',
+        border: '1px solid #34495e',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <span style={{ color: '#7f8c8d', fontSize: '10px' }}>MODO ACTUAL</span>
+            <div style={{ color: modeColor, fontSize: '24px', fontWeight: 'bold', marginTop: '4px' }}>
               {status.current_mode}
-            </Badge>
+            </div>
           </div>
-
-          {/* Source */}
-          <div className="flex justify-between items-center">
-            <span className="text-muted-foreground">Source</span>
-            <Badge variant={status.override?.active ? 'destructive' : 'default'}>
-              {status.override?.active ? 'OVERRIDE' : status.source || 'AUTO'}
-            </Badge>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {status.override?.active && (
+              <span style={{
+                color: '#e74c3c', fontSize: '10px', fontWeight: 'bold',
+                background: 'rgba(231,76,60,0.2)', padding: '4px 8px', borderRadius: '4px',
+              }}>OVERRIDE</span>
+            )}
+            <span style={{
+              color: status.auto_mode_enabled ? '#2ecc71' : '#f39c12',
+              fontSize: '10px', fontWeight: 'bold',
+              background: status.auto_mode_enabled ? 'rgba(46,204,113,0.2)' : 'rgba(243,156,18,0.2)',
+              padding: '4px 8px', borderRadius: '4px',
+            }}>
+              {status.auto_mode_enabled ? 'AUTO' : 'MANUAL'}
+            </span>
           </div>
+        </div>
+      </div>
 
-          {/* Próximo modo */}
+      {/* Timeline */}
+      <div style={{
+        background: '#1e272e', borderRadius: '8px', padding: '12px',
+        marginBottom: '16px', border: '1px solid #34495e',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+          <span style={{ color: '#7f8c8d', fontSize: '10px', fontWeight: 'bold' }}>TIMELINE</span>
+          <span style={{ color: '#2ecc71', fontSize: '10px', fontWeight: 'bold' }}>ACTIVO</span>
+        </div>
+        <div style={{
+          background: '#2c3e50', borderRadius: '6px', height: '16px',
+          overflow: 'hidden', marginBottom: '8px',
+        }}>
+          <div style={{
+            background: modeColor, height: '100%',
+            width: `${Math.min(100, Math.max(5, (status.progress || 0) * 100))}%`,
+            transition: 'width 0.3s', borderRadius: '6px',
+          }} />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px' }}>
+          <span style={{ color: '#7f8c8d' }}>Progreso: {Math.round((status.progress || 0) * 100)}%</span>
           {status.next_mode && (
-            <div className="flex justify-between items-center">
-              <span className="text-muted-foreground">Next Mode</span>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline">{status.next_mode}</Badge>
-                <span className="text-sm text-muted-foreground">
-                  in {formatTime(status.time_to_next_s)}
-                </span>
-              </div>
-            </div>
+            <span style={{ color: '#95a5a6' }}>
+              Próximo: <strong style={{ color: '#ecf0f1' }}>{status.next_mode}</strong>
+            </span>
           )}
+        </div>
+      </div>
 
-          {/* Progress bar */}
-          {status.progress > 0 && (
-            <div>
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-muted-foreground">Block Progress</span>
-                <span>{Math.round(status.progress * 100)}%</span>
+      {/* Permisos / Módulos activos */}
+      <div style={{
+        background: '#1e272e', borderRadius: '8px', padding: '12px',
+        border: '1px solid #34495e',
+      }}>
+        <div style={{ marginBottom: '12px' }}>
+          <span style={{ color: '#7f8c8d', fontSize: '10px', fontWeight: 'bold' }}>MÓDULOS ACTIVOS</span>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+          {['audio_engine', 'vision_haze', 'vision_dj', 'vision_artista', 'cues_clima', 'system_idle'].map(mod => {
+            const active = status.permissions?.[mod] || false;
+            return (
+              <div key={mod} style={{
+                background: active ? 'rgba(46,204,113,0.2)' : 'rgba(127,140,141,0.1)',
+                border: `1px solid ${active ? '#2ecc71' : '#34495e'}`,
+                borderRadius: '6px', padding: '8px 12px',
+              }}>
+                <div style={{ color: active ? '#2ecc71' : '#7f8c8d', fontSize: '9px', fontWeight: 'bold' }}>
+                  {mod.toUpperCase().replace('_', ' ')}
+                </div>
+                <div style={{ color: active ? '#27ae60' : '#95a5a6', fontSize: '8px' }}>
+                  {active ? 'ON' : 'OFF'}
+                </div>
               </div>
-              <div className="w-full bg-secondary rounded-full h-3">
-                <div
-                  className={`h-3 rounded-full transition-all ${modeColor}`}
-                  style={{ width: `${Math.max(5, status.progress * 100)}%` }}
-                />
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Override activo */}
-      {status.override?.active && (
-        <Card className="border-orange-500">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-orange-500">
-              <AlertTriangle className="h-5 w-5" />
-              Override Active
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="flex justify-between">
-              <span>Mode</span>
-              <Badge>{status.override.mode}</Badge>
-            </div>
-            {status.override.remaining_seconds > 0 && (
-              <div className="flex justify-between">
-                <span>Remaining</span>
-                <span>{formatTime(status.override.remaining_seconds)}</span>
-              </div>
-            )}
-            {status.override.reason && (
-              <div className="flex justify-between">
-                <span>Reason</span>
-                <span className="text-muted-foreground">{status.override.reason}</span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Alerta pendiente */}
-      {status.alert && !status.alert.acknowledged && (
-        <Card className="border-yellow-500">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-yellow-500">
-              <AlertTriangle className="h-5 w-5" />
-              Upcoming Change
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p>
-              Changing to <Badge>{status.alert.mode}</Badge> in{' '}
-              {formatTime(status.alert.seconds_until)}
-            </p>
-          </CardContent>
-        </Card>
-      )}
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
 
-// Tab 2: Horarios (Editor simplificado)
-function ScheduleTab({ week, dirty, updateDay, save, reload }) {
-  const [saving, setSaving] = useState(false);
+// ==================== TAB HORARIOS ====================
+function TabHorarios({ schedule, setSchedule, hasChanges, setHasChanges, onSave }) {
+  const week = schedule?.week || {};
 
-  const handleSave = async () => {
-    setSaving(true);
-    const success = await save();
-    setSaving(false);
-    if (success) {
-      alert('Schedule saved!');
-    } else {
-      alert('Error saving schedule');
-    }
+  const addBlock = (day) => {
+    const newBlock = { from: '20:00', to: '22:00', mode: 'clima_1', actions: [] };
+    const dayBlocks = [...(week[day] || []), newBlock];
+    setSchedule({ week: { ...week, [day]: dayBlocks } });
+    setHasChanges(true);
   };
 
-  if (!week) return <p className="text-muted-foreground">Loading...</p>;
+  const updateBlock = (day, idx, field, value) => {
+    const dayBlocks = [...(week[day] || [])];
+    dayBlocks[idx] = { ...dayBlocks[idx], [field]: value };
+    setSchedule({ week: { ...week, [day]: dayBlocks } });
+    setHasChanges(true);
+  };
+
+  const deleteBlock = (day, idx) => {
+    const dayBlocks = [...(week[day] || [])];
+    dayBlocks.splice(idx, 1);
+    setSchedule({ week: { ...week, [day]: dayBlocks } });
+    setHasChanges(true);
+  };
+
+  const toggleAction = (day, idx, action) => {
+    const dayBlocks = [...(week[day] || [])];
+    const block = { ...dayBlocks[idx] };
+    const actions = new Set(block.actions || []);
+    if (actions.has(action)) {
+      actions.delete(action);
+    } else {
+      if (action === 'vision_dj') actions.delete('vision_artista');
+      if (action === 'vision_artista') actions.delete('vision_dj');
+      actions.add(action);
+    }
+    block.actions = Array.from(actions);
+    dayBlocks[idx] = block;
+    setSchedule({ week: { ...week, [day]: dayBlocks } });
+    setHasChanges(true);
+  };
 
   return (
-    <div className="space-y-4">
-      {/* Header con estado de guardado */}
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-2">
-          {dirty ? (
-            <Badge className="bg-red-500">Unsaved changes</Badge>
-          ) : (
-            <Badge className="bg-green-500">Synced</Badge>
+    <div style={{ padding: '16px' }}>
+      {/* Header + Save */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        marginBottom: '16px',
+      }}>
+        <span style={{ color: '#ecf0f1', fontSize: '14px', fontWeight: 'bold' }}>
+          EDITOR DE HORARIOS
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {hasChanges && (
+            <span style={{ color: '#f39c12', fontSize: '10px', fontWeight: 'bold' }}>
+              Cambios sin guardar
+            </span>
           )}
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={reload}>
-            <RefreshCw className="h-4 w-4 mr-1" /> Reload
-          </Button>
-          <Button
-            size="sm"
-            onClick={handleSave}
-            disabled={!dirty || saving}
-            className="bg-green-600 hover:bg-green-700"
+          <button
+            onClick={onSave}
+            disabled={!hasChanges}
+            style={{
+              background: hasChanges ? '#27ae60' : '#7f8c8d',
+              color: 'white', border: 'none', borderRadius: '4px',
+              padding: '8px 16px', fontWeight: 'bold', cursor: hasChanges ? 'pointer' : 'default',
+            }}
           >
-            <Save className="h-4 w-4 mr-1" /> Save
-          </Button>
+            GUARDAR
+          </button>
         </div>
       </div>
 
       {/* Grid de días */}
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {DAYS.map(day => (
-          <Card key={day}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">{DAYS_ES[day]}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {(week[day] || []).length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No blocks</p>
-                ) : (
-                  (week[day] || []).map((block, idx) => (
-                    <div
-                      key={idx}
-                      className={`p-2 rounded text-xs ${modeColors[block.mode] || 'bg-gray-500'} text-white`}
-                    >
-                      <div className="font-medium">{block.mode}</div>
-                      <div className="opacity-80">
-                        {block.from} - {block.to}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </Card>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(7, 1fr)',
+        gap: '8px',
+        overflowX: 'auto',
+      }}>
+        {DAY_ORDER.map(day => (
+          <div key={day} style={{
+            background: '#1e272e', borderRadius: '8px', border: '1px solid #34495e',
+            minWidth: '140px',
+          }}>
+            {/* Header día */}
+            <div style={{
+              background: '#2c3e50', padding: '8px',
+              borderTopLeftRadius: '8px', borderTopRightRadius: '8px',
+              textAlign: 'center',
+            }}>
+              <span style={{ color: '#ecf0f1', fontSize: '11px', fontWeight: 'bold' }}>
+                {DAY_NAMES[day]}
+              </span>
+            </div>
+
+            {/* Bloques */}
+            <div style={{ padding: '8px', maxHeight: '400px', overflowY: 'auto' }}>
+              {(week[day] || []).map((block, idx) => (
+                <div key={idx} style={{
+                  background: `${MODE_COLORS[block.mode] || '#7f8c8d'}15`,
+                  border: `1px solid ${MODE_COLORS[block.mode] || '#7f8c8d'}60`,
+                  borderRadius: '6px', padding: '8px', marginBottom: '8px',
+                }}>
+                  {/* Tiempos */}
+                  <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
+                    <input
+                      type="time"
+                      value={block.from}
+                      onChange={(e) => updateBlock(day, idx, 'from', e.target.value)}
+                      style={{
+                        background: '#1e272e', color: '#ecf0f1', border: '1px solid #34495e',
+                        borderRadius: '4px', padding: '2px', fontSize: '10px', width: '55px',
+                      }}
+                    />
+                    <span style={{ color: '#7f8c8d', fontSize: '10px' }}>-</span>
+                    <input
+                      type="time"
+                      value={block.to}
+                      onChange={(e) => updateBlock(day, idx, 'to', e.target.value)}
+                      style={{
+                        background: '#1e272e', color: '#ecf0f1', border: '1px solid #34495e',
+                        borderRadius: '4px', padding: '2px', fontSize: '10px', width: '55px',
+                      }}
+                    />
+                    <button
+                      onClick={() => deleteBlock(day, idx)}
+                      style={{
+                        background: '#c0392b', color: 'white', border: 'none',
+                        borderRadius: '4px', padding: '2px 6px', fontSize: '9px',
+                        cursor: 'pointer', marginLeft: 'auto',
+                      }}
+                    >X</button>
+                  </div>
+
+                  {/* Selector modo */}
+                  <select
+                    value={block.mode}
+                    onChange={(e) => updateBlock(day, idx, 'mode', e.target.value)}
+                    style={{
+                      background: '#1e272e', color: '#ecf0f1', border: '1px solid #34495e',
+                      borderRadius: '4px', padding: '4px', fontSize: '9px', width: '100%',
+                      marginBottom: '6px',
+                    }}
+                  >
+                    {CANONICAL_MODES.map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+
+                  {/* Extras */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                    {EXTRA_ACTIONS.map(action => {
+                      const active = (block.actions || []).includes(action);
+                      return (
+                        <button
+                          key={action}
+                          onClick={() => toggleAction(day, idx, action)}
+                          style={{
+                            background: active ? '#2980b9' : '#283747',
+                            color: active ? '#ecf0f1' : '#6c7a89',
+                            border: 'none', borderRadius: '8px',
+                            padding: '2px 6px', fontSize: '8px', cursor: 'pointer',
+                          }}
+                        >
+                          {EXTRA_DISPLAY[action]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+
+              {/* Agregar bloque */}
+              <button
+                onClick={() => addBlock(day)}
+                style={{
+                  background: '#27ae60', color: 'white', border: 'none',
+                  borderRadius: '4px', padding: '6px', width: '100%',
+                  fontWeight: 'bold', fontSize: '10px', cursor: 'pointer',
+                }}
+              >
+                + Agregar
+              </button>
+            </div>
+          </div>
         ))}
       </div>
-
-      <p className="text-xs text-muted-foreground text-center">
-        Full schedule editor coming soon. Use Qt UI for detailed editing.
-      </p>
     </div>
   );
 }
 
-// Tab 3: Control
-function ControlTab({ status, refresh }) {
-  const [loading, setLoading] = useState(false);
-  const [selectedMode, setSelectedMode] = useState('boliche_desarrollo');
+// ==================== TAB CONTROL ====================
+function TabControl({ status, onGo, onExtend, onOverride, onClearOverride }) {
+  const [selectedMode, setSelectedMode] = useState('clima_1');
   const [overrideDuration, setOverrideDuration] = useState(30);
 
-  const handleGo = async (mode, delay = 0) => {
-    if (!confirm(`Execute GO to ${mode}${delay > 0 ? ` in ${delay} minutes` : ''}?`)) return;
-
-    setLoading(true);
-    try {
-      const res = await fetch('/api/v1/calendar/go', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode, delay_minutes: delay })
-      });
-      if (res.ok) {
-        await refresh();
-      }
-    } catch (e) {
-      console.error('[CALENDAR] go error:', e);
-    }
-    setLoading(false);
-  };
-
-  const handleExtend = async (minutes) => {
-    if (!confirm(`Extend current block by ${minutes} minutes?`)) return;
-
-    setLoading(true);
-    try {
-      const res = await fetch('/api/v1/calendar/extend', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ minutes })
-      });
-      if (res.ok) {
-        await refresh();
-      }
-    } catch (e) {
-      console.error('[CALENDAR] extend error:', e);
-    }
-    setLoading(false);
-  };
-
-  const handleOverride = async () => {
-    if (!confirm(`Activate override: ${selectedMode} for ${overrideDuration} minutes?`)) return;
-
-    setLoading(true);
-    try {
-      const res = await fetch('/api/v1/calendar/override', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: selectedMode,
-          duration_minutes: overrideDuration,
-          reason: 'Web Control Room'
-        })
-      });
-      if (res.ok) {
-        await refresh();
-      }
-    } catch (e) {
-      console.error('[CALENDAR] override error:', e);
-    }
-    setLoading(false);
-  };
-
-  const handleStopOverride = async () => {
-    if (!confirm('Stop override and return to automatic mode?')) return;
-
-    setLoading(true);
-    try {
-      const res = await fetch('/api/v1/calendar/override/stop', {
-        method: 'POST'
-      });
-      if (res.ok) {
-        await refresh();
-      }
-    } catch (e) {
-      console.error('[CALENDAR] stop override error:', e);
-    }
-    setLoading(false);
-  };
-
   return (
-    <div className="space-y-6">
-      {/* GO Quick Actions */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Play className="h-5 w-5" />
-            GO - Quick Actions
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {AVAILABLE_MODES.slice(0, 8).map(mode => (
-              <Button
-                key={mode}
-                variant="outline"
-                size="sm"
-                onClick={() => handleGo(mode)}
-                disabled={loading}
-                className="text-xs"
-              >
-                {mode}
-              </Button>
-            ))}
+    <div style={{ padding: '16px' }}>
+      {/* GO Section */}
+      <div style={{
+        background: '#1e272e', borderRadius: '8px', padding: '12px',
+        marginBottom: '16px', border: '1px solid #34495e',
+      }}>
+        <div style={{ marginBottom: '12px' }}>
+          <span style={{ color: '#7f8c8d', fontSize: '10px', fontWeight: 'bold' }}>GO - CAMBIAR MODO</span>
+        </div>
+
+        {/* Selector modo */}
+        <div style={{ marginBottom: '12px' }}>
+          <select
+            value={selectedMode}
+            onChange={(e) => setSelectedMode(e.target.value)}
+            style={{
+              background: '#2c3e50', color: '#ecf0f1', border: '1px solid #34495e',
+              borderRadius: '4px', padding: '8px', width: '100%', fontSize: '12px',
+            }}
+          >
+            {CANONICAL_MODES.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
+
+        {/* Botones GO */}
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => onGo(selectedMode, 0)}
+            style={{
+              background: '#27ae60', color: 'white', border: 'none',
+              borderRadius: '4px', padding: '10px 20px', fontWeight: 'bold',
+              cursor: 'pointer', fontSize: '12px',
+            }}
+          >GO AHORA</button>
+          <button onClick={() => onGo(selectedMode, 5)} style={delayBtnStyle}>+5 min</button>
+          <button onClick={() => onGo(selectedMode, 10)} style={delayBtnStyle}>+10 min</button>
+          <button onClick={() => onGo(selectedMode, 15)} style={delayBtnStyle}>+15 min</button>
+        </div>
+
+        {/* Pending GO */}
+        {status?.pending_go && (
+          <div style={{
+            marginTop: '12px', background: 'rgba(52,152,219,0.2)',
+            borderRadius: '4px', padding: '8px',
+          }}>
+            <span style={{ color: '#3498db', fontSize: '10px', fontWeight: 'bold' }}>
+              GO PENDIENTE: {status.pending_go.mode} en {formatTime(status.pending_go.seconds_until)}
+            </span>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Extend */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Plus className="h-5 w-5" />
-            Extend Current Block
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-2">
-            {[5, 10, 15, 30].map(mins => (
-              <Button
-                key={mins}
-                variant="outline"
-                onClick={() => handleExtend(mins)}
-                disabled={loading}
-              >
-                +{mins}min
-              </Button>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Override */}
-      <Card className="border-orange-500">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-orange-500">
-            <Pause className="h-5 w-5" />
-            Override
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {status?.override?.active ? (
-            <div className="space-y-4">
-              <div className="p-4 bg-orange-500/10 rounded-lg">
-                <p className="font-medium">Override Active</p>
-                <p className="text-sm text-muted-foreground">
-                  Mode: {status.override.mode} |{' '}
-                  Remaining: {formatTime(status.override.remaining_seconds)}
-                </p>
-              </div>
-              <Button
-                variant="destructive"
-                onClick={handleStopOverride}
-                disabled={loading}
-                className="w-full"
-              >
-                Stop Override
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Mode</label>
-                  <select
-                    value={selectedMode}
-                    onChange={e => setSelectedMode(e.target.value)}
-                    className="w-full p-2 rounded border bg-background"
-                  >
-                    {AVAILABLE_MODES.map(mode => (
-                      <option key={mode} value={mode}>{mode}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Duration (min)</label>
-                  <select
-                    value={overrideDuration}
-                    onChange={e => setOverrideDuration(Number(e.target.value))}
-                    className="w-full p-2 rounded border bg-background"
-                  >
-                    {[15, 30, 45, 60, 90, 120, 180, 240].map(d => (
-                      <option key={d} value={d}>{d} min</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <Button
-                onClick={handleOverride}
-                disabled={loading}
-                className="w-full bg-orange-600 hover:bg-orange-700"
-              >
-                Activate Override
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-// Página principal
-export function Calendar() {
-  const [activeTab, setActiveTab] = useState('status');
-  const { status, loading: statusLoading, refresh } = useCalendarStatus();
-  const weekData = useCalendarWeek();
-
-  const tabs = [
-    { id: 'status', label: 'Estado' },
-    { id: 'schedule', label: 'Horarios' },
-    { id: 'control', label: 'Control' },
-  ];
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold flex items-center gap-2">
-          <CalendarIcon className="h-6 w-6" />
-          Calendar
-        </h2>
-        {status?.override?.active && (
-          <Badge className="bg-orange-500">OVERRIDE ACTIVE</Badge>
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b">
-        {tabs.map(tab => (
+      {/* Extend Section */}
+      <div style={{
+        background: '#1e272e', borderRadius: '8px', padding: '12px',
+        marginBottom: '16px', border: '1px solid #34495e',
+      }}>
+        <div style={{ marginBottom: '12px' }}>
+          <span style={{ color: '#7f8c8d', fontSize: '10px', fontWeight: 'bold' }}>
+            EXTENDER BLOQUE ACTUAL
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={() => onExtend(5)} style={extendBtnStyle}>+5 min</button>
+          <button onClick={() => onExtend(10)} style={extendBtnStyle}>+10 min</button>
+          <button onClick={() => onExtend(15)} style={extendBtnStyle}>+15 min</button>
+        </div>
+      </div>
+
+      {/* Override Section */}
+      <div style={{
+        background: '#1e272e', borderRadius: '8px', padding: '12px',
+        border: '1px solid #34495e',
+      }}>
+        <div style={{ marginBottom: '12px' }}>
+          <span style={{ color: '#7f8c8d', fontSize: '10px', fontWeight: 'bold' }}>
+            OVERRIDE TEMPORAL
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '12px' }}>
+          <span style={{ color: '#7f8c8d', fontSize: '10px' }}>Duracion:</span>
+          <input
+            type="number"
+            min="5"
+            max="120"
+            value={overrideDuration}
+            onChange={(e) => setOverrideDuration(parseInt(e.target.value) || 30)}
+            style={{
+              background: '#2c3e50', color: '#ecf0f1', border: '1px solid #34495e',
+              borderRadius: '4px', padding: '4px', width: '60px', fontSize: '11px',
+            }}
+          />
+          <span style={{ color: '#7f8c8d', fontSize: '10px' }}>min</span>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px' }}>
           <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-2 font-medium transition-colors ${
-              activeTab === tab.id
-                ? 'border-b-2 border-primary text-primary'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
+            onClick={() => onOverride(selectedMode, overrideDuration)}
+            style={{
+              background: '#e67e22', color: 'white', border: 'none',
+              borderRadius: '4px', padding: '8px 16px', fontWeight: 'bold',
+              cursor: 'pointer', fontSize: '11px',
+            }}
+          >ACTIVAR OVERRIDE</button>
+          {status?.override?.active && (
+            <button
+              onClick={onClearOverride}
+              style={{
+                background: '#c0392b', color: 'white', border: 'none',
+                borderRadius: '4px', padding: '8px 16px', fontWeight: 'bold',
+                cursor: 'pointer', fontSize: '11px',
+              }}
+            >LIMPIAR OVERRIDE</button>
+          )}
+        </div>
+
+        {/* Override info */}
+        {status?.override?.active && (
+          <div style={{
+            marginTop: '12px', background: 'rgba(230,126,34,0.2)',
+            borderRadius: '4px', padding: '8px',
+          }}>
+            <span style={{ color: '#e67e22', fontSize: '10px', fontWeight: 'bold' }}>
+              OVERRIDE ACTIVO: {status.override.mode} ({formatTime(status.override.remaining_seconds)} restantes)
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const delayBtnStyle = {
+  background: '#3498db', color: 'white', border: 'none',
+  borderRadius: '4px', padding: '8px 12px', cursor: 'pointer', fontSize: '11px',
+};
+
+const extendBtnStyle = {
+  background: '#9b59b6', color: 'white', border: 'none',
+  borderRadius: '4px', padding: '8px 16px', cursor: 'pointer', fontSize: '11px',
+};
+
+// ==================== PÁGINA PRINCIPAL ====================
+export function Calendar() {
+  const [activeTab, setActiveTab] = useState('estado');
+  const [status, setStatus] = useState(null);
+  const [schedule, setSchedule] = useState({ week: {} });
+  const [hasChanges, setHasChanges] = useState(false);
+
+  // Cargar status
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/calendar/status`);
+        if (res.ok) setStatus(await res.json());
+      } catch (e) {}
+    };
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Cargar schedule
+  useEffect(() => {
+    const fetchSchedule = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/calendar/week`);
+        if (res.ok) {
+          const data = await res.json();
+          setSchedule({ week: data.week || {} });
+        }
+      } catch (e) {}
+    };
+    fetchSchedule();
+  }, []);
+
+  // Acciones
+  const handleGo = async (mode, delay) => {
+    try {
+      await fetch(`${API_BASE}/calendar/go`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode, delay_minutes: delay }),
+      });
+    } catch (e) {}
+  };
+
+  const handleExtend = async (minutes) => {
+    try {
+      await fetch(`${API_BASE}/calendar/extend`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ minutes }),
+      });
+    } catch (e) {}
+  };
+
+  const handleOverride = async (mode, duration) => {
+    try {
+      await fetch(`${API_BASE}/calendar/override`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode, duration_minutes: duration }),
+      });
+    } catch (e) {}
+  };
+
+  const handleClearOverride = async () => {
+    try {
+      await fetch(`${API_BASE}/calendar/override/stop`, { method: 'POST' });
+    } catch (e) {}
+  };
+
+  const handleSave = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/calendar/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ week: schedule.week }),
+      });
+      if (res.ok) {
+        setHasChanges(false);
+        alert('Horarios guardados');
+      }
+    } catch (e) {
+      alert('Error al guardar');
+    }
+  };
+
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Tabs */}
+      <div style={{
+        display: 'flex', background: '#2c3e50',
+        borderBottom: '1px solid #34495e',
+      }}>
+        {[
+          { key: 'estado', label: 'ESTADO' },
+          { key: 'horarios', label: 'HORARIOS' },
+          { key: 'control', label: 'CONTROL' },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            style={{
+              background: activeTab === tab.key ? '#1a1a2e' : 'transparent',
+              color: activeTab === tab.key ? '#ecf0f1' : '#bdc3c7',
+              border: 'none', padding: '12px 24px',
+              cursor: 'pointer', fontSize: '11px', fontWeight: 'bold',
+              borderTopLeftRadius: '4px', borderTopRightRadius: '4px',
+            }}
           >
             {tab.label}
           </button>
         ))}
       </div>
 
-      {/* Tab content */}
-      <div>
-        {activeTab === 'status' && <StatusTab status={status} />}
-        {activeTab === 'schedule' && (
-          <ScheduleTab
-            week={weekData.week}
-            dirty={weekData.dirty}
-            updateDay={weekData.updateDay}
-            save={weekData.save}
-            reload={weekData.reload}
+      {/* Content */}
+      <div style={{ flex: 1, overflow: 'auto', background: '#1a1a2e' }}>
+        {activeTab === 'estado' && <TabEstado status={status} />}
+        {activeTab === 'horarios' && (
+          <TabHorarios
+            schedule={schedule}
+            setSchedule={setSchedule}
+            hasChanges={hasChanges}
+            setHasChanges={setHasChanges}
+            onSave={handleSave}
           />
         )}
-        {activeTab === 'control' && <ControlTab status={status} refresh={refresh} />}
+        {activeTab === 'control' && (
+          <TabControl
+            status={status}
+            onGo={handleGo}
+            onExtend={handleExtend}
+            onOverride={handleOverride}
+            onClearOverride={handleClearOverride}
+          />
+        )}
       </div>
     </div>
   );
