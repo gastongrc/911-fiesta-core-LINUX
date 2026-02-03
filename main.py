@@ -612,8 +612,9 @@ class Main(QMainWindow):
         self.resize(1200, 800)
 
         # Preset path - SINGLE PROFILE (source of truth)
-        # Default profile path - uses latest existing preset in project
-        self.preset_path = "presetv10 bajada v54.json"
+        # ABSOLUTE PATH anchored to main.py directory (Windows CWD fix)
+        self.preset_path = self._get_preset_abs_path()
+        print(f"[INIT] preset_path={self.preset_path} cwd={os.getcwd()}")
 
         # Health monitoring
         self.health_enabled = True
@@ -2057,21 +2058,35 @@ class Main(QMainWindow):
         self._refresh_nics()
 
     # ========== HELPERS DE PERSISTENCIA ==========
-    
+
+    def _get_preset_abs_path(self):
+        """
+        Return ABSOLUTE path to preset file, anchored to main.py directory.
+        This fixes Windows CWD issues where relative paths write to wrong location.
+        """
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(base_dir, "presetv10 bajada v54.json")
+
     def _load_preset(self, path):
         """Carga preset JSON completo"""
         try:
-            with open(path, 'r', encoding='utf-8') as f:
+            abs_path = os.path.abspath(path)
+            with open(abs_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except Exception as e:
-            print(f"[NET][ERR] Error cargando preset: {e}")
+            print(f"[NET][ERR] Error cargando preset {path}: {e}")
             return {}
     
     def _save_preset(self, path, data):
         """Guarda preset JSON completo"""
         try:
-            with open(path, 'w', encoding='utf-8') as f:
+            abs_path = os.path.abspath(path)
+            print(f"[AUDIT] PRESET WRITE path={abs_path} cwd={os.getcwd()}")
+            with open(abs_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
+            # Post-save verification
+            net = data.get("net_panel", {})
+            print(f"[AUDIT] POST_WRITE net_panel: local_nic={net.get('local_nic')} local_ip={net.get('local_ip')} local_nic_id={net.get('local_nic_id')}")
             return True
         except Exception as e:
             print(f"[NET][ERR] Error guardando preset: {e}")
@@ -2228,7 +2243,9 @@ class Main(QMainWindow):
         Returns:
             bool: True if save succeeded
         """
-        print(f"[AUDIT] _safe_save_preset ENTRY path={path}")
+        # Normalize to absolute path (Windows CWD fix)
+        abs_path = os.path.abspath(path)
+        print(f"[AUDIT] PRESET WRITE path={abs_path} cwd={os.getcwd()}")
         try:
             # Validate critical keys
             missing = self.PRESET_CRITICAL_KEYS - set(data.keys())
@@ -2243,25 +2260,29 @@ class Main(QMainWindow):
                 return False
 
             # Atomic write: write to temp file, then rename
-            temp_path = path + ".tmp"
+            temp_path = abs_path + ".tmp"
             with open(temp_path, 'w', encoding='utf-8') as f:
                 f.write(json_str)
 
             # Rename temp to final (atomic on most filesystems)
-            if os.path.exists(path):
-                os.replace(temp_path, path)
+            if os.path.exists(abs_path):
+                os.replace(temp_path, abs_path)
             else:
-                os.rename(temp_path, path)
+                os.rename(temp_path, abs_path)
 
-            print(f"[PROFILE] saved: {path} ({len(json_str)} bytes)")
+            # Post-save verification
+            net = data.get("net_panel", {})
+            print(f"[AUDIT] POST_WRITE net_panel: local_nic={net.get('local_nic')} local_ip={net.get('local_ip')} local_nic_id={net.get('local_nic_id')}")
+            print(f"[PROFILE] saved: {abs_path} ({len(json_str)} bytes)")
             return True
 
         except Exception as e:
             print(f"[PROFILE][ERR] _safe_save_preset: {e}")
             # Clean up temp file if it exists
             try:
-                if os.path.exists(path + ".tmp"):
-                    os.remove(path + ".tmp")
+                temp_cleanup = abs_path + ".tmp"
+                if os.path.exists(temp_cleanup):
+                    os.remove(temp_cleanup)
             except:
                 pass
             return False
