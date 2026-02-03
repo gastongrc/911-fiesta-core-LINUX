@@ -2085,30 +2085,36 @@ class Main(QMainWindow):
             with open(abs_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
             # Post-save verification
-            net = data.get("net_panel", {})
-            print(f"[AUDIT] POST_WRITE net_panel: local_nic={net.get('local_nic')} local_ip={net.get('local_ip')} local_nic_id={net.get('local_nic_id')}")
+            nic = data.get("net_panel", {}).get("nic", {})
+            print(f"[NIC] POST_WRITE: name={nic.get('local_nic_name')} ip={nic.get('local_ip')} id={nic.get('local_nic_id')}")
             return True
         except Exception as e:
             print(f"[NET][ERR] Error guardando preset: {e}")
             return False
     
     def _ensure_net_panel_defaults(self, data):
-        """Crea bloque net_panel con defaults si no existe"""
+        """
+        Crea bloque net_panel con defaults si no existe.
+        Incluye migración de keys viejas (local_nic, local_ip, local_nic_id) a net_panel.nic block.
+        """
         if "net_panel" not in data:
             data["net_panel"] = {
                 "enabled": True,
                 "console_ip": "10.0.0.1",
                 "console_port": 4430,
                 "cue_offset": 169,
-                "local_nic": "auto",
-                "local_nic_id": "",      # MAC address for stable NIC identification
-                "local_ip": "",          # Resolved IP for this NIC
                 "auto_retry": True,
                 "transport": "http",
                 "audio": {
                     "input_device_name": None,
                     "input_device_index": None,
                     "sample_rate": 48000,
+                    "auto_connect": True
+                },
+                "nic": {
+                    "local_nic_name": "auto",
+                    "local_nic_id": "",
+                    "local_ip": "",
                     "auto_connect": True
                 },
                 "timeouts": {"connect_ms": 1500, "send_ms": 300},
@@ -2118,6 +2124,7 @@ class Main(QMainWindow):
             if hasattr(self.avolites, 'set_transport'):
                 data["net_panel"]["sacn"] = {"universe": 1, "priority": 100}
                 data["net_panel"]["artnet"] = {"net": 0, "subnet": 0, "universe": 0}
+
         # Ensure audio block exists (migration)
         if "audio" not in data.get("net_panel", {}):
             data["net_panel"]["audio"] = {
@@ -2126,12 +2133,23 @@ class Main(QMainWindow):
                 "sample_rate": 48000,
                 "auto_connect": True
             }
+
+        # Ensure nic block exists (migration from old loose keys)
+        if "nic" not in data.get("net_panel", {}):
+            # Migrate from old format: local_nic, local_ip, local_nic_id at root level
+            net = data.get("net_panel", {})
+            data["net_panel"]["nic"] = {
+                "local_nic_name": net.get("local_nic", "auto"),
+                "local_nic_id": net.get("local_nic_id", ""),
+                "local_ip": net.get("local_ip", ""),
+                "auto_connect": True
+            }
+            print(f"[NIC] migrated old keys to net_panel.nic block")
+
         # Ensure cue_offset exists (migration)
         if "cue_offset" not in data.get("net_panel", {}):
             data["net_panel"]["cue_offset"] = 169
-        # Ensure local_nic_id exists (migration for Windows NIC persistence)
-        if "local_nic_id" not in data.get("net_panel", {}):
-            data["net_panel"]["local_nic_id"] = ""
+
         return data
     
     def _merge_net_panel(self, data, patch):
@@ -2271,8 +2289,8 @@ class Main(QMainWindow):
                 os.rename(temp_path, abs_path)
 
             # Post-save verification
-            net = data.get("net_panel", {})
-            print(f"[AUDIT] POST_WRITE net_panel: local_nic={net.get('local_nic')} local_ip={net.get('local_ip')} local_nic_id={net.get('local_nic_id')}")
+            nic = data.get("net_panel", {}).get("nic", {})
+            print(f"[NIC] POST_WRITE: name={nic.get('local_nic_name')} ip={nic.get('local_ip')} id={nic.get('local_nic_id')}")
             print(f"[PROFILE] saved: {abs_path} ({len(json_str)} bytes)")
             return True
 
@@ -2333,22 +2351,28 @@ class Main(QMainWindow):
             if hasattr(self, '_get_current_transport'):
                 net_patch["transport"] = self._get_current_transport()
 
-            # NIC config (with stable ID generation)
+            # NIC config (nested block like audio)
             if hasattr(self, 'cmb_nic'):
                 nic_data = self.cmb_nic.currentData()
                 if nic_data and len(nic_data) >= 3:
                     name, ip, mac, *_ = nic_data
                     if name == "auto":
                         # Auto mode: clear NIC config
-                        net_patch["local_nic"] = "auto"
-                        net_patch["local_nic_id"] = ""
-                        net_patch["local_ip"] = ""
+                        net_patch["nic"] = {
+                            "local_nic_name": "auto",
+                            "local_nic_id": "",
+                            "local_ip": "",
+                            "auto_connect": True
+                        }
                     else:
                         # Generate stable ID (MAC or hash fallback)
                         stable_id = self._generate_stable_nic_id(name, ip, mac)
-                        net_patch["local_nic"] = name
-                        net_patch["local_nic_id"] = stable_id
-                        net_patch["local_ip"] = ip or ""
+                        net_patch["nic"] = {
+                            "local_nic_name": name,
+                            "local_nic_id": stable_id,
+                            "local_ip": ip or "",
+                            "auto_connect": True
+                        }
 
             # Audio config
             if hasattr(self, 'cmb_audio_device'):
@@ -2514,8 +2538,9 @@ class Main(QMainWindow):
             data = self._load_preset(self.preset_path)
             data = self._ensure_net_panel_defaults(data)
             net = data.get("net_panel", {})
+            nic_cfg = net.get("nic", {})
             print(f"[PROFILE] loaded net_panel from {self.preset_path}")
-            print(f"[AUDIT] net_panel loaded: local_nic={net.get('local_nic')} local_ip={net.get('local_ip')} local_nic_id={net.get('local_nic_id')}")
+            print(f"[NIC] loaded: name={nic_cfg.get('local_nic_name')} ip={nic_cfg.get('local_ip')} id={nic_cfg.get('local_nic_id')}")
 
             # Apply audio config
             audio_cfg = net.get("audio", {})
@@ -2569,13 +2594,15 @@ class Main(QMainWindow):
             if hasattr(self.avolites, 'set_cue_offset'):
                 self.avolites.set_cue_offset(cue_offset)
 
-            # Apply NIC config BEFORE connecting (affects local bind)
-            local_nic_id = net.get("local_nic_id", "")
-            local_ip = net.get("local_ip", "")
-            local_nic_name = net.get("local_nic", "auto")
+            # Apply NIC config BEFORE connecting (same pattern as audio)
+            nic_cfg = net.get("nic", {})
+            local_nic_id = nic_cfg.get("local_nic_id", "")
+            local_ip = nic_cfg.get("local_ip", "")
+            local_nic_name = nic_cfg.get("local_nic_name", "auto")
+            nic_auto_connect = nic_cfg.get("auto_connect", True)
 
             nic_applied = False
-            if local_nic_id or local_ip:
+            if nic_auto_connect and (local_nic_id or local_ip):
                 # Find NIC by MAC first, fallback to IP
                 nic_found = self._find_nic_by_id(local_nic_id, local_ip)
                 if nic_found:
@@ -2585,7 +2612,7 @@ class Main(QMainWindow):
                     # Configure avolites with local interface
                     if ip:
                         self.avolites.set_local_interface(ip)
-                    print(f"[NET] bind local_ip_effective={ip} mac={mac[:17] if mac else '?'}")
+                    print(f"[NIC] bind local_ip_effective={ip} mac={mac[:17] if mac else '?'}")
 
                     # Update combo selection (block signals to prevent re-save during boot)
                     if hasattr(self, 'cmb_nic'):
@@ -2599,10 +2626,10 @@ class Main(QMainWindow):
                         self.cmb_nic.blockSignals(False)
                     if hasattr(self, 'lbl_local_ip'):
                         self.lbl_local_ip.setText(ip if ip else "Auto")
-                    print(f"[NET] combo selected from saved config")
+                    print(f"[NIC] selected: name={name} ip={ip} id={local_nic_id}")
                     nic_applied = True
                 else:
-                    print(f"[NET] NIC not found: id={local_nic_id} ip={local_ip}")
+                    print(f"[NIC] not found: id={local_nic_id} ip={local_ip}")
             else:
                 print(f"[NET] NIC config: auto (no saved NIC)")
 
@@ -2694,18 +2721,20 @@ class Main(QMainWindow):
             self.avolites.config_manager.config["console_ip"] = str(net.get("console_ip", "10.0.0.1"))
             self.avolites.config_manager.config["console_port"] = int(net.get("console_port", 4430))
 
-            # Load NIC config - use local_ip if available
-            local_ip = net.get("local_ip", "")
-            local_nic_id = net.get("local_nic_id", "")
+            # Load NIC config from net_panel.nic block (same pattern as audio)
+            nic_cfg = net.get("nic", {})
+            local_ip = nic_cfg.get("local_ip", "")
+            local_nic_id = nic_cfg.get("local_nic_id", "")
             if local_ip:
                 self.avolites.config_manager.config["local_ip"] = local_ip
                 self.local_ip_effective = local_ip
             elif local_nic_id:
-                # Find IP from MAC
+                # Find IP from MAC/ID
                 nic_found = self._find_nic_by_id(local_nic_id, None)
                 if nic_found:
                     self.avolites.config_manager.config["local_ip"] = nic_found[1]
                     self.local_ip_effective = nic_found[1]
+            print(f"[NIC] config loaded: id={local_nic_id} ip={local_ip}")
 
             self._add_net_event(f"Config cargada: {net.get('console_ip')}:{net.get('console_port')} [{transport}]")
             print(f"[NET] Config cargada desde preset")
@@ -2792,7 +2821,10 @@ class Main(QMainWindow):
             QMessageBox.critical(self, "Red", f"Error: {e}")
     
     def _on_apply_nic(self):
-        """Aplicar interfaz de red seleccionada y persistir con ID estable (MAC)."""
+        """
+        Aplicar NIC seleccionada (mismo patrón que Conectar Audio).
+        El botón hace: aplicar a runtime + guardar a preset.
+        """
         try:
             idx = self.cmb_nic.currentIndex()
             if idx < 0:
@@ -2804,22 +2836,27 @@ class Main(QMainWindow):
 
             name, ip, mac, up = nic_data
 
-            # Apply NIC to runtime (persistence handled by combo change signal)
+            # Apply NIC to runtime
             success = self._apply_nic_config(name, ip, mac)
 
             if success:
+                # Save to preset (same as audio button pattern)
+                self.save_preset(filepath=self.preset_path)
+                stable_id = self._generate_stable_nic_id(name, ip, mac)
+                print(f"[NIC] saved to preset: name={name} ip={ip} id={stable_id}")
                 self._add_net_event(f"NIC aplicada: {name} ({ip}) [{mac[:17] if mac else '?'}]")
             else:
                 self._add_net_event(f"NIC fallida: {name}")
 
         except Exception as e:
-            print(f"[NET][ERR] {e}")
+            print(f"[NIC][ERR] {e}")
             QMessageBox.critical(self, "Red", f"Error: {e}")
 
     def _on_nic_combo_changed(self, index):
         """
-        Auto-persist NIC when combo changes (same pattern as audio).
-        Updates UI and saves to preset immediately using save_preset().
+        Combo change handler (same pattern as audio combo).
+        Changing combo only updates UI label - does NOT apply or save.
+        Use the "Aplicar NIC" button to apply + save.
         """
         if index < 0:
             return
@@ -2831,24 +2868,14 @@ class Main(QMainWindow):
 
             name, ip, mac, up = nic_data
 
-            # Update UI label
+            # Update UI label only (no apply, no save)
             if name == "auto":
                 self.lbl_local_ip.setText("Auto")
-                self.local_ip_effective = None
             else:
                 self.lbl_local_ip.setText(ip if ip else "—")
-                self.local_ip_effective = ip
-
-            # Persist to preset using unified save path (same as audio)
-            # This calls _collect_ui_state_patch() which collects NIC data
-            self.save_preset(filepath=self.preset_path)
-
-            # Log for verification
-            stable_id = self._generate_stable_nic_id(name, ip, mac)
-            print(f"[NET] ui->preset saved local_ip={ip} local_nic_id={stable_id}")
 
         except Exception as e:
-            print(f"[NET][ERR] _on_nic_combo_changed: {e}")
+            print(f"[NIC][ERR] _on_nic_combo_changed: {e}")
 
     def _generate_stable_nic_id(self, name, ip, mac):
         """
@@ -3205,17 +3232,17 @@ class Main(QMainWindow):
                 label = f"{status} {name} ({ip}) [{mac[:17]}]"
                 self.cmb_nic.addItem(label, (name, ip, mac, up))
 
-            # Load saved NIC config from preset
+            # Load saved NIC config from preset (from net_panel.nic block)
             saved_nic_id = ""
             saved_ip = ""
             try:
                 if os.path.exists(self.preset_path):
                     data = self._load_preset(self.preset_path)
                     data = self._ensure_net_panel_defaults(data)
-                    net = data.get("net_panel", {})
-                    saved_nic_id = net.get("local_nic_id", "")
-                    saved_ip = net.get("local_ip", "")
-                    print(f"[AUDIT] _refresh_nics: saved_nic_id={saved_nic_id} saved_ip={saved_ip}")
+                    nic_cfg = data.get("net_panel", {}).get("nic", {})
+                    saved_nic_id = nic_cfg.get("local_nic_id", "")
+                    saved_ip = nic_cfg.get("local_ip", "")
+                    print(f"[NIC] _refresh_nics: saved_id={saved_nic_id} saved_ip={saved_ip}")
             except:
                 pass
 
