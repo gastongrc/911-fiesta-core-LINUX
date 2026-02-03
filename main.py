@@ -2587,16 +2587,19 @@ class Main(QMainWindow):
                         self.avolites.set_local_interface(ip)
                     print(f"[NET] bind local_ip_effective={ip} mac={mac[:17] if mac else '?'}")
 
-                    # Update combo selection
+                    # Update combo selection (block signals to prevent re-save during boot)
                     if hasattr(self, 'cmb_nic'):
+                        self.cmb_nic.blockSignals(True)
                         for i in range(self.cmb_nic.count()):
-                            data = self.cmb_nic.itemData(i)
-                            if data and len(data) >= 3:
-                                if mac and data[2] and data[2].lower() == mac.lower():
+                            item_data = self.cmb_nic.itemData(i)
+                            if item_data and len(item_data) >= 3:
+                                if mac and item_data[2] and item_data[2].lower() == mac.lower():
                                     self.cmb_nic.setCurrentIndex(i)
                                     break
+                        self.cmb_nic.blockSignals(False)
                     if hasattr(self, 'lbl_local_ip'):
                         self.lbl_local_ip.setText(ip if ip else "Auto")
+                    print(f"[NET] combo selected from saved config")
                     nic_applied = True
                 else:
                     print(f"[NET] NIC not found: id={local_nic_id} ip={local_ip}")
@@ -2801,8 +2804,8 @@ class Main(QMainWindow):
 
             name, ip, mac, up = nic_data
 
-            # Use canonical apply method
-            success = self._apply_nic_config(name, ip, mac, persist=True)
+            # Apply NIC to runtime (persistence handled by combo change signal)
+            success = self._apply_nic_config(name, ip, mac)
 
             if success:
                 self._add_net_event(f"NIC aplicada: {name} ({ip}) [{mac[:17] if mac else '?'}]")
@@ -2815,21 +2818,18 @@ class Main(QMainWindow):
 
     def _on_nic_combo_changed(self, index):
         """
-        Auto-persist NIC when combo changes (no button required).
-        Updates UI and saves to preset immediately.
+        Auto-persist NIC when combo changes (same pattern as audio).
+        Updates UI and saves to preset immediately using save_preset().
         """
-        print(f"[AUDIT] _on_nic_combo_changed ENTRY index={index}")
         if index < 0:
             return
 
         try:
             nic_data = self.cmb_nic.currentData()
             if not nic_data:
-                print(f"[AUDIT] _on_nic_combo_changed: no nic_data, returning")
                 return
 
             name, ip, mac, up = nic_data
-            print(f"[AUDIT] _on_nic_combo_changed: name={name} ip={ip} mac={mac[:17] if mac else 'none'}")
 
             # Update UI label
             if name == "auto":
@@ -2839,11 +2839,13 @@ class Main(QMainWindow):
                 self.lbl_local_ip.setText(ip if ip else "—")
                 self.local_ip_effective = ip
 
-            # Generate stable ID (MAC preferred, fallback to hash)
-            stable_id = self._generate_stable_nic_id(name, ip, mac)
+            # Persist to preset using unified save path (same as audio)
+            # This calls _collect_ui_state_patch() which collects NIC data
+            self.save_preset(filepath=self.preset_path)
 
-            # Persist to preset (without triggering reconnect)
-            self._persist_nic_to_preset(name, ip, stable_id)
+            # Log for verification
+            stable_id = self._generate_stable_nic_id(name, ip, mac)
+            print(f"[NET] ui->preset saved local_ip={ip} local_nic_id={stable_id}")
 
         except Exception as e:
             print(f"[NET][ERR] _on_nic_combo_changed: {e}")
@@ -2867,56 +2869,14 @@ class Main(QMainWindow):
 
         return ""
 
-    def _persist_nic_to_preset(self, name, ip, stable_id):
+    def _apply_nic_config(self, name, ip, mac):
         """
-        Persist NIC config to preset file (atomic, merge-safe).
-        Called automatically on combo change.
-        """
-        try:
-            abs_path = os.path.abspath(self.preset_path)
-            print(f"[AUDIT] _persist_nic_to_preset ENTRY: preset_path={abs_path} exists={os.path.exists(abs_path)}")
-            if not os.path.exists(self.preset_path):
-                print(f"[NET] preset not found, skip persist")
-                return
-
-            print(f"[AUDIT] _persist_nic_to_preset: BEFORE name={name} ip={ip} id={stable_id}")
-
-            # Load current preset
-            data = self._load_preset(self.preset_path)
-            data = self._ensure_net_panel_defaults(data)
-
-            # Update NIC fields only
-            if name == "auto":
-                # Clear NIC config for auto mode
-                data["net_panel"]["local_nic"] = "auto"
-                data["net_panel"]["local_nic_id"] = ""
-                data["net_panel"]["local_ip"] = ""
-            else:
-                data["net_panel"]["local_nic"] = name
-                data["net_panel"]["local_nic_id"] = stable_id
-                data["net_panel"]["local_ip"] = ip or ""
-
-            # Atomic save
-            if self._safe_save_preset(self.preset_path, data):
-                # POST-SAVE VALIDATION: Re-read and confirm
-                verify_data = self._load_preset(self.preset_path)
-                verify_net = verify_data.get("net_panel", {})
-                print(f"[AUDIT][POST_SAVE_READ] local_nic={verify_net.get('local_nic')} local_ip={verify_net.get('local_ip')} local_nic_id={verify_net.get('local_nic_id')}")
-            else:
-                print(f"[NET][ERR] failed to persist nic")
-
-        except Exception as e:
-            print(f"[NET][ERR] _persist_nic_to_preset: {e}")
-
-    def _apply_nic_config(self, name, ip, mac, persist=False):
-        """
-        CANONICAL method to apply NIC configuration.
+        Apply NIC configuration to runtime (does NOT persist - use combo change for that).
 
         Args:
             name: NIC display name (for logging)
             ip: IP address to bind to
             mac: MAC address for stable identification
-            persist: If True, save to preset file
 
         Returns:
             bool: True if NIC was applied successfully
@@ -2929,26 +2889,6 @@ class Main(QMainWindow):
             else:
                 self.local_ip_effective = ip
                 interface_value = ip  # Always use IP for binding (more reliable)
-
-            # Persist to preset if requested
-            if persist and os.path.exists(self.preset_path):
-                data = self._load_preset(self.preset_path)
-                data = self._ensure_net_panel_defaults(data)
-
-                # Generate stable ID (MAC or hash fallback)
-                stable_id = self._generate_stable_nic_id(name, ip, mac)
-
-                patch = {
-                    "local_nic": name,           # Display name (informational)
-                    "local_nic_id": stable_id,   # Stable ID (MAC or hash)
-                    "local_ip": ip or ""         # Resolved IP
-                }
-                data = self._merge_net_panel(data, patch)
-
-                if not self._save_preset(self.preset_path, data):
-                    print(f"[NET][ERR] Failed to persist NIC config")
-                else:
-                    print(f"[NET] persisted: nic_id={stable_id} ip={ip}")
 
             # Apply to Avolites controller
             if interface_value:
