@@ -2722,19 +2722,55 @@ class Main(QMainWindow):
             self.avolites.config_manager.config["console_port"] = int(net.get("console_port", 4430))
 
             # Load NIC config from net_panel.nic block (same pattern as audio)
-            nic_cfg = net.get("nic", {})
-            local_ip = nic_cfg.get("local_ip", "")
-            local_nic_id = nic_cfg.get("local_nic_id", "")
-            if local_ip:
-                self.avolites.config_manager.config["local_ip"] = local_ip
-                self.local_ip_effective = local_ip
-            elif local_nic_id:
-                # Find IP from MAC/ID
-                nic_found = self._find_nic_by_id(local_nic_id, None)
-                if nic_found:
-                    self.avolites.config_manager.config["local_ip"] = nic_found[1]
-                    self.local_ip_effective = nic_found[1]
-            print(f"[NIC] config loaded: id={local_nic_id} ip={local_ip}")
+            try:
+                nic_cfg = net.get("nic", {})
+                local_nic_name = nic_cfg.get("local_nic_name", "auto")
+                local_nic_id = nic_cfg.get("local_nic_id", "")
+                local_ip = nic_cfg.get("local_ip", "")
+
+                # Select NIC in combo if exists (same pattern as audio combo)
+                if hasattr(self, 'cmb_nic'):
+                    self.cmb_nic.blockSignals(True)  # Prevent combo change handler
+                    found = False
+                    # Priority 1: match by stable ID (MAC or hash)
+                    if local_nic_id:
+                        for i in range(self.cmb_nic.count()):
+                            item_data = self.cmb_nic.itemData(i)
+                            if item_data and len(item_data) >= 3:
+                                name, ip, mac, *_ = item_data
+                                item_id = self._generate_stable_nic_id(name, ip, mac)
+                                if item_id.lower() == local_nic_id.lower():
+                                    self.cmb_nic.setCurrentIndex(i)
+                                    found = True
+                                    break
+                    # Priority 2: match by IP
+                    if not found and local_ip:
+                        for i in range(self.cmb_nic.count()):
+                            item_data = self.cmb_nic.itemData(i)
+                            if item_data and len(item_data) >= 2:
+                                if item_data[1] == local_ip:
+                                    self.cmb_nic.setCurrentIndex(i)
+                                    found = True
+                                    break
+                    self.cmb_nic.blockSignals(False)
+
+                # Update label
+                if hasattr(self, 'lbl_local_ip'):
+                    self.lbl_local_ip.setText(local_ip if local_ip else "Auto")
+
+                # Set effective IP
+                if local_ip:
+                    self.avolites.config_manager.config["local_ip"] = local_ip
+                    self.local_ip_effective = local_ip
+                elif local_nic_id:
+                    nic_found = self._find_nic_by_id(local_nic_id, None)
+                    if nic_found:
+                        self.avolites.config_manager.config["local_ip"] = nic_found[1]
+                        self.local_ip_effective = nic_found[1]
+
+                print(f"[NIC] config loaded: name={local_nic_name} ip={local_ip} id={local_nic_id}")
+            except Exception as e:
+                print(f"[NIC] Error loading nic config: {e}")
 
             self._add_net_event(f"Config cargada: {net.get('console_ip')}:{net.get('console_port')} [{transport}]")
             print(f"[NET] Config cargada desde preset")
@@ -2835,6 +2871,10 @@ class Main(QMainWindow):
                 return
 
             name, ip, mac, up = nic_data
+            stable_id = self._generate_stable_nic_id(name, ip, mac)
+
+            # Log: apply clicked
+            print(f"[NIC] apply clicked -> name={name} ip={ip} id={stable_id}")
 
             # Apply NIC to runtime
             success = self._apply_nic_config(name, ip, mac)
@@ -2842,9 +2882,16 @@ class Main(QMainWindow):
             if success:
                 # Save to preset (same as audio button pattern)
                 self.save_preset(filepath=self.preset_path)
-                stable_id = self._generate_stable_nic_id(name, ip, mac)
-                print(f"[NIC] saved to preset: name={name} ip={ip} id={stable_id}")
-                self._add_net_event(f"NIC aplicada: {name} ({ip}) [{mac[:17] if mac else '?'}]")
+
+                # Post-save verification: re-read and log
+                try:
+                    data = self._load_preset(self.preset_path)
+                    saved_nic = data.get("net_panel", {}).get("nic", {})
+                    print(f"[NIC] saved -> net_panel.nic={saved_nic}")
+                except:
+                    pass
+
+                self._add_net_event(f"NIC aplicada: {name} ({ip})")
             else:
                 self._add_net_event(f"NIC fallida: {name}")
 
