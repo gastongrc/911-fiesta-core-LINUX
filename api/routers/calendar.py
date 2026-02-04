@@ -249,10 +249,13 @@ async def save_calendar(request: CalendarSaveRequest):
 
     if result.get("ok"):
         warnings = result.get("warnings", [])
-        logger.info(f"[CALENDAR] SAVE OK, warnings={len(warnings)}")
+        week_data = result.get("week", {})
+        week_days = list(week_data.keys()) if week_data else []
+        total_blocks = sum(len(week_data.get(d, [])) for d in week_days)
+        logger.info(f"[CALENDAR] SAVE OK | week_days={week_days} | blocks={total_blocks} | warnings={len(warnings)}")
         return {
             "success": True,
-            "week": result.get("week", {}),
+            "week": week_data,
             "warnings": warnings
         }
     else:

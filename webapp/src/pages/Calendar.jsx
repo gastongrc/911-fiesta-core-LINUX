@@ -593,12 +593,27 @@ export function Calendar() {
       const res = await apiPost('/calendar/save', { week: schedule.week });
       if (res.ok) {
         const data = await res.json();
+        console.log('[SAVE] Response:', JSON.stringify(data, null, 2));
+
         if (data.success) {
-          // Pisar estado local con week REAL del CORE
-          setSchedule({ week: data.week || {} });
+          // Validar que week tenga contenido antes de pisar estado
+          const weekKeys = Object.keys(data.week || {});
+          console.log('[SAVE] week keys:', weekKeys);
+
+          if (data.week && weekKeys.length > 0) {
+            // Pisar estado local con week REAL del CORE
+            setSchedule({ week: data.week });
+            console.log('[SAVE] Estado actualizado con week del CORE');
+          } else {
+            // week vacío - refetch forzado para obtener datos reales
+            console.warn('[SAVE] week vacío en respuesta, haciendo refetch...');
+            await fetchWeek(true);
+          }
+
           setHasChanges(false);
           setSaveSuccess(true);
-          // Mostrar warnings si hay
+
+          // Mostrar warnings si hay (vienen del CORE)
           if (data.warnings && data.warnings.length > 0) {
             setWarnings(data.warnings);
           }
@@ -611,6 +626,7 @@ export function Calendar() {
         setLastError('HTTP_ERROR');
       }
     } catch (e) {
+      console.error('[SAVE] Error:', e);
       setLastError('SAVE_ERROR');
     }
   };
