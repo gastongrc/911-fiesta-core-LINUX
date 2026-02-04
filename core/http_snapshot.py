@@ -240,12 +240,28 @@ class SnapshotServer:
         if not self.calendar_manager:
             return None
         try:
+            from datetime import datetime
             state = self.calendar_manager.get_state()
+            now = datetime.now()
+
+            # Calcular time_remaining_s
+            time_remaining_s = -1
+            nc = state.get("next_change_at")
+            if nc and isinstance(nc, datetime):
+                time_remaining_s = max(0, int((nc - now).total_seconds()))
+
+            # Source
+            source = "OVERRIDE" if state.get("is_override") else state.get("source", "AUTO")
+
             return {
                 "current_mode": state.get("current_mode"),
                 "next_mode": state.get("next_mode"),
                 "override_active": state.get("is_override", False),
                 "auto": state.get("auto_mode_enabled", True),
+                "source": source,
+                "time_remaining_s": time_remaining_s,
+                "day": now.strftime("%A").lower(),
+                "time": now.strftime("%H:%M:%S"),
             }
         except:
             return None
