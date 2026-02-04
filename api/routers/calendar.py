@@ -238,17 +238,28 @@ async def save_calendar(request: CalendarSaveRequest):
     """
     POST /api/v1/calendar/save
     Guarda schedule semanal en CORE.
+
+    Retorna:
+    - success: bool
+    - week: el week REAL que quedó en CORE (para pisar estado local)
+    - warnings: lista de solapamientos detectados
     """
+    logger.info(f"[CALENDAR] SAVE request with {len(request.week)} days")
     result = await _forward_to_core("/core/calendar/save", {"week": request.week})
 
     if result.get("ok"):
+        warnings = result.get("warnings", [])
+        logger.info(f"[CALENDAR] SAVE OK, warnings={len(warnings)}")
         return {
             "success": True,
-            "message": "Schedule guardado",
-            "calendar": result.get("calendar")
+            "week": result.get("week", {}),
+            "warnings": warnings
         }
     else:
+        logger.error(f"[CALENDAR] SAVE FAILED: {result.get('error')}")
         return {
             "success": False,
+            "week": {},
+            "warnings": [],
             "error": result.get("error")
         }

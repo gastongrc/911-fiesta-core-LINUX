@@ -464,9 +464,12 @@ export function Calendar() {
   const [hasChanges, setHasChanges] = useState(false);
   const [apiOffline, setApiOffline] = useState(false);
   const [lastError, setLastError] = useState(null);
+  const [warnings, setWarnings] = useState([]);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Fetch week schedule
-  const fetchWeek = async () => {
+  // Fetch week schedule (solo si no hay cambios pendientes)
+  const fetchWeek = async (force = false) => {
+    if (hasChanges && !force) return; // No pisar ediciones locales
     try {
       const res = await fetch(`${getApiBase()}/calendar/week`);
       if (res.ok) {
@@ -475,11 +478,10 @@ export function Calendar() {
           setLastError(data.error);
         } else {
           setSchedule({ week: data.week || {} });
-          setLastError(null);
         }
       }
     } catch (e) {
-      setLastError('FETCH_ERROR');
+      // Silenciar errores de polling
     }
   };
 
@@ -492,7 +494,6 @@ export function Calendar() {
           const data = await res.json();
           setStatus(data);
           setApiOffline(!data.core_online);
-          if (data.error) setLastError(data.error);
         } else {
           setApiOffline(true);
         }
@@ -507,8 +508,15 @@ export function Calendar() {
 
   // Cargar schedule al montar
   useEffect(() => {
-    fetchWeek();
+    fetchWeek(true);
   }, []);
+
+  // Polling de week cada 5s SOLO si no hay cambios pendientes
+  useEffect(() => {
+    if (hasChanges) return; // No hacer polling si está editando
+    const interval = setInterval(() => fetchWeek(), 5000);
+    return () => clearInterval(interval);
+  }, [hasChanges]);
 
   // Acciones - retornan success y refetch si OK
   const handleGo = async (mode, delay) => {
@@ -579,13 +587,23 @@ export function Calendar() {
 
   const handleSave = async () => {
     setLastError(null);
+    setWarnings([]);
+    setSaveSuccess(false);
     try {
       const res = await apiPost('/calendar/save', { week: schedule.week });
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
+          // Pisar estado local con week REAL del CORE
+          setSchedule({ week: data.week || {} });
           setHasChanges(false);
-          await fetchWeek(); // Refetch para confirmar
+          setSaveSuccess(true);
+          // Mostrar warnings si hay
+          if (data.warnings && data.warnings.length > 0) {
+            setWarnings(data.warnings);
+          }
+          // Ocultar banner de éxito después de 3s
+          setTimeout(() => setSaveSuccess(false), 3000);
         } else {
           setLastError(data.error || 'SAVE_FAILED');
         }
@@ -616,6 +634,41 @@ export function Calendar() {
             onClick={() => setLastError(null)}
             style={{ background: 'none', border: 'none', color: 'var(--neon-red)', cursor: 'pointer' }}
           >✕</button>
+        </div>
+      )}
+
+      {/* Success Banner */}
+      {saveSuccess && (
+        <div style={{
+          background: 'rgba(0, 255, 136, 0.15)',
+          borderBottom: '1px solid var(--neon-green)',
+          padding: '8px 16px',
+        }}>
+          <span style={{ color: 'var(--neon-green)', fontSize: '11px', fontWeight: 'bold' }}>
+            ✓ Guardado OK
+          </span>
+        </div>
+      )}
+
+      {/* Warnings Banner */}
+      {warnings.length > 0 && (
+        <div style={{
+          background: 'rgba(255, 200, 0, 0.15)',
+          borderBottom: '1px solid var(--neon-orange)',
+          padding: '8px 16px',
+        }}>
+          <div style={{ color: 'var(--neon-orange)', fontSize: '11px', fontWeight: 'bold', marginBottom: '4px' }}>
+            ⚠ SOLAPAMIENTOS DETECTADOS:
+          </div>
+          {warnings.map((w, i) => (
+            <div key={i} style={{ color: 'var(--neon-orange)', fontSize: '10px', marginLeft: '12px' }}>
+              • {w}
+            </div>
+          ))}
+          <button
+            onClick={() => setWarnings([])}
+            style={{ background: 'none', border: 'none', color: 'var(--neon-orange)', cursor: 'pointer', marginTop: '4px', fontSize: '10px' }}
+          >Cerrar</button>
         </div>
       )}
 

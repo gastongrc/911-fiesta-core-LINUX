@@ -363,22 +363,52 @@ class SnapshotServer:
             return {"ok": False, "error": str(e), "week": {}}
 
     def calendar_save(self, week: dict) -> dict:
-        """POST /core/calendar/save - Guarda schedule semanal."""
+        """POST /core/calendar/save - Guarda schedule semanal y retorna week real + warnings."""
         if not self.calendar_manager:
-            return {"ok": False, "error": "calendar_manager_not_available"}
+            return {"ok": False, "error": "calendar_manager_not_available", "week": {}, "warnings": []}
 
         if not week:
-            return {"ok": False, "error": "week_required"}
+            return {"ok": False, "error": "week_required", "week": {}, "warnings": []}
 
         try:
+            # Detectar solapamientos antes de guardar
+            warnings = self._detect_overlaps(week)
+
+            # Guardar
             success = self.calendar_manager.save_schedule({"week": week})
-            return {
-                "ok": success,
-                "error": None if success else "save_failed",
-                "calendar": self._calendar_snapshot()
-            }
+
+            if success:
+                # Leer lo que realmente quedó en CORE
+                real_schedule = self.calendar_manager.get_schedule()
+                return {
+                    "ok": True,
+                    "error": None,
+                    "week": real_schedule.get("week", {}),
+                    "warnings": warnings
+                }
+            else:
+                return {"ok": False, "error": "save_failed", "week": {}, "warnings": []}
         except Exception as e:
-            return {"ok": False, "error": str(e)}
+            return {"ok": False, "error": str(e), "week": {}, "warnings": []}
+
+    def _detect_overlaps(self, week: dict) -> list:
+        """Detecta solapamientos en el schedule."""
+        warnings = []
+        for day, blocks in week.items():
+            if not isinstance(blocks, list):
+                continue
+            # Ordenar por hora inicio
+            sorted_blocks = sorted(blocks, key=lambda b: b.get("from", "00:00"))
+            for i in range(len(sorted_blocks) - 1):
+                current = sorted_blocks[i]
+                next_block = sorted_blocks[i + 1]
+                # Si el fin del actual >= inicio del siguiente = solape
+                if current.get("to", "00:00") > next_block.get("from", "00:00"):
+                    warnings.append(
+                        f"{day}: {current.get('mode')} ({current.get('from')}-{current.get('to')}) "
+                        f"solapa con {next_block.get('mode')} ({next_block.get('from')}-{next_block.get('to')})"
+                    )
+        return warnings
 
     def start(self):
         """Inicia el server HTTP en un thread separado."""
