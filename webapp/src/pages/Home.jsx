@@ -183,10 +183,11 @@ const ENERGY_COLORS = {
 };
 
 // Panel STATE + ENERGY (el más importante)
-function StatePanel({ state, energy }) {
+function StatePanel({ state, energy, coreOnline, lastError }) {
   const stateColor = STATE_COLORS[state] || 'var(--text-dim)';
   const energyColor = ENERGY_COLORS[energy] || 'var(--text-dim)';
-  const isOnline = state != null;
+  // Usar core.online del snapshot, no inferir de state
+  const isOnline = coreOnline === true;
 
   return (
     <div className="neon-panel" style={{ gridColumn: 'span 2' }}>
@@ -203,7 +204,12 @@ function StatePanel({ state, energy }) {
             padding: '20px',
             color: 'var(--neon-red)',
           }}>
-            Core no inicializado
+            <div style={{ marginBottom: '8px' }}>Core no disponible</div>
+            {lastError && (
+              <div style={{ fontSize: '10px', color: 'var(--text-dim)' }}>
+                Error: {lastError}
+              </div>
+            )}
           </div>
         ) : (
           <div style={{
@@ -548,11 +554,16 @@ export function Home() {
         gap: '12px',
       }}>
         {/* STATE + ENERGY - Panel principal del core */}
-        <StatePanel state={status?.state} energy={status?.energy} />
+        <StatePanel
+          state={status?.state}
+          energy={status?.energy}
+          coreOnline={status?.core?.online}
+          lastError={status?.core?.last_error}
+        />
 
         <AudioPanel audio={status?.audio} />
         <AvolitesPanel avolites={status?.avolites} />
-        <CamerasPanel cameras={status?.cameras} />
+        {/* CamerasPanel ocultado por ahora - sin dependencia de vision */}
         <SystemPanel system={status?.system} />
         <CalendarPanel calendar={status?.calendar} />
       </div>
