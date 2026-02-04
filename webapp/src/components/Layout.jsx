@@ -1,5 +1,5 @@
 /**
- * Layout V7 - Control Room Navigation (Estilo Industrial)
+ * Layout V7 - Control Room Navigation (NEON UI)
  *
  * Navegación:
  * - Home (dashboard)
@@ -28,30 +28,47 @@ export function Layout({ children }) {
       display: 'flex',
       flexDirection: 'column',
       height: '100vh',
-      background: '#0d1117',
-      color: '#ecf0f1',
+      background: 'var(--bg-dark)',
+      color: 'var(--text-normal)',
     }}>
       {/* Header */}
       <header style={{
-        background: '#1e272e',
-        borderBottom: '1px solid #34495e',
-        padding: '10px 16px',
+        background: 'var(--bg-panel)',
+        borderBottom: '1px solid var(--border-dim)',
+        padding: '12px 20px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
+        position: 'relative',
       }}>
+        {/* Glow line */}
+        <div style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: '1px',
+          background: 'linear-gradient(90deg, transparent, var(--neon-cyan), var(--neon-green), var(--neon-cyan), transparent)',
+          boxShadow: '0 0 10px var(--neon-cyan)',
+        }} />
+
         <h1 style={{
           margin: 0,
           fontSize: '16px',
           fontWeight: 'bold',
-          color: '#ecf0f1',
-          letterSpacing: '1px',
+          color: 'var(--neon-cyan)',
+          letterSpacing: '2px',
+          textShadow: '0 0 15px var(--neon-cyan)',
         }}>
           911 FIESTA CONTROL ROOM
         </h1>
         <span style={{
-          color: '#7f8c8d',
+          color: 'var(--text-dim)',
           fontSize: '10px',
+          padding: '4px 8px',
+          background: 'var(--bg-dark)',
+          borderRadius: '4px',
+          border: '1px solid var(--border-dim)',
         }}>
           V7
         </span>
@@ -62,9 +79,9 @@ export function Layout({ children }) {
         {/* Sidebar */}
         <aside style={{
           width: '180px',
-          background: '#1e272e',
-          borderRight: '1px solid #34495e',
-          padding: '12px 8px',
+          background: 'var(--bg-panel)',
+          borderRight: '1px solid var(--border-dim)',
+          padding: '16px 8px',
           display: 'flex',
           flexDirection: 'column',
           gap: '4px',
@@ -77,27 +94,30 @@ export function Layout({ children }) {
                 to={path}
                 style={{
                   display: 'block',
-                  padding: '10px 12px',
+                  padding: '12px 16px',
                   borderRadius: '6px',
                   textDecoration: 'none',
                   fontSize: '11px',
                   fontWeight: 'bold',
-                  letterSpacing: '0.5px',
-                  background: isActive ? '#27ae60' : 'transparent',
-                  color: isActive ? '#ffffff' : '#7f8c8d',
+                  letterSpacing: '1px',
+                  background: isActive ? 'var(--neon-green)' : 'transparent',
+                  color: isActive ? 'var(--bg-dark)' : 'var(--text-dim)',
                   border: isActive ? 'none' : '1px solid transparent',
-                  transition: 'all 0.2s',
+                  boxShadow: isActive ? '0 0 15px rgba(0, 255, 136, 0.4)' : 'none',
+                  transition: 'all 0.2s ease',
                 }}
                 onMouseEnter={(e) => {
                   if (!isActive) {
-                    e.target.style.background = '#2c3e50';
-                    e.target.style.color = '#ecf0f1';
+                    e.target.style.background = 'var(--bg-hover)';
+                    e.target.style.color = 'var(--neon-cyan)';
+                    e.target.style.borderColor = 'var(--border-dim)';
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (!isActive) {
                     e.target.style.background = 'transparent';
-                    e.target.style.color = '#7f8c8d';
+                    e.target.style.color = 'var(--text-dim)';
+                    e.target.style.borderColor = 'transparent';
                   }
                 }}
               >
@@ -111,27 +131,16 @@ export function Layout({ children }) {
         <main style={{
           flex: 1,
           overflow: 'auto',
-          background: '#0d1117',
+          background: 'var(--bg-dark)',
         }}>
           {children}
         </main>
       </div>
 
-      {/* Mobile Bottom Nav */}
-      <nav style={{
-        display: 'none',
-        background: '#1e272e',
-        borderTop: '1px solid #34495e',
-        padding: '8px',
-      }}>
-        {/* Se activa en mobile via media query si es necesario */}
-      </nav>
-
-      {/* Mobile CSS */}
+      {/* Mobile Bottom Nav (hidden on desktop) */}
       <style>{`
         @media (max-width: 768px) {
           aside { display: none !important; }
-          nav { display: flex !important; justify-content: space-around; }
         }
       `}</style>
     </div>

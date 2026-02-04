@@ -1,5 +1,5 @@
 /**
- * Vision V7 - Camera Reference View (Estilo Industrial)
+ * Vision V7 - Camera Reference View (NEON UI)
  *
  * SOLO REFERENCIA - No edición, no disparos
  *
@@ -10,8 +10,7 @@
  * - FPS
  */
 import { useEffect, useState } from 'react';
-
-const API_BASE = '/api/v1';
+import { getApiBase } from '../lib/apiBase';
 
 // Tipos de cámara
 const CAMERA_TYPES = [
@@ -20,149 +19,110 @@ const CAMERA_TYPES = [
   { id: 'tracking', name: 'DJ TRACKING', desc: 'Seguimiento DJ' },
 ];
 
-// Panel industrial
-function Panel({ title, status, statusColor, children }) {
-  return (
-    <div style={{
-      background: '#1e272e',
-      borderRadius: '8px',
-      border: '1px solid #34495e',
-      overflow: 'hidden',
-    }}>
-      <div style={{
-        background: '#2c3e50',
-        padding: '10px 12px',
-        borderBottom: '1px solid #34495e',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-      }}>
-        <span style={{ color: '#ecf0f1', fontSize: '11px', fontWeight: 'bold' }}>
-          {title}
-        </span>
-        {status && (
-          <span style={{
-            color: statusColor || '#2ecc71',
-            fontSize: '9px',
-            fontWeight: 'bold',
-            background: `${statusColor || '#2ecc71'}20`,
-            padding: '2px 8px',
-            borderRadius: '4px',
-          }}>
-            {status}
-          </span>
-        )}
-      </div>
-      <div style={{ padding: '12px' }}>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-// Indicador
-function Indicator({ label, value, ok }) {
-  return (
-    <div style={{
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      padding: '4px 0',
-    }}>
-      <span style={{ color: '#7f8c8d', fontSize: '10px' }}>{label}</span>
-      <span style={{
-        color: ok === true ? '#2ecc71' : ok === false ? '#e74c3c' : '#ecf0f1',
-        fontSize: '10px',
-        fontWeight: 'bold',
-      }}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
-// Card de cámara
+// Card de cámara NEON
 function CameraCard({ type, cameraData }) {
   const isOnline = cameraData?.online || false;
   const fps = cameraData?.fps || 0;
 
   return (
-    <Panel
-      title={type.name}
-      status={isOnline ? 'ONLINE' : 'OFFLINE'}
-      statusColor={isOnline ? '#2ecc71' : '#e74c3c'}
-    >
-      {/* Stream placeholder */}
-      <div style={{
-        background: '#1a1a2e',
-        borderRadius: '6px',
-        aspectRatio: '16/9',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: '12px',
-        border: '1px solid #34495e',
-      }}>
-        {isOnline ? (
-          <div style={{ textAlign: 'center' }}>
-            <div style={{
-              width: '50px',
-              height: '50px',
-              borderRadius: '50%',
-              background: 'rgba(46,204,113,0.2)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 8px',
-            }}>
-              <span style={{ fontSize: '24px' }}>📹</span>
-            </div>
-            <p style={{ color: '#7f8c8d', fontSize: '10px' }}>
-              Stream via Flask Vision
-            </p>
-            <p style={{ color: '#95a5a6', fontSize: '9px' }}>
-              localhost:5000
-            </p>
-          </div>
-        ) : (
-          <div style={{ textAlign: 'center' }}>
-            <div style={{
-              width: '50px',
-              height: '50px',
-              borderRadius: '50%',
-              background: 'rgba(231,76,60,0.2)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 8px',
-            }}>
-              <span style={{ fontSize: '24px', filter: 'grayscale(1)' }}>📹</span>
-            </div>
-            <p style={{ color: '#e74c3c', fontSize: '10px', fontWeight: 'bold' }}>
-              OFFLINE
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* Info */}
-      <Indicator label="Estado" value={isOnline ? 'Running' : 'Stopped'} ok={isOnline} />
-      <Indicator label="FPS" value={fps > 0 ? fps : '---'} ok={fps > 0} />
-      <Indicator label="Tipo" value={type.desc} />
-
-      {/* Zonas overlay (visual) */}
-      <div style={{
-        marginTop: '8px',
-        padding: '6px',
-        background: 'rgba(52,152,219,0.1)',
-        borderRadius: '4px',
-        border: '1px solid rgba(52,152,219,0.3)',
-      }}>
-        <span style={{ color: '#3498db', fontSize: '9px' }}>
-          Zonas configuradas via Qt UI
+    <div className={`neon-panel ${isOnline ? '' : 'error'}`} style={{
+      borderColor: isOnline ? 'var(--neon-green)' : 'var(--neon-red)',
+    }}>
+      <div className="neon-panel-header">
+        <span className="neon-panel-title">{type.name}</span>
+        <span className={`neon-badge ${isOnline ? 'neon-badge-ok' : 'neon-badge-error'}`}>
+          {isOnline ? 'ONLINE' : 'OFFLINE'}
         </span>
       </div>
-    </Panel>
+      <div className="neon-panel-content">
+        {/* Stream placeholder */}
+        <div style={{
+          background: 'var(--bg-dark)',
+          borderRadius: '6px',
+          aspectRatio: '16/9',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: '12px',
+          border: `1px solid ${isOnline ? 'var(--neon-green)' : 'var(--neon-red)'}40`,
+        }}>
+          {isOnline ? (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{
+                width: '50px',
+                height: '50px',
+                borderRadius: '50%',
+                background: 'rgba(0, 255, 136, 0.15)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 8px',
+                border: '1px solid var(--neon-green)',
+                boxShadow: '0 0 15px rgba(0, 255, 136, 0.3)',
+              }}>
+                <span style={{ fontSize: '24px' }}>📹</span>
+              </div>
+              <p style={{ color: 'var(--text-dim)', fontSize: '10px' }}>
+                Stream via Flask Vision
+              </p>
+              <p style={{ color: 'var(--neon-cyan)', fontSize: '9px' }}>
+                localhost:5000
+              </p>
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{
+                width: '50px',
+                height: '50px',
+                borderRadius: '50%',
+                background: 'rgba(255, 68, 68, 0.15)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 8px',
+                border: '1px solid var(--neon-red)',
+              }}>
+                <span style={{ fontSize: '24px', filter: 'grayscale(1)' }}>📹</span>
+              </div>
+              <p style={{ color: 'var(--neon-red)', fontSize: '10px', fontWeight: 'bold' }}>
+                OFFLINE
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Info */}
+        <div className="neon-indicator">
+          <span className="neon-indicator-label">Estado</span>
+          <span className={`neon-indicator-value ${isOnline ? 'ok' : 'error'}`}>
+            {isOnline ? 'Running' : 'Stopped'}
+          </span>
+        </div>
+        <div className="neon-indicator">
+          <span className="neon-indicator-label">FPS</span>
+          <span className={`neon-indicator-value ${fps > 0 ? 'ok' : 'error'}`}>
+            {fps > 0 ? fps : '---'}
+          </span>
+        </div>
+        <div className="neon-indicator">
+          <span className="neon-indicator-label">Tipo</span>
+          <span className="neon-indicator-value">{type.desc}</span>
+        </div>
+
+        {/* Zonas */}
+        <div style={{
+          marginTop: '12px',
+          padding: '8px',
+          background: 'rgba(0, 255, 255, 0.05)',
+          borderRadius: '4px',
+          border: '1px solid rgba(0, 255, 255, 0.2)',
+        }}>
+          <span style={{ color: 'var(--neon-cyan)', fontSize: '9px' }}>
+            Zonas configuradas via Qt UI
+          </span>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -170,17 +130,23 @@ function CameraCard({ type, cameraData }) {
 export function Vision() {
   const [cameras, setCameras] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [apiOffline, setApiOffline] = useState(false);
 
   // Cargar estado
   useEffect(() => {
     const fetchCameras = async () => {
       try {
-        const res = await fetch(`${API_BASE}/status/unified`);
+        const res = await fetch(`${getApiBase()}/status/unified`);
         if (res.ok) {
           const data = await res.json();
           setCameras(data.cameras || []);
+          setApiOffline(false);
+        } else {
+          setApiOffline(true);
         }
-      } catch (e) {}
+      } catch (e) {
+        setApiOffline(true);
+      }
       setLoading(false);
     };
     fetchCameras();
@@ -201,37 +167,53 @@ export function Vision() {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: '16px',
+        marginBottom: '20px',
       }}>
-        <h2 style={{ color: '#ecf0f1', fontSize: '18px', fontWeight: 'bold', margin: 0 }}>
+        <h2 style={{
+          color: 'var(--neon-cyan)',
+          fontSize: '18px',
+          fontWeight: 'bold',
+          margin: 0,
+          textShadow: '0 0 10px var(--neon-cyan)',
+          letterSpacing: '2px',
+        }}>
           VISION SYSTEM
         </h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <span style={{
-            color: onlineCount > 0 ? '#2ecc71' : '#e74c3c',
-            fontSize: '10px',
-            fontWeight: 'bold',
-            background: onlineCount > 0 ? 'rgba(46,204,113,0.2)' : 'rgba(231,76,60,0.2)',
-            padding: '4px 8px',
-            borderRadius: '4px',
-          }}>
+          <span className={`neon-badge ${onlineCount > 0 ? 'neon-badge-ok' : 'neon-badge-error'}`}>
             {onlineCount}/{totalCount} ONLINE
           </span>
           {loading && (
-            <span style={{ color: '#3498db', fontSize: '10px' }}>Cargando...</span>
+            <span style={{ color: 'var(--neon-cyan)', fontSize: '10px' }}>Cargando...</span>
           )}
         </div>
       </div>
 
+      {/* API Offline */}
+      {apiOffline && (
+        <div style={{
+          background: 'rgba(255, 68, 68, 0.1)',
+          border: '1px solid var(--neon-red)',
+          borderRadius: '6px',
+          padding: '12px',
+          marginBottom: '16px',
+          textAlign: 'center',
+        }}>
+          <span style={{ color: 'var(--neon-red)', fontSize: '12px', fontWeight: 'bold' }}>
+            ⚠ API OFFLINE
+          </span>
+        </div>
+      )}
+
       {/* Banner info */}
       <div style={{
-        background: 'rgba(52,152,219,0.1)',
-        border: '1px solid rgba(52,152,219,0.3)',
+        background: 'rgba(0, 255, 255, 0.05)',
+        border: '1px solid rgba(0, 255, 255, 0.3)',
         borderRadius: '6px',
-        padding: '10px 12px',
+        padding: '12px',
         marginBottom: '16px',
       }}>
-        <p style={{ color: '#3498db', fontSize: '10px', margin: 0, textAlign: 'center' }}>
+        <p style={{ color: 'var(--neon-cyan)', fontSize: '11px', margin: 0, textAlign: 'center' }}>
           Vision es <strong>SOLO REFERENCIA</strong> en Control Room.
           Para edición de zonas y configuración, usar Qt UI.
         </p>
@@ -254,26 +236,21 @@ export function Vision() {
       </div>
 
       {/* Footer info */}
-      <div style={{
-        background: '#1e272e',
-        borderRadius: '8px',
-        padding: '12px',
-        border: '1px solid #34495e',
-      }}>
-        <div style={{ marginBottom: '8px' }}>
-          <span style={{ color: '#7f8c8d', fontSize: '10px', fontWeight: 'bold' }}>
-            FLASK VISION SERVER
-          </span>
+      <div className="neon-panel">
+        <div className="neon-panel-header">
+          <span className="neon-panel-title">FLASK VISION SERVER</span>
         </div>
-        <div style={{ color: '#95a5a6', fontSize: '10px' }}>
-          <p style={{ margin: '4px 0' }}>URL: http://localhost:5000</p>
-          <p style={{ margin: '4px 0', color: '#7f8c8d' }}>Endpoints:</p>
-          <ul style={{ margin: '4px 0 0 16px', padding: 0, listStyleType: 'disc' }}>
-            <li>/vision/status - Estado del sistema</li>
-            <li>/vision/devices - Cámaras disponibles</li>
-            <li>/vision/frame/&lt;id&gt; - Frame JPEG</li>
-            <li>/vision/detections/&lt;id&gt; - Detecciones actuales</li>
-          </ul>
+        <div className="neon-panel-content">
+          <div style={{ color: 'var(--text-dim)', fontSize: '10px' }}>
+            <p style={{ margin: '4px 0' }}>URL: <span style={{ color: 'var(--neon-cyan)' }}>http://localhost:5000</span></p>
+            <p style={{ margin: '8px 0 4px', color: 'var(--text-muted)' }}>Endpoints:</p>
+            <ul style={{ margin: '4px 0 0 16px', padding: 0, listStyleType: 'none' }}>
+              <li style={{ margin: '2px 0' }}>• /vision/status</li>
+              <li style={{ margin: '2px 0' }}>• /vision/devices</li>
+              <li style={{ margin: '2px 0' }}>• /vision/frame/&lt;id&gt;</li>
+              <li style={{ margin: '2px 0' }}>• /vision/detections/&lt;id&gt;</li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>

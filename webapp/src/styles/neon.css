@@ -1,0 +1,457 @@
+/**
+ * NEON UI - 911 Fiesta Control Room V7
+ *
+ * Estilo consola profesional con efectos neon
+ * Basado en v6.3 con mejoras
+ */
+
+:root {
+  /* Colores Neon principales */
+  --neon-cyan: #00ffff;
+  --neon-green: #00ff88;
+  --neon-orange: #ff8800;
+  --neon-red: #ff4444;
+  --neon-purple: #9b59b6;
+  --neon-blue: #3498db;
+
+  /* Fondos */
+  --bg-dark: #0a0a0f;
+  --bg-panel: #12121a;
+  --bg-card: #1a1a2e;
+  --bg-hover: #242438;
+
+  /* Bordes y separadores */
+  --border-dim: #2a2a3e;
+  --border-glow: var(--neon-cyan);
+
+  /* Texto */
+  --text-bright: #ffffff;
+  --text-normal: #e0e0e0;
+  --text-dim: #808090;
+  --text-muted: #505060;
+
+  /* Sombras neon */
+  --glow-cyan: 0 0 10px var(--neon-cyan), 0 0 20px rgba(0, 255, 255, 0.3);
+  --glow-green: 0 0 10px var(--neon-green), 0 0 20px rgba(0, 255, 136, 0.3);
+  --glow-orange: 0 0 10px var(--neon-orange), 0 0 20px rgba(255, 136, 0, 0.3);
+  --glow-red: 0 0 10px var(--neon-red), 0 0 20px rgba(255, 68, 68, 0.3);
+}
+
+/* ==================== LAYOUT BASE ==================== */
+
+body {
+  background: var(--bg-dark);
+  color: var(--text-normal);
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+/* ==================== PANELES NEON ==================== */
+
+.neon-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border-dim);
+  border-radius: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+.neon-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+  opacity: 0.8;
+}
+
+.neon-panel:hover {
+  border-color: var(--border-glow);
+  box-shadow: var(--glow-cyan);
+}
+
+.neon-panel-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-dim);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.neon-panel-title {
+  color: var(--neon-cyan);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+.neon-panel-content {
+  padding: 12px 16px;
+}
+
+/* ==================== CARDS CON GLOW ==================== */
+
+.neon-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-dim);
+  border-radius: 6px;
+  padding: 12px;
+  transition: all 0.3s ease;
+}
+
+.neon-card:hover {
+  border-color: var(--neon-green);
+  box-shadow: 0 0 15px rgba(0, 255, 136, 0.2);
+  transform: translateY(-2px);
+}
+
+.neon-card.active {
+  border-color: var(--neon-green);
+  box-shadow: var(--glow-green);
+}
+
+.neon-card.warning {
+  border-color: var(--neon-orange);
+  box-shadow: var(--glow-orange);
+}
+
+.neon-card.error {
+  border-color: var(--neon-red);
+  box-shadow: var(--glow-red);
+}
+
+/* ==================== BADGES ==================== */
+
+.neon-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.neon-badge-ok {
+  background: rgba(0, 255, 136, 0.15);
+  color: var(--neon-green);
+  border: 1px solid var(--neon-green);
+  text-shadow: 0 0 8px var(--neon-green);
+}
+
+.neon-badge-warn {
+  background: rgba(255, 136, 0, 0.15);
+  color: var(--neon-orange);
+  border: 1px solid var(--neon-orange);
+  text-shadow: 0 0 8px var(--neon-orange);
+}
+
+.neon-badge-error {
+  background: rgba(255, 68, 68, 0.15);
+  color: var(--neon-red);
+  border: 1px solid var(--neon-red);
+  text-shadow: 0 0 8px var(--neon-red);
+}
+
+.neon-badge-info {
+  background: rgba(0, 255, 255, 0.15);
+  color: var(--neon-cyan);
+  border: 1px solid var(--neon-cyan);
+  text-shadow: 0 0 8px var(--neon-cyan);
+}
+
+/* ==================== BOTONES ==================== */
+
+.neon-btn {
+  background: transparent;
+  border: 1px solid var(--neon-cyan);
+  color: var(--neon-cyan);
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.neon-btn:hover {
+  background: rgba(0, 255, 255, 0.1);
+  box-shadow: var(--glow-cyan);
+  transform: translateY(-1px);
+}
+
+.neon-btn-primary {
+  background: var(--neon-green);
+  border-color: var(--neon-green);
+  color: var(--bg-dark);
+}
+
+.neon-btn-primary:hover {
+  background: #00dd77;
+  box-shadow: var(--glow-green);
+}
+
+.neon-btn-danger {
+  border-color: var(--neon-red);
+  color: var(--neon-red);
+}
+
+.neon-btn-danger:hover {
+  background: rgba(255, 68, 68, 0.1);
+  box-shadow: var(--glow-red);
+}
+
+.neon-btn-warning {
+  border-color: var(--neon-orange);
+  color: var(--neon-orange);
+}
+
+.neon-btn-warning:hover {
+  background: rgba(255, 136, 0, 0.1);
+  box-shadow: var(--glow-orange);
+}
+
+/* ==================== INDICADORES ==================== */
+
+.neon-indicator {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-dim);
+}
+
+.neon-indicator:last-child {
+  border-bottom: none;
+}
+
+.neon-indicator-label {
+  color: var(--text-dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.neon-indicator-value {
+  color: var(--text-bright);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.neon-indicator-value.ok {
+  color: var(--neon-green);
+  text-shadow: 0 0 6px var(--neon-green);
+}
+
+.neon-indicator-value.warn {
+  color: var(--neon-orange);
+  text-shadow: 0 0 6px var(--neon-orange);
+}
+
+.neon-indicator-value.error {
+  color: var(--neon-red);
+  text-shadow: 0 0 6px var(--neon-red);
+}
+
+/* ==================== PROGRESS BAR ==================== */
+
+.neon-progress {
+  background: var(--bg-dark);
+  border-radius: 4px;
+  height: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-dim);
+}
+
+.neon-progress-bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+  box-shadow: 0 0 10px currentColor;
+}
+
+.neon-progress-bar.cyan {
+  background: var(--neon-cyan);
+}
+
+.neon-progress-bar.green {
+  background: var(--neon-green);
+}
+
+.neon-progress-bar.orange {
+  background: var(--neon-orange);
+}
+
+.neon-progress-bar.red {
+  background: var(--neon-red);
+}
+
+/* ==================== TABS ==================== */
+
+.neon-tabs {
+  display: flex;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-dim);
+}
+
+.neon-tab {
+  background: transparent;
+  border: none;
+  padding: 12px 24px;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.neon-tab:hover {
+  color: var(--text-normal);
+  background: var(--bg-hover);
+}
+
+.neon-tab.active {
+  color: var(--neon-cyan);
+  text-shadow: 0 0 10px var(--neon-cyan);
+}
+
+.neon-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--neon-cyan);
+  box-shadow: 0 0 10px var(--neon-cyan);
+}
+
+/* ==================== INPUTS ==================== */
+
+.neon-input {
+  background: var(--bg-dark);
+  border: 1px solid var(--border-dim);
+  border-radius: 4px;
+  padding: 8px 12px;
+  color: var(--text-bright);
+  font-size: 11px;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+.neon-input:focus {
+  outline: none;
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 8px rgba(0, 255, 255, 0.3);
+}
+
+.neon-select {
+  background: var(--bg-dark);
+  border: 1px solid var(--border-dim);
+  border-radius: 4px;
+  padding: 8px 12px;
+  color: var(--text-bright);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.neon-select:focus {
+  outline: none;
+  border-color: var(--neon-cyan);
+}
+
+/* ==================== TIMELINE ==================== */
+
+.neon-timeline {
+  background: var(--bg-dark);
+  border: 1px solid var(--border-dim);
+  border-radius: 6px;
+  padding: 12px;
+  position: relative;
+}
+
+.neon-timeline::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--neon-cyan), var(--neon-green), var(--neon-orange));
+  opacity: 0.5;
+}
+
+/* ==================== CONEXION STATUS ==================== */
+
+.neon-connection {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.neon-connection-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+.neon-connection-dot.online {
+  background: var(--neon-green);
+  box-shadow: 0 0 10px var(--neon-green);
+}
+
+.neon-connection-dot.offline {
+  background: var(--neon-red);
+  box-shadow: 0 0 10px var(--neon-red);
+  animation: none;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ==================== SCROLLBAR ==================== */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-dark);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-dim);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--neon-cyan);
+}
+
+/* ==================== MODO COLORES (del calendario) ==================== */
+
+.mode-clima_1 { --mode-color: #1abc9c; }
+.mode-clima_2 { --mode-color: #16a085; }
+.mode-clima_3 { --mode-color: #2ecc71; }
+.mode-clima_4 { --mode-color: #27ae60; }
+.mode-teatro { --mode-color: #3498db; }
+.mode-artista { --mode-color: #9b59b6; }
+.mode-boliche_inicio { --mode-color: #f39c12; }
+.mode-boliche_desarrollo { --mode-color: #e67e22; }
+.mode-boliche_fin { --mode-color: #e74c3c; }
+.mode-apagado { --mode-color: #7f8c8d; }
