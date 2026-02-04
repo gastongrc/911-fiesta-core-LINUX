@@ -155,7 +155,7 @@ function TabEstado({ status, apiOffline, onAuto }) {
 }
 
 // ==================== TAB HORARIOS ====================
-function TabHorarios({ schedule, setSchedule, hasChanges, setHasChanges, onSave, apiOffline }) {
+function TabHorarios({ schedule, setSchedule, hasChanges, setHasChanges, onSave, apiOffline, gridRev }) {
   const week = schedule?.week || {};
 
   const addBlock = (day) => {
@@ -240,7 +240,7 @@ function TabHorarios({ schedule, setSchedule, hasChanges, setHasChanges, onSave,
         overflowX: 'auto',
       }}>
         {DAY_ORDER.map(day => (
-          <div key={day} className="neon-panel" style={{ minWidth: '140px' }}>
+          <div key={`${day}-${gridRev}`} className="neon-panel" style={{ minWidth: '140px' }}>
             <div className="neon-panel-header" style={{ justifyContent: 'center' }}>
               <span className="neon-panel-title">{DAY_NAMES[day]}</span>
             </div>
@@ -466,6 +466,7 @@ export function Calendar() {
   const [lastError, setLastError] = useState(null);
   const [warnings, setWarnings] = useState([]);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [gridRev, setGridRev] = useState(0); // Force grid re-render after SAVE
 
   // Fetch week schedule (solo si no hay cambios pendientes)
   const fetchWeek = async (force = false) => {
@@ -611,6 +612,7 @@ export function Calendar() {
           }
 
           setHasChanges(false);
+          setGridRev(r => r + 1); // Force grid repaint
           setSaveSuccess(true);
 
           // Mostrar warnings si hay (vienen del CORE)
@@ -716,6 +718,7 @@ export function Calendar() {
             setHasChanges={setHasChanges}
             onSave={handleSave}
             apiOffline={apiOffline}
+            gridRev={gridRev}
           />
         )}
         {activeTab === 'control' && (
