@@ -200,6 +200,58 @@ Respuesta:
 | `webapp/src/pages/Home.jsx` | Consume SSE, muestra state/energy |
 | `webapp/src/pages/Vision.jsx` | Muestra frames via proxy |
 
+## Calendar SAVE Smoke Test
+
+```bash
+#!/bin/bash
+# smoke_test_calendar.sh
+
+API="http://127.0.0.1:8000/api/v1"
+CORE="http://127.0.0.1:8010"
+
+echo "=== 1. GET week ANTES ==="
+curl -s "$API/calendar/week" | jq '.week.monday'
+
+echo ""
+echo "=== 2. POST save ==="
+curl -s -X POST "$API/calendar/save" \
+  -H "Content-Type: application/json" \
+  -d '{"week": {"monday": [{"from": "23:00", "to": "23:30", "mode": "clima_1"}], "tuesday": [], "wednesday": [], "thursday": [], "friday": [], "saturday": [], "sunday": []}}' \
+  | jq '{success, week_monday: .week.monday}'
+
+echo ""
+echo "=== 3. GET week DESPUÉS ==="
+curl -s "$API/calendar/week" | jq '.week.monday'
+
+echo ""
+echo "=== 4. CORE directo ==="
+curl -s "$CORE/core/calendar/week" | jq '.week.monday'
+```
+
+### Verificación Manual
+1. Abrir `http://localhost:3000/calendar`
+2. Tab HORARIOS → Agregar bloque
+3. GUARDAR
+4. **Sin F5**: bloque debe aparecer inmediatamente
+
+## gridRev Fix (re-render)
+
+**Problema**: React no re-renderizaba la grilla después de SAVE porque los keys eran estáticos.
+
+**Solución** (`Calendar.jsx:243`):
+```javascript
+// ANTES (bug)
+<div key={day} ...>
+
+// DESPUÉS (fix)
+<div key={`${day}-${gridRev}`} ...>
+```
+
+Donde `gridRev` se incrementa en `handleSave()` línea 615:
+```javascript
+setGridRev(r => r + 1); // Force grid repaint
+```
+
 ## Troubleshooting
 
 ### Web muestra "CORE no inicializado"
