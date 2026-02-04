@@ -1,13 +1,18 @@
 """
 Status Router - Sistema status endpoint + SSE para Control Room V7
 
-IMPORTANTE: Este router usa core_bridge para leer estado REAL del core.
+ARQUITECTURA:
+- El CORE (main.py) corre un HTTP server en 127.0.0.1:8010
+- Este router FORWARDEA requests a ese server
+- Si el CORE no está disponible → datos offline
+
 NO genera estado propio, NO inventa datos.
 """
 import time
 import asyncio
 import json
 from datetime import datetime
+from typing import Optional
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from api.models import (
@@ -16,10 +21,43 @@ from api.models import (
     CameraStatus, SystemResourcesStatus, CalendarStatusBrief
 )
 from api.dependencies import get_app_state
-from api.core_bridge import get_full_snapshot
 from services.app_state import AppState
 
 router = APIRouter()
+
+# URL del HTTP Snapshot Server del CORE
+CORE_SNAPSHOT_URL = "http://127.0.0.1:8010/core/snapshot"
+
+# Cache para evitar spam de requests
+_last_snapshot: Optional[dict] = None
+_last_snapshot_ts: float = 0
+_snapshot_cache_ttl: float = 0.1  # 100ms cache
+
+
+async def _fetch_core_snapshot() -> Optional[dict]:
+    """
+    Fetch snapshot del CORE via HTTP.
+    Retorna None si el CORE no está disponible.
+    """
+    global _last_snapshot, _last_snapshot_ts
+
+    # Check cache
+    now = time.time()
+    if _last_snapshot and (now - _last_snapshot_ts) < _snapshot_cache_ttl:
+        return _last_snapshot
+
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=1.0) as client:
+            response = await client.get(CORE_SNAPSHOT_URL)
+            if response.status_code == 200:
+                _last_snapshot = response.json()
+                _last_snapshot_ts = now
+                return _last_snapshot
+    except Exception as e:
+        print(f"[STATUS] CORE snapshot fetch failed: {e}")
+
+    return None
 
 
 # ==================== LEGACY STATUS (mantener compatibilidad) ====================
@@ -124,16 +162,50 @@ async def get_system_status(
 
 # ==================== UNIFIED STATUS V7 ====================
 
-def _build_unified_status(app_state: AppState) -> dict:
+def _offline_status() -> dict:
+    """Retorna estado offline cuando el CORE no está disponible."""
+    now = datetime.now()
+    days_es = {
+        "monday": "lunes", "tuesday": "martes", "wednesday": "miércoles",
+        "thursday": "jueves", "friday": "viernes", "saturday": "sábado", "sunday": "domingo"
+    }
+    return UnifiedStatus(
+        ts=int(time.time()),
+        state=None,
+        energy=None,
+        audio=AudioHealthStatus(silence=True, clipping=False, level=0.0, device=None),
+        avolites=AvolitesHealthStatus(connected=False, console_ip="", port=4430, latency_ms=None),
+        cameras=[
+            CameraStatus(name="haze", ip="", online=False, fps=0),
+            CameraStatus(name="people", ip="", online=False, fps=0),
+            CameraStatus(name="tracking", ip="", online=False, fps=0),
+        ],
+        system=SystemResourcesStatus(cpu=0, ram=0, gpu=0, temp=0),
+        calendar=CalendarStatusBrief(
+            day=days_es.get(now.strftime("%A").lower(), ""),
+            time=now.strftime("%H:%M:%S"),
+            current_mode="apagado",
+            next_mode=None,
+            time_remaining_s=-1,
+            time_to_next_s=-1,
+            override_active=False,
+            auto=True
+        )
+    ).model_dump()
+
+
+async def _build_unified_status_async() -> dict:
     """
     Construye el payload unificado para Control Room V7.
-    USA core_bridge para leer estado REAL del core.
-    Nunca lanza excepción - siempre devuelve datos válidos.
+    FORWARDEA a 127.0.0.1:8010 para obtener estado REAL del CORE.
+    Si el CORE no está disponible → estado offline.
     """
-    # Obtener snapshot real del core
-    snapshot = get_full_snapshot()
+    snapshot = await _fetch_core_snapshot()
 
-    # Convertir a modelos Pydantic
+    if not snapshot:
+        return _offline_status()
+
+    # Convertir snapshot del CORE a formato de respuesta
     audio = AudioHealthStatus(
         silence=snapshot["audio"]["silence"],
         clipping=snapshot["audio"]["clipping"],
@@ -148,15 +220,17 @@ def _build_unified_status(app_state: AppState) -> dict:
         latency_ms=snapshot["avolites"]["latency_ms"]
     )
 
-    cameras = [
-        CameraStatus(
-            name=cam["name"],
+    # Cameras vienen como dict en el snapshot
+    cam_data = snapshot.get("cameras", {})
+    cameras = []
+    for cam_type in ["haze", "people", "tracking"]:
+        cam = cam_data.get(cam_type, {"online": False, "fps": 0, "ip": ""})
+        cameras.append(CameraStatus(
+            name=cam_type,
             ip=cam.get("ip", ""),
-            online=cam["online"],
-            fps=cam["fps"]
-        )
-        for cam in snapshot["cameras"]
-    ]
+            online=cam.get("online", False),
+            fps=cam.get("fps", 0)
+        ))
 
     system = SystemResourcesStatus(
         cpu=snapshot["system"]["cpu"],
@@ -190,32 +264,29 @@ def _build_unified_status(app_state: AppState) -> dict:
 
 
 @router.get("/status/unified")
-async def get_unified_status(
-    app_state: AppState = Depends(get_app_state)
-):
+async def get_unified_status():
     """
     GET /api/v1/status/unified
 
     Estado unificado para Control Room V7.
-    Un solo endpoint con todo lo que la web necesita.
+    FORWARDEA a 127.0.0.1:8010 (CORE HTTP snapshot server).
     Nunca devuelve 500 - siempre datos válidos (null/false si falla algo).
     """
-    print("[WEB][STATUS] unified status requested")
-    return _build_unified_status(app_state)
+    return await _build_unified_status_async()
 
 
 # ==================== SSE STREAM ====================
 
-async def _status_event_generator(app_state: AppState):
+async def _status_event_generator():
     """
     Generador de eventos SSE para tiempo real.
-    Emite el mismo payload que /status/unified cada 500ms.
+    Emite snapshot del CORE cada 500ms via HTTP forward.
     """
     print("[WEB][SSE] stream started")
     try:
         while True:
             try:
-                data = _build_unified_status(app_state)
+                data = await _build_unified_status_async()
                 yield f"data: {json.dumps(data)}\n\n"
             except Exception as e:
                 # Emitir error como evento pero no romper stream
@@ -231,21 +302,19 @@ async def _status_event_generator(app_state: AppState):
 
 
 @router.get("/stream")
-async def status_stream(
-    app_state: AppState = Depends(get_app_state)
-):
+async def status_stream():
     """
     GET /api/v1/stream
 
     Server-Sent Events (SSE) para tiempo real.
-    Emite el mismo payload que /status/unified cada 500ms.
+    FORWARDEA snapshot del CORE (8010) cada 500ms.
 
     Uso en cliente:
         const es = new EventSource('/api/v1/stream');
         es.onmessage = (e) => { const data = JSON.parse(e.data); ... };
     """
     return StreamingResponse(
-        _status_event_generator(app_state),
+        _status_event_generator(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

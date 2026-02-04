@@ -912,6 +912,24 @@ class Main(QMainWindow):
                     auto_clock=self.auto_clock if hasattr(self, 'auto_clock') else None
                 )
                 print("[MAIN] AppState initialized")
+
+                # Iniciar HTTP Snapshot Server (bridge CORE → WEB)
+                try:
+                    from core.http_snapshot import start_snapshot_server
+                    self.snapshot_server = start_snapshot_server(
+                        state_manager=self.state_manager,
+                        audio_engine=self.engine,
+                        avolites=self.avolites,
+                        cue_engine=self.cue_engine,
+                        vision_manager=self.vision_manager if hasattr(self, 'vision_manager') else None,
+                        calendar_manager=self.calendar_manager if hasattr(self, 'calendar_manager') else None,
+                        energy_detector=self.energy_detector,
+                        audio_monitor=self.audio_monitor if hasattr(self, 'audio_monitor') else None,
+                        port=8010
+                    )
+                    print("[MAIN] HTTP Snapshot Server started at http://127.0.0.1:8010")
+                except Exception as e:
+                    print(f"[MAIN] Error starting HTTP Snapshot Server: {e}")
             except Exception as e:
                 print(f"[MAIN] Error initializing AppState: {e}")
                 API_AVAILABLE = False

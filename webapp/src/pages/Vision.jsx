@@ -19,10 +19,25 @@ const CAMERA_TYPES = [
   { id: 'tracking', name: 'DJ TRACKING', desc: 'Seguimiento DJ' },
 ];
 
-// Card de cámara NEON
+// Card de cámara NEON con preview real
 function CameraCard({ type, cameraData }) {
   const isOnline = cameraData?.online || false;
   const fps = cameraData?.fps || 0;
+  const [frameError, setFrameError] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Frame URL via API proxy (no directo a Flask)
+  const frameUrl = `${getApiBase()}/vision/frame/${type.id}?t=${refreshKey}`;
+
+  // Refrescar frame cada 2 segundos si está online
+  useEffect(() => {
+    if (!isOnline) return;
+    const interval = setInterval(() => {
+      setRefreshKey(k => k + 1);
+      setFrameError(false);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [isOnline]);
 
   return (
     <div className={`neon-panel ${isOnline ? '' : 'error'}`} style={{
@@ -35,7 +50,7 @@ function CameraCard({ type, cameraData }) {
         </span>
       </div>
       <div className="neon-panel-content">
-        {/* Stream placeholder */}
+        {/* Frame preview */}
         <div style={{
           background: 'var(--bg-dark)',
           borderRadius: '6px',
@@ -45,28 +60,36 @@ function CameraCard({ type, cameraData }) {
           justifyContent: 'center',
           marginBottom: '12px',
           border: `1px solid ${isOnline ? 'var(--neon-green)' : 'var(--neon-red)'}40`,
+          overflow: 'hidden',
         }}>
-          {isOnline ? (
+          {isOnline && !frameError ? (
+            <img
+              src={frameUrl}
+              alt={type.name}
+              onError={() => setFrameError(true)}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+              }}
+            />
+          ) : isOnline && frameError ? (
             <div style={{ textAlign: 'center' }}>
               <div style={{
                 width: '50px',
                 height: '50px',
                 borderRadius: '50%',
-                background: 'rgba(0, 255, 136, 0.15)',
+                background: 'rgba(255, 136, 0, 0.15)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 margin: '0 auto 8px',
-                border: '1px solid var(--neon-green)',
-                boxShadow: '0 0 15px rgba(0, 255, 136, 0.3)',
+                border: '1px solid var(--neon-orange)',
               }}>
                 <span style={{ fontSize: '24px' }}>📹</span>
               </div>
-              <p style={{ color: 'var(--text-dim)', fontSize: '10px' }}>
-                Stream via Flask Vision
-              </p>
-              <p style={{ color: 'var(--neon-cyan)', fontSize: '9px' }}>
-                localhost:5000
+              <p style={{ color: 'var(--neon-orange)', fontSize: '10px' }}>
+                Frame no disponible
               </p>
             </div>
           ) : (
@@ -238,17 +261,17 @@ export function Vision() {
       {/* Footer info */}
       <div className="neon-panel">
         <div className="neon-panel-header">
-          <span className="neon-panel-title">FLASK VISION SERVER</span>
+          <span className="neon-panel-title">VISION API PROXY</span>
         </div>
         <div className="neon-panel-content">
           <div style={{ color: 'var(--text-dim)', fontSize: '10px' }}>
-            <p style={{ margin: '4px 0' }}>URL: <span style={{ color: 'var(--neon-cyan)' }}>http://localhost:5000</span></p>
+            <p style={{ margin: '4px 0' }}>Proxy: <span style={{ color: 'var(--neon-cyan)' }}>/api/v1/vision/*</span></p>
+            <p style={{ margin: '4px 0' }}>Backend: <span style={{ color: 'var(--text-muted)' }}>Flask 5000</span></p>
             <p style={{ margin: '8px 0 4px', color: 'var(--text-muted)' }}>Endpoints:</p>
             <ul style={{ margin: '4px 0 0 16px', padding: 0, listStyleType: 'none' }}>
-              <li style={{ margin: '2px 0' }}>• /vision/status</li>
-              <li style={{ margin: '2px 0' }}>• /vision/devices</li>
-              <li style={{ margin: '2px 0' }}>• /vision/frame/&lt;id&gt;</li>
-              <li style={{ margin: '2px 0' }}>• /vision/detections/&lt;id&gt;</li>
+              <li style={{ margin: '2px 0' }}>• /api/v1/vision/status</li>
+              <li style={{ margin: '2px 0' }}>• /api/v1/vision/frame/&lt;haze|people|tracking&gt;</li>
+              <li style={{ margin: '2px 0' }}>• /api/v1/vision/stream/&lt;id&gt;</li>
             </ul>
           </div>
         </div>

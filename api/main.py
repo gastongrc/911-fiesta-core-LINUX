@@ -1,8 +1,14 @@
 """
 911 Fiesta Core API - FastAPI Server
+
+ARQUITECTURA:
+- Este server corre en puerto 8000
+- FORWARDEA /api/v1/status/* a CORE HTTP (127.0.0.1:8010)
+- FORWARDEA /api/v1/vision/* a Vision Flask (127.0.0.1:5000)
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response, StreamingResponse
 import uvicorn
 
 # Import routers
@@ -34,6 +40,71 @@ app.include_router(presets.router, prefix="/api/v1", tags=["presets"])
 app.include_router(config.router, prefix="/api/v1", tags=["config"])
 app.include_router(alerts.router, prefix="/api/v1", tags=["alerts"])
 app.include_router(calendar.router, prefix="/api/v1", tags=["calendar"])
+
+
+# ==================== VISION PROXY (forward to Flask 5000) ====================
+
+VISION_FLASK_URL = "http://127.0.0.1:5000"
+
+
+@app.get("/api/v1/vision/frame/{camera}")
+async def vision_frame_proxy(camera: str):
+    """
+    Proxy para obtener frame de cámara desde Vision Flask.
+    GET /api/v1/vision/frame/{haze|people|tracking}
+    """
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"{VISION_FLASK_URL}/frame/{camera}")
+            return Response(
+                content=response.content,
+                status_code=response.status_code,
+                media_type=response.headers.get("content-type", "image/jpeg")
+            )
+    except Exception as e:
+        return Response(content=f"Vision offline: {e}", status_code=503)
+
+
+@app.get("/api/v1/vision/stream/{camera}")
+async def vision_stream_proxy(camera: str):
+    """
+    Proxy para stream MJPEG desde Vision Flask.
+    GET /api/v1/vision/stream/{haze|people|tracking}
+    """
+    try:
+        import httpx
+
+        async def stream_generator():
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream("GET", f"{VISION_FLASK_URL}/stream/{camera}") as response:
+                    async for chunk in response.aiter_bytes():
+                        yield chunk
+
+        return StreamingResponse(
+            stream_generator(),
+            media_type="multipart/x-mixed-replace; boundary=frame"
+        )
+    except Exception as e:
+        return Response(content=f"Vision offline: {e}", status_code=503)
+
+
+@app.get("/api/v1/vision/status")
+async def vision_status_proxy():
+    """
+    Proxy para estado de Vision desde Flask.
+    """
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            response = await client.get(f"{VISION_FLASK_URL}/status")
+            return Response(
+                content=response.content,
+                status_code=response.status_code,
+                media_type="application/json"
+            )
+    except Exception as e:
+        return {"online": False, "error": str(e)}
 
 
 @app.get("/")

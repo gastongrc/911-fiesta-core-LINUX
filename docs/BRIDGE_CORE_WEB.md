@@ -1,0 +1,178 @@
+# BRIDGE CORE → WEB
+
+Arquitectura de comunicación entre el CORE (main.py) y la Web (Control Room V7).
+
+## Principio Fundamental
+
+**La web es un ESPEJO del CORE, no un cerebro.**
+
+- NO genera estado propio
+- NO inventa datos
+- Si algo no existe → muestra OFFLINE
+
+## Arquitectura de Puertos
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         CORE (main.py)                          │
+│                    PyQt GUI + Sistema completo                  │
+│                                                                 │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐            │
+│  │StateManager │  │CalendarMgr  │  │VisionManager│            │
+│  │ get_state() │  │ get_state() │  │ handlers[]  │            │
+│  │get_energy() │  │ go/override │  │             │            │
+│  └─────────────┘  └─────────────┘  └─────────────┘            │
+│         │                │                │                    │
+│         └────────────────┼────────────────┘                    │
+│                          ▼                                     │
+│               ┌─────────────────────┐                          │
+│               │  http_snapshot.py   │                          │
+│               │  HTTP Server :8010  │                          │
+│               │  GET /core/snapshot │                          │
+│               └─────────────────────┘                          │
+└─────────────────────────────────────────────────────────────────┘
+                           │
+                           │ HTTP (127.0.0.1)
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      API Server :8000                           │
+│                    (FastAPI - uvicorn)                          │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │                    status.py router                      │  │
+│  │                                                          │  │
+│  │  GET /api/v1/status/unified                             │  │
+│  │       └──→ forward to http://127.0.0.1:8010/core/snapshot│  │
+│  │                                                          │  │
+│  │  GET /api/v1/stream (SSE)                               │  │
+│  │       └──→ forward snapshot cada 500ms                   │  │
+│  └─────────────────────────────────────────────────────────┘  │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │                  Vision Proxy                            │  │
+│  │                                                          │  │
+│  │  GET /api/v1/vision/frame/{cam}                         │  │
+│  │       └──→ forward to http://127.0.0.1:5000/frame/{cam} │  │
+│  │                                                          │  │
+│  │  GET /api/v1/vision/stream/{cam}                        │  │
+│  │       └──→ forward MJPEG stream                         │  │
+│  └─────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+                           │
+                           │ HTTP
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Web App :3000                              │
+│                    (Vite dev / nginx prod)                      │
+│                                                                 │
+│  Home.jsx    → /api/v1/status/unified (SSE)                    │
+│  Calendar.jsx → /api/v1/calendar/*                              │
+│  Vision.jsx  → /api/v1/vision/frame/*                          │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Puertos
+
+| Puerto | Servicio | Descripción |
+|--------|----------|-------------|
+| 8010 | CORE HTTP Snapshot | Solo local (127.0.0.1), expone estado real |
+| 8000 | API Server (FastAPI) | Público, forwardea a 8010 y 5000 |
+| 5000 | Vision Flask | Solo local, server de cámaras |
+| 3000 | Web Dev (Vite) | Frontend React |
+
+## Snapshot Format
+
+`GET http://127.0.0.1:8010/core/snapshot`
+
+```json
+{
+  "ts": 1738700000,
+  "state": "BASE_GOLPE",
+  "energy": "MEDIA",
+  "audio": {
+    "running": true,
+    "device": "Scarlett 2i2",
+    "level": 0.42,
+    "silence": false,
+    "clipping": false
+  },
+  "avolites": {
+    "connected": true,
+    "ip": "192.168.1.100",
+    "port": 4430,
+    "latency_ms": 12,
+    "last_error": null
+  },
+  "cameras": {
+    "haze": {"online": true, "fps": 30, "ip": "192.168.1.50"},
+    "people": {"online": true, "fps": 25, "ip": "192.168.1.51"},
+    "tracking": {"online": false, "fps": 0, "ip": ""}
+  },
+  "calendar": {
+    "day": "viernes",
+    "time": "23:45:00",
+    "current_mode": "boliche_desarrollo",
+    "next_mode": "boliche_fin",
+    "time_remaining_s": 900,
+    "time_to_next_s": 900,
+    "override_active": false,
+    "auto": true
+  },
+  "system": {
+    "cpu": 45,
+    "ram": 62,
+    "gpu": 0,
+    "temp": 0
+  }
+}
+```
+
+## Smoke Test
+
+### Test 1: CORE detecta DJ
+1. Activar cámara tracking en CORE
+2. Verificar en web: `cameras.tracking.online = true`
+3. Verificar FPS actualiza
+
+### Test 2: Avolites conecta
+1. Conectar Titan en CORE
+2. Verificar en web: `avolites.connected = true`
+3. Verificar IP y latency
+
+### Test 3: State cambia
+1. CORE procesa audio y cambia a ATAQUE
+2. Verificar en web: `state = "ATAQUE"`
+3. Panel CORE STATUS muestra ATAQUE con color naranja
+
+### Test 4: Vision frame
+1. Abrir Vision en web
+2. Si cámara online, debe mostrar preview real
+3. Frame se refresca cada 2 segundos
+
+## Archivos Clave
+
+| Archivo | Propósito |
+|---------|-----------|
+| `core/http_snapshot.py` | HTTP server en CORE, expone snapshot |
+| `main.py` | Inicia snapshot server con managers |
+| `api/routers/status.py` | Forward a 8010, SSE stream |
+| `api/main.py` | Vision proxy a 5000 |
+| `webapp/src/pages/Home.jsx` | Consume SSE, muestra state/energy |
+| `webapp/src/pages/Vision.jsx` | Muestra frames via proxy |
+
+## Troubleshooting
+
+### Web muestra "CORE no inicializado"
+- Verificar que main.py esté corriendo
+- Verificar que http_snapshot.py inició en puerto 8010
+- Test: `curl http://127.0.0.1:8010/core/snapshot`
+
+### Vision muestra "Frame no disponible"
+- Verificar Flask Vision en puerto 5000
+- Verificar cámara online en snapshot
+- Test: `curl http://127.0.0.1:5000/frame/haze`
+
+### SSE no conecta
+- Verificar proxy en vite.config.js
+- Verificar CORS en api/main.py
+- Test: abrir `/api/v1/stream` en browser
