@@ -223,6 +223,104 @@ class SnapshotServer:
             "system": system,
         }
 
+    # ==================== CALENDAR COMMANDS ====================
+
+    def _calendar_snapshot(self) -> dict:
+        """Retorna snapshot de calendar para incluir en respuestas."""
+        if not self.calendar_manager:
+            return None
+        try:
+            state = self.calendar_manager.get_state()
+            return {
+                "current_mode": state.get("current_mode"),
+                "next_mode": state.get("next_mode"),
+                "override_active": state.get("is_override", False),
+                "auto": state.get("auto_mode_enabled", True),
+            }
+        except:
+            return None
+
+    def calendar_go(self, mode: str, delay_minutes: int = 0) -> dict:
+        """POST /core/calendar/go - Cambiar modo."""
+        if not self.calendar_manager:
+            return {"ok": False, "error": "calendar_manager_not_available"}
+
+        if not mode:
+            return {"ok": False, "error": "mode_required"}
+
+        try:
+            # Importar CalendarSource
+            from core.calendar.calendar_state import CalendarSource
+            success = self.calendar_manager.go(
+                mode=mode,
+                source=CalendarSource.MANUAL,
+                delay_minutes=delay_minutes
+            )
+            return {
+                "ok": success,
+                "error": None if success else "go_failed",
+                "calendar": self._calendar_snapshot()
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def calendar_override(self, mode: str, minutes: int = 30, reason: str = "") -> dict:
+        """POST /core/calendar/override - Activar override."""
+        if not self.calendar_manager:
+            return {"ok": False, "error": "calendar_manager_not_available"}
+
+        if not mode:
+            return {"ok": False, "error": "mode_required"}
+
+        try:
+            from core.calendar.calendar_manager import OverrideType
+            success = self.calendar_manager.set_override(
+                mode=mode,
+                override_type=OverrideType.TEMPORARY,
+                duration_minutes=minutes,
+                reason=reason or "Override desde web"
+            )
+            return {
+                "ok": success,
+                "error": None if success else "override_failed",
+                "calendar": self._calendar_snapshot()
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def calendar_clear_override(self) -> dict:
+        """POST /core/calendar/clear_override - Limpiar override."""
+        if not self.calendar_manager:
+            return {"ok": False, "error": "calendar_manager_not_available"}
+
+        try:
+            self.calendar_manager.clear_override()
+            return {
+                "ok": True,
+                "error": None,
+                "calendar": self._calendar_snapshot()
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def calendar_set_auto(self, enabled: bool) -> dict:
+        """POST /core/calendar/auto - Toggle modo automático."""
+        if not self.calendar_manager:
+            return {"ok": False, "error": "calendar_manager_not_available"}
+
+        try:
+            if hasattr(self.calendar_manager, 'set_auto_mode'):
+                self.calendar_manager.set_auto_mode(enabled)
+            elif hasattr(self.calendar_manager, 'auto_mode_enabled'):
+                self.calendar_manager.auto_mode_enabled = enabled
+            return {
+                "ok": True,
+                "error": None,
+                "calendar": self._calendar_snapshot()
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def start(self):
         """Inicia el server HTTP en un thread separado."""
         if self._running:
@@ -250,6 +348,51 @@ class SnapshotServer:
                 else:
                     self.send_response(404)
                     self.end_headers()
+
+            def do_POST(self):
+                """Comandos calendario - source of truth en CORE"""
+                content_length = int(self.headers.get('Content-Length', 0))
+                body = self.rfile.read(content_length) if content_length > 0 else b'{}'
+
+                try:
+                    data = json.loads(body) if body else {}
+                except:
+                    data = {}
+
+                result = {"ok": False, "error": "unknown_endpoint"}
+
+                if self.path == "/core/calendar/go":
+                    result = server_instance.calendar_go(data.get("mode"), data.get("delay_minutes", 0))
+
+                elif self.path == "/core/calendar/override":
+                    result = server_instance.calendar_override(
+                        data.get("mode"),
+                        data.get("minutes", 30),
+                        data.get("reason", "")
+                    )
+
+                elif self.path == "/core/calendar/clear_override":
+                    result = server_instance.calendar_clear_override()
+
+                elif self.path == "/core/calendar/auto":
+                    result = server_instance.calendar_set_auto(data.get("enabled", True))
+
+                else:
+                    result = {"ok": False, "error": f"unknown_endpoint: {self.path}"}
+
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps(result).encode())
+
+            def do_OPTIONS(self):
+                """CORS preflight"""
+                self.send_response(200)
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type")
+                self.end_headers()
 
         try:
             self._server = HTTPServer(("127.0.0.1", self.port), Handler)
