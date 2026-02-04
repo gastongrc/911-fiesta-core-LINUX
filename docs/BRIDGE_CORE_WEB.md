@@ -87,6 +87,10 @@ Arquitectura de comunicación entre el CORE (main.py) y la Web (Control Room V7)
 ```json
 {
   "ts": 1738700000,
+  "core": {
+    "online": true,
+    "last_error": null
+  },
   "state": "BASE_GOLPE",
   "energy": "MEDIA",
   "audio": {
@@ -125,6 +129,34 @@ Arquitectura de comunicación entre el CORE (main.py) y la Web (Control Room V7)
     "temp": 0
   }
 }
+```
+
+## Calendar Commands (CORE 8010)
+
+```bash
+# GO - cambiar modo
+curl -X POST http://127.0.0.1:8010/core/calendar/go \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "boliche_desarrollo"}'
+
+# OVERRIDE - forzar modo temporalmente
+curl -X POST http://127.0.0.1:8010/core/calendar/override \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "artista", "minutes": 30}'
+
+# CLEAR OVERRIDE - volver a automático
+curl -X POST http://127.0.0.1:8010/core/calendar/clear_override \
+  -H "Content-Type: application/json" -d '{}'
+
+# AUTO - toggle modo automático
+curl -X POST http://127.0.0.1:8010/core/calendar/auto \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": true}'
+```
+
+Respuesta:
+```json
+{"ok": true, "error": null, "calendar": {"current_mode": "boliche_desarrollo", ...}}
 ```
 
 ## Smoke Test

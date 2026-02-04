@@ -211,9 +211,19 @@ class SnapshotServer:
         except:
             pass
 
+        # ====== CORE STATUS ======
+        core_online = self.state_manager is not None
+        core_error = None
+        if not core_online:
+            core_error = "state_manager_not_initialized"
+
         # ====== SNAPSHOT ======
         return {
             "ts": ts,
+            "core": {
+                "online": core_online,
+                "last_error": core_error,
+            },
             "state": state,
             "energy": energy,
             "audio": audio,
