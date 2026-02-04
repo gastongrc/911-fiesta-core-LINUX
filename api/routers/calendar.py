@@ -6,6 +6,7 @@ ARQUITECTURA:
 - API NO usa AppState - CORE es source of truth
 - Si CORE offline: {ok:false, error:"CORE_OFFLINE"}
 """
+import logging
 from fastapi import APIRouter, HTTPException
 from api.models import (
     CalendarGoRequest, CalendarExtendRequest,
@@ -13,26 +14,31 @@ from api.models import (
 )
 
 router = APIRouter()
+logger = logging.getLogger("calendar")
+logging.basicConfig(level=logging.INFO)
 
 CORE_URL = "http://127.0.0.1:8010"
 
 
 async def _forward_to_core(endpoint: str, data: dict = None, method: str = None) -> dict:
     """Forward request a CORE 8010."""
+    import httpx
+    http_method = "POST" if (method == "POST" or data is not None) else "GET"
+    logger.info(f"[CALENDAR] {http_method} {endpoint} | body={data}")
+
     try:
-        import httpx
         async with httpx.AsyncClient(timeout=2.0) as client:
-            if method == "POST" or data is not None:
+            if http_method == "POST":
                 response = await client.post(f"{CORE_URL}{endpoint}", json=data or {})
             else:
                 response = await client.get(f"{CORE_URL}{endpoint}")
 
-            if response.status_code == 200:
-                return response.json()
-            else:
-                return {"ok": False, "error": f"core_http_{response.status_code}"}
+            result = response.json() if response.status_code == 200 else {"ok": False, "error": f"core_http_{response.status_code}"}
+            logger.info(f"[CALENDAR] {http_method} {endpoint} | status={response.status_code} | result_ok={result.get('ok', 'n/a')}")
+            return result
     except Exception as e:
-        return {"ok": False, "error": "CORE_OFFLINE", "detail": str(e)}
+        logger.error(f"[CALENDAR] {http_method} {endpoint} | CORE_OFFLINE | {e}")
+        return {"ok": False, "error": "CORE_OFFLINE"}
 
 
 async def _get_calendar_from_snapshot() -> dict:
