@@ -17,13 +17,13 @@ router = APIRouter()
 CORE_URL = "http://127.0.0.1:8010"
 
 
-async def _forward_to_core(endpoint: str, data: dict = None) -> dict:
+async def _forward_to_core(endpoint: str, data: dict = None, method: str = None) -> dict:
     """Forward request a CORE 8010."""
     try:
         import httpx
         async with httpx.AsyncClient(timeout=2.0) as client:
-            if data is not None:
-                response = await client.post(f"{CORE_URL}{endpoint}", json=data)
+            if method == "POST" or data is not None:
+                response = await client.post(f"{CORE_URL}{endpoint}", json=data or {})
             else:
                 response = await client.get(f"{CORE_URL}{endpoint}")
 
@@ -200,6 +200,45 @@ async def calendar_extend(request: CalendarExtendRequest):
         return {
             "success": True,
             "message": f"Extendido +{request.minutes}min",
+            "calendar": result.get("calendar")
+        }
+    else:
+        return {
+            "success": False,
+            "error": result.get("error")
+        }
+
+
+# ==================== WEEK SCHEDULE ====================
+
+@router.get("/calendar/week")
+async def get_calendar_week():
+    """
+    GET /api/v1/calendar/week
+    Obtiene schedule semanal desde CORE.
+    """
+    result = await _forward_to_core("/core/calendar/week")
+
+    if result.get("ok", True) and "week" in result:
+        return {"week": result["week"]}
+    elif result.get("error") == "CORE_OFFLINE":
+        return {"week": {}, "error": "CORE_OFFLINE"}
+    else:
+        return {"week": result.get("week", {}), "error": result.get("error")}
+
+
+@router.post("/calendar/save")
+async def save_calendar(request: CalendarSaveRequest):
+    """
+    POST /api/v1/calendar/save
+    Guarda schedule semanal en CORE.
+    """
+    result = await _forward_to_core("/core/calendar/save", {"week": request.week})
+
+    if result.get("ok"):
+        return {
+            "success": True,
+            "message": "Schedule guardado",
             "calendar": result.get("calendar")
         }
     else:

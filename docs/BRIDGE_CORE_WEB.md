@@ -134,6 +134,9 @@ Arquitectura de comunicación entre el CORE (main.py) y la Web (Control Room V7)
 ## Calendar Commands (CORE 8010)
 
 ```bash
+# GET WEEK - obtener schedule semanal
+curl http://127.0.0.1:8010/core/calendar/week
+
 # GO - cambiar modo
 curl -X POST http://127.0.0.1:8010/core/calendar/go \
   -H "Content-Type: application/json" \
@@ -152,6 +155,11 @@ curl -X POST http://127.0.0.1:8010/core/calendar/clear_override \
 curl -X POST http://127.0.0.1:8010/core/calendar/auto \
   -H "Content-Type: application/json" \
   -d '{"enabled": true}'
+
+# SAVE - guardar schedule semanal
+curl -X POST http://127.0.0.1:8010/core/calendar/save \
+  -H "Content-Type: application/json" \
+  -d '{"week": {"monday": [], "friday": [{"from": "22:00", "to": "06:00", "mode": "boliche_desarrollo"}]}}'
 ```
 
 Respuesta:

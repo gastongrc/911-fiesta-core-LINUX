@@ -331,6 +331,39 @@ class SnapshotServer:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def calendar_get_week(self) -> dict:
+        """GET /core/calendar/week - Obtiene schedule semanal."""
+        if not self.calendar_manager:
+            return {"ok": False, "error": "calendar_manager_not_available", "week": {}}
+
+        try:
+            schedule = self.calendar_manager.get_schedule()
+            return {
+                "ok": True,
+                "error": None,
+                "week": schedule.get("week", {})
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e), "week": {}}
+
+    def calendar_save(self, week: dict) -> dict:
+        """POST /core/calendar/save - Guarda schedule semanal."""
+        if not self.calendar_manager:
+            return {"ok": False, "error": "calendar_manager_not_available"}
+
+        if not week:
+            return {"ok": False, "error": "week_required"}
+
+        try:
+            success = self.calendar_manager.save_schedule({"week": week})
+            return {
+                "ok": success,
+                "error": None if success else "save_failed",
+                "calendar": self._calendar_snapshot()
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def start(self):
         """Inicia el server HTTP en un thread separado."""
         if self._running:
@@ -350,6 +383,13 @@ class SnapshotServer:
                     self.send_header("Access-Control-Allow-Origin", "*")
                     self.end_headers()
                     self.wfile.write(json.dumps(snapshot).encode())
+                elif self.path == "/core/calendar/week":
+                    result = server_instance.calendar_get_week()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps(result).encode())
                 elif self.path == "/health":
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
@@ -386,6 +426,9 @@ class SnapshotServer:
 
                 elif self.path == "/core/calendar/auto":
                     result = server_instance.calendar_set_auto(data.get("enabled", True))
+
+                elif self.path == "/core/calendar/save":
+                    result = server_instance.calendar_save(data.get("week", {}))
 
                 else:
                     result = {"ok": False, "error": f"unknown_endpoint: {self.path}"}
