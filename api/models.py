@@ -319,8 +319,12 @@ class UnifiedStatus(BaseModel):
     """
     Estado unificado para Control Room V7.
     Un solo endpoint con todo lo que la web necesita.
+
+    IMPORTANTE: state y energy son los campos PRIMARIOS del core.
     """
     ts: int
+    state: Optional[str] = None  # BAJADA, BASE_GOLPE, ATAQUE, BRAKE
+    energy: Optional[str] = None  # BAJA, MEDIA, ALTA
     audio: AudioHealthStatus
     avolites: AvolitesHealthStatus
     cameras: List[CameraStatus] = []

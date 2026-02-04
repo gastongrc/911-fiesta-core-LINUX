@@ -1,5 +1,8 @@
 """
 Status Router - Sistema status endpoint + SSE para Control Room V7
+
+IMPORTANTE: Este router usa core_bridge para leer estado REAL del core.
+NO genera estado propio, NO inventa datos.
 """
 import time
 import asyncio
@@ -13,6 +16,7 @@ from api.models import (
     CameraStatus, SystemResourcesStatus, CalendarStatusBrief
 )
 from api.dependencies import get_app_state
+from api.core_bridge import get_full_snapshot
 from services.app_state import AppState
 
 router = APIRouter()
@@ -123,145 +127,60 @@ async def get_system_status(
 def _build_unified_status(app_state: AppState) -> dict:
     """
     Construye el payload unificado para Control Room V7.
+    USA core_bridge para leer estado REAL del core.
     Nunca lanza excepción - siempre devuelve datos válidos.
     """
-    now = datetime.now()
+    # Obtener snapshot real del core
+    snapshot = get_full_snapshot()
 
-    # Audio Health
+    # Convertir a modelos Pydantic
     audio = AudioHealthStatus(
-        silence=False,
-        clipping=False,
-        level=0.0,
-        device=None
+        silence=snapshot["audio"]["silence"],
+        clipping=snapshot["audio"]["clipping"],
+        level=snapshot["audio"]["level"],
+        device=snapshot["audio"]["device"]
     )
 
-    if app_state.audio_engine:
-        try:
-            audio.device = getattr(app_state.audio_engine, 'device_name', None)
-            # Obtener nivel RMS si hay audio_monitor
-            if app_state.audio_monitor:
-                level = getattr(app_state.audio_monitor, 'current_level', 0.0)
-                audio.level = round(level, 3) if level else 0.0
-                audio.silence = level < 0.001 if level else True
-                audio.clipping = level > 0.95 if level else False
-        except Exception:
-            pass
-
-    # Avolites Health
     avolites = AvolitesHealthStatus(
-        connected=False,
-        console_ip="",
-        port=4430,
-        latency_ms=None
+        connected=snapshot["avolites"]["connected"],
+        console_ip=snapshot["avolites"]["ip"],
+        port=snapshot["avolites"]["port"],
+        latency_ms=snapshot["avolites"]["latency_ms"]
     )
 
-    if app_state.avolites:
-        try:
-            status = app_state.avolites.get_status()
-            avolites.connected = status.get("is_connected", False)
-            avolites.console_ip = status.get("console_ip", "")
-            avolites.port = status.get("console_port", 4430)
-            # Obtener latencia si está disponible
-            latency = status.get("latency_ms")
-            if latency is not None:
-                avolites.latency_ms = int(latency)
-        except Exception:
-            pass
+    cameras = [
+        CameraStatus(
+            name=cam["name"],
+            ip=cam.get("ip", ""),
+            online=cam["online"],
+            fps=cam["fps"]
+        )
+        for cam in snapshot["cameras"]
+    ]
 
-    # Cameras (Vision)
-    cameras = []
-    if app_state.vision_manager:
-        try:
-            # Intentar obtener estado de cámaras
-            vm = app_state.vision_manager
-            camera_types = ["haze", "people", "tracking"]
-            for cam_type in camera_types:
-                cam_info = CameraStatus(
-                    name=cam_type,
-                    ip="",
-                    online=False,
-                    fps=0
-                )
-                # Buscar handler de cámara
-                handler = getattr(vm, f"{cam_type}_handler", None)
-                if handler:
-                    cam_info.online = getattr(handler, 'is_running', False)
-                    cam_info.ip = getattr(handler, 'camera_ip', "") or ""
-                    cam_info.fps = getattr(handler, 'current_fps', 0) or 0
-                cameras.append(cam_info)
-        except Exception:
-            pass
+    system = SystemResourcesStatus(
+        cpu=snapshot["system"]["cpu"],
+        ram=snapshot["system"]["ram"],
+        gpu=snapshot["system"]["gpu"],
+        temp=snapshot["system"]["temp"]
+    )
 
-    # System Resources
-    system = SystemResourcesStatus(cpu=0, ram=0, gpu=0, temp=0)
-    try:
-        import psutil
-        system.cpu = int(psutil.cpu_percent(interval=None))
-        system.ram = int(psutil.virtual_memory().percent)
-        # GPU y temp son opcionales
-    except Exception:
-        pass
-
-    # Calendar
+    cal = snapshot["calendar"]
     calendar = CalendarStatusBrief(
-        day=now.strftime("%A").lower(),
-        time=now.strftime("%H:%M:%S"),
-        current_mode="apagado",
-        next_mode=None,
-        time_remaining_s=-1,
-        time_to_next_s=-1,
-        override_active=False,
-        auto=True
+        day=cal["day"],
+        time=cal["time"],
+        current_mode=cal["current_mode"] or "apagado",
+        next_mode=cal["next_mode"],
+        time_remaining_s=cal["time_remaining_s"],
+        time_to_next_s=cal["time_to_next_s"],
+        override_active=cal["override_active"],
+        auto=cal["auto"]
     )
-
-    # Obtener CalendarManager desde app_state o main window
-    calendar_manager = getattr(app_state, 'calendar_manager', None)
-    if calendar_manager is None:
-        # Intentar desde main_window
-        main_window = getattr(app_state, 'main_window', None)
-        if main_window:
-            calendar_manager = getattr(main_window, 'calendar_manager', None)
-
-    if calendar_manager:
-        try:
-            state = calendar_manager.get_state()
-            calendar.current_mode = state.get("current_mode", "apagado")
-            calendar.next_mode = state.get("next_mode")
-            calendar.override_active = state.get("is_override", False)
-            calendar.auto = state.get("auto_mode_enabled", True)
-
-            # Tiempo restante
-            if state.get("next_change_at"):
-                try:
-                    next_dt = datetime.fromisoformat(state["next_change_at"])
-                    calendar.time_to_next_s = max(0, int((next_dt - now).total_seconds()))
-                except:
-                    pass
-
-            # Progreso del bloque actual
-            progress = state.get("progress", 0)
-            if progress > 0:
-                # Estimar tiempo restante del bloque
-                block = state.get("active_block")
-                if block:
-                    try:
-                        total_seconds = (datetime.strptime(block["to_time"], "%H:%M") -
-                                        datetime.strptime(block["from_time"], "%H:%M")).total_seconds()
-                        calendar.time_remaining_s = int(total_seconds * (1 - progress))
-                    except:
-                        pass
-        except Exception as e:
-            print(f"[WEB][STATUS] Calendar error: {e}")
-
-    # Día en español
-    days_es = {
-        "monday": "lunes", "tuesday": "martes", "wednesday": "miércoles",
-        "thursday": "jueves", "friday": "viernes", "saturday": "sábado", "sunday": "domingo"
-    }
-    calendar.day = days_es.get(now.strftime("%A").lower(), now.strftime("%A").lower())
 
     return UnifiedStatus(
-        ts=int(time.time()),
+        ts=snapshot["ts"],
+        state=snapshot["state"],
+        energy=snapshot["energy"],
         audio=audio,
         avolites=avolites,
         cameras=cameras,

@@ -168,6 +168,113 @@ function Indicator({ label, value, type }) {
   );
 }
 
+// Colores por estado del core
+const STATE_COLORS = {
+  BAJADA: 'var(--neon-cyan)',
+  BASE_GOLPE: 'var(--neon-green)',
+  ATAQUE: 'var(--neon-orange)',
+  BRAKE: 'var(--neon-red)',
+};
+
+const ENERGY_COLORS = {
+  BAJA: 'var(--neon-cyan)',
+  MEDIA: 'var(--neon-orange)',
+  ALTA: 'var(--neon-red)',
+};
+
+// Panel STATE + ENERGY (el más importante)
+function StatePanel({ state, energy }) {
+  const stateColor = STATE_COLORS[state] || 'var(--text-dim)';
+  const energyColor = ENERGY_COLORS[energy] || 'var(--text-dim)';
+  const isOnline = state != null;
+
+  return (
+    <div className="neon-panel" style={{ gridColumn: 'span 2' }}>
+      <div className="neon-panel-header">
+        <span className="neon-panel-title">CORE STATUS</span>
+        <span className={`neon-badge ${isOnline ? 'neon-badge-ok' : 'neon-badge-error'}`}>
+          {isOnline ? 'LIVE' : 'OFFLINE'}
+        </span>
+      </div>
+      <div className="neon-panel-content">
+        {!isOnline ? (
+          <div style={{
+            textAlign: 'center',
+            padding: '20px',
+            color: 'var(--neon-red)',
+          }}>
+            Core no inicializado
+          </div>
+        ) : (
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-around',
+            alignItems: 'center',
+            gap: '24px',
+          }}>
+            {/* STATE */}
+            <div style={{
+              textAlign: 'center',
+              flex: 1,
+              padding: '16px',
+              background: 'var(--bg-dark)',
+              borderRadius: '8px',
+              border: `1px solid ${stateColor}40`,
+            }}>
+              <div style={{
+                color: 'var(--text-dim)',
+                fontSize: '10px',
+                textTransform: 'uppercase',
+                marginBottom: '8px',
+                letterSpacing: '1px',
+              }}>
+                STATE
+              </div>
+              <div style={{
+                color: stateColor,
+                fontSize: '28px',
+                fontWeight: 'bold',
+                textShadow: `0 0 20px ${stateColor}`,
+                fontFamily: 'monospace',
+              }}>
+                {state}
+              </div>
+            </div>
+            {/* ENERGY */}
+            <div style={{
+              textAlign: 'center',
+              flex: 1,
+              padding: '16px',
+              background: 'var(--bg-dark)',
+              borderRadius: '8px',
+              border: `1px solid ${energyColor}40`,
+            }}>
+              <div style={{
+                color: 'var(--text-dim)',
+                fontSize: '10px',
+                textTransform: 'uppercase',
+                marginBottom: '8px',
+                letterSpacing: '1px',
+              }}>
+                ENERGY
+              </div>
+              <div style={{
+                color: energyColor,
+                fontSize: '28px',
+                fontWeight: 'bold',
+                textShadow: `0 0 20px ${energyColor}`,
+                fontFamily: 'monospace',
+              }}>
+                {energy}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Panel Audio
 function AudioPanel({ audio }) {
   if (!audio) return null;
@@ -440,6 +547,9 @@ export function Home() {
         gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
         gap: '12px',
       }}>
+        {/* STATE + ENERGY - Panel principal del core */}
+        <StatePanel state={status?.state} energy={status?.energy} />
+
         <AudioPanel audio={status?.audio} />
         <AvolitesPanel avolites={status?.avolites} />
         <CamerasPanel cameras={status?.cameras} />
