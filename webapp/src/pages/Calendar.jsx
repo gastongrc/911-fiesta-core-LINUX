@@ -44,13 +44,13 @@ function formatTime(s) {
 }
 
 // ==================== TAB ESTADO ====================
-function TabEstado({ status, apiOffline }) {
+function TabEstado({ status, apiOffline, onAuto }) {
   if (apiOffline) {
     return (
       <div style={{ padding: '20px', textAlign: 'center' }}>
-        <span className="neon-badge neon-badge-error">API OFFLINE</span>
+        <span className="neon-badge neon-badge-error">CORE OFFLINE</span>
         <p style={{ color: 'var(--text-dim)', marginTop: '12px', fontSize: '12px' }}>
-          No se puede conectar al backend
+          No se puede conectar al CORE
         </p>
       </div>
     );
@@ -59,6 +59,7 @@ function TabEstado({ status, apiOffline }) {
   if (!status) return <div style={{ padding: '20px', color: 'var(--text-dim)' }}>Cargando...</div>;
 
   const modeColor = MODE_COLORS[status.current_mode] || '#7f8c8d';
+  const isAuto = status.auto !== false;
 
   return (
     <div style={{ padding: '16px' }}>
@@ -66,11 +67,15 @@ function TabEstado({ status, apiOffline }) {
       <div className="neon-panel" style={{ marginBottom: '16px' }}>
         <div className="neon-panel-header">
           <span className="neon-panel-title">MODO ACTUAL</span>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            {status.override?.active && <span className="neon-badge neon-badge-warn">OVERRIDE</span>}
-            <span className={`neon-badge ${status.auto_mode_enabled ? 'neon-badge-ok' : 'neon-badge-warn'}`}>
-              {status.auto_mode_enabled ? 'AUTO' : 'MANUAL'}
-            </span>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {status.override_active && <span className="neon-badge neon-badge-warn">OVERRIDE</span>}
+            <button
+              onClick={() => onAuto(!isAuto)}
+              className={`neon-btn ${isAuto ? 'neon-btn-primary' : 'neon-btn-warning'}`}
+              style={{ padding: '4px 10px', fontSize: '10px' }}
+            >
+              {isAuto ? 'AUTO' : 'MANUAL'}
+            </button>
           </div>
         </div>
         <div className="neon-panel-content">
@@ -458,15 +463,36 @@ export function Calendar() {
   const [schedule, setSchedule] = useState({ week: {} });
   const [hasChanges, setHasChanges] = useState(false);
   const [apiOffline, setApiOffline] = useState(false);
+  const [lastError, setLastError] = useState(null);
 
-  // Cargar status
+  // Fetch week schedule
+  const fetchWeek = async () => {
+    try {
+      const res = await fetch(`${getApiBase()}/calendar/week`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.error) {
+          setLastError(data.error);
+        } else {
+          setSchedule({ week: data.week || {} });
+          setLastError(null);
+        }
+      }
+    } catch (e) {
+      setLastError('FETCH_ERROR');
+    }
+  };
+
+  // Cargar status - polling 2s
   useEffect(() => {
     const fetchStatus = async () => {
       try {
         const res = await fetch(`${getApiBase()}/calendar/status`);
         if (res.ok) {
-          setStatus(await res.json());
-          setApiOffline(false);
+          const data = await res.json();
+          setStatus(data);
+          setApiOffline(!data.core_online);
+          if (data.error) setLastError(data.error);
         } else {
           setApiOffline(true);
         }
@@ -479,59 +505,120 @@ export function Calendar() {
     return () => clearInterval(interval);
   }, []);
 
-  // Cargar schedule
+  // Cargar schedule al montar
   useEffect(() => {
-    const fetchSchedule = async () => {
-      try {
-        const res = await fetch(`${getApiBase()}/calendar/week`);
-        if (res.ok) {
-          const data = await res.json();
-          setSchedule({ week: data.week || {} });
-        }
-      } catch (e) {}
-    };
-    fetchSchedule();
+    fetchWeek();
   }, []);
 
-  // Acciones
+  // Acciones - retornan success y refetch si OK
   const handleGo = async (mode, delay) => {
     try {
-      await apiPost('/calendar/go', { mode, delay_minutes: delay });
-    } catch (e) {}
+      const res = await apiPost('/calendar/go', { mode, delay_minutes: delay });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setLastError(null);
+        } else {
+          setLastError(data.error || 'GO_FAILED');
+        }
+      } else {
+        setLastError('HTTP_ERROR');
+      }
+    } catch (e) {
+      setLastError('GO_ERROR');
+    }
   };
 
   const handleExtend = async (minutes) => {
     try {
-      await apiPost('/calendar/extend', { minutes });
-    } catch (e) {}
+      const res = await apiPost('/calendar/extend', { minutes });
+      if (res.ok) {
+        const data = await res.json();
+        if (!data.success) setLastError(data.error || 'EXTEND_FAILED');
+      }
+    } catch (e) {
+      setLastError('EXTEND_ERROR');
+    }
   };
 
   const handleOverride = async (mode, duration) => {
     try {
-      await apiPost('/calendar/override', { mode, duration_minutes: duration });
-    } catch (e) {}
+      const res = await apiPost('/calendar/override', { mode, duration_minutes: duration });
+      if (res.ok) {
+        const data = await res.json();
+        if (!data.success) setLastError(data.error || 'OVERRIDE_FAILED');
+      }
+    } catch (e) {
+      setLastError('OVERRIDE_ERROR');
+    }
   };
 
   const handleClearOverride = async () => {
     try {
-      await fetch(`${getApiBase()}/calendar/override/stop`, { method: 'POST' });
-    } catch (e) {}
+      const res = await fetch(`${getApiBase()}/calendar/override/stop`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        if (!data.success) setLastError(data.error || 'STOP_FAILED');
+      }
+    } catch (e) {
+      setLastError('STOP_ERROR');
+    }
+  };
+
+  const handleAuto = async (enabled) => {
+    try {
+      const res = await fetch(`${getApiBase()}/calendar/auto?enabled=${enabled}`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        if (!data.success) setLastError(data.error || 'AUTO_FAILED');
+      }
+    } catch (e) {
+      setLastError('AUTO_ERROR');
+    }
   };
 
   const handleSave = async () => {
+    setLastError(null);
     try {
       const res = await apiPost('/calendar/save', { week: schedule.week });
       if (res.ok) {
-        setHasChanges(false);
-        alert('Horarios guardados');
+        const data = await res.json();
+        if (data.success) {
+          setHasChanges(false);
+          await fetchWeek(); // Refetch para confirmar
+        } else {
+          setLastError(data.error || 'SAVE_FAILED');
+        }
+      } else {
+        setLastError('HTTP_ERROR');
       }
     } catch (e) {
-      alert('Error al guardar');
+      setLastError('SAVE_ERROR');
     }
   };
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Error Banner */}
+      {lastError && (
+        <div style={{
+          background: 'rgba(255, 68, 68, 0.15)',
+          borderBottom: '1px solid var(--neon-red)',
+          padding: '8px 16px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}>
+          <span style={{ color: 'var(--neon-red)', fontSize: '11px', fontWeight: 'bold' }}>
+            ERROR: {lastError}
+          </span>
+          <button
+            onClick={() => setLastError(null)}
+            style={{ background: 'none', border: 'none', color: 'var(--neon-red)', cursor: 'pointer' }}
+          >✕</button>
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="neon-tabs">
         {[
@@ -551,7 +638,7 @@ export function Calendar() {
 
       {/* Content */}
       <div style={{ flex: 1, overflow: 'auto', background: 'var(--bg-dark)' }}>
-        {activeTab === 'estado' && <TabEstado status={status} apiOffline={apiOffline} />}
+        {activeTab === 'estado' && <TabEstado status={status} apiOffline={apiOffline} onAuto={handleAuto} />}
         {activeTab === 'horarios' && (
           <TabHorarios
             schedule={schedule}
