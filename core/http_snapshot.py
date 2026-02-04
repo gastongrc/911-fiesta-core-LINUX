@@ -363,33 +363,44 @@ class SnapshotServer:
             return {"ok": False, "error": str(e), "week": {}}
 
     def calendar_save(self, week: dict) -> dict:
-        """POST /core/calendar/save - Guarda schedule semanal y retorna week real + warnings."""
+        """POST /core/calendar/save - Guarda schedule semanal, aplica y retorna estado actual."""
         if not self.calendar_manager:
-            return {"ok": False, "error": "calendar_manager_not_available", "week": {}, "warnings": []}
+            return {"ok": False, "error": "calendar_manager_not_available", "week": {}, "warnings": [], "applied": None}
 
         if not week:
-            return {"ok": False, "error": "week_required", "week": {}, "warnings": []}
+            return {"ok": False, "error": "week_required", "week": {}, "warnings": [], "applied": None}
 
         try:
             # Detectar solapamientos antes de guardar
             warnings = self._detect_overlaps(week)
 
-            # Guardar
+            # Guardar (esto también hace reload + resolve + apply)
             success = self.calendar_manager.save_schedule({"week": week})
 
             if success:
                 # Leer lo que realmente quedó en CORE
                 real_schedule = self.calendar_manager.get_schedule()
+
+                # Obtener estado aplicado actual
+                state = self.calendar_manager.get_state()
+                applied = {
+                    "mode": state.get("current_mode"),
+                    "actions": state.get("current_actions", []),
+                    "next_mode": state.get("next_mode"),
+                    "source": state.get("source"),
+                }
+
                 return {
                     "ok": True,
                     "error": None,
                     "week": real_schedule.get("week", {}),
-                    "warnings": warnings
+                    "warnings": warnings,
+                    "applied": applied,
                 }
             else:
-                return {"ok": False, "error": "save_failed", "week": {}, "warnings": []}
+                return {"ok": False, "error": "save_failed", "week": {}, "warnings": [], "applied": None}
         except Exception as e:
-            return {"ok": False, "error": str(e), "week": {}, "warnings": []}
+            return {"ok": False, "error": str(e), "week": {}, "warnings": [], "applied": None}
 
     def _detect_overlaps(self, week: dict) -> list:
         """Detecta solapamientos en el schedule."""

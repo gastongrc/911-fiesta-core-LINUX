@@ -790,7 +790,7 @@ class CalendarManager:
 
     def save_schedule(self, schedule: Dict[str, Any]) -> bool:
         """
-        Guarda el schedule al archivo.
+        Guarda el schedule al archivo y aplica inmediatamente.
 
         Args:
             schedule: Dict con el schedule en formato {week: {...}}
@@ -805,16 +805,45 @@ class CalendarManager:
             with open(self._config_path, 'w', encoding='utf-8') as f:
                 json.dump(schedule, f, indent=2, ensure_ascii=False)
 
-            print(f"[CalendarManager] Schedule guardado en {self._config_path}")
+            print(f"[CALENDAR] save ok → {self._config_path}")
 
-            # Recargar
+            # Recargar schedule desde archivo
             self._resolver.reload_schedule()
+            print("[CALENDAR] reload ok")
+
+            # Guardar estado previo para comparar
+            old_mode = self._state.current_mode
+            old_actions = list(self._state.current_actions)
+
+            # Resolver modo actual con nuevo schedule
             self._resolve_now()
+
+            # Log del resultado de resolve
+            new_mode = self._state.current_mode
+            new_actions = self._state.current_actions
+            next_mode = self._state.next_mode
+            next_change = self._state.next_change_at
+
+            time_to_next = "---"
+            if next_change:
+                secs = int((next_change - datetime.now()).total_seconds())
+                time_to_next = f"{secs}s" if secs < 60 else f"{secs // 60}m"
+
+            print(f"[CALENDAR] resolved → mode={new_mode}, next={next_mode}, time_to_next={time_to_next}")
+
+            # Log si hubo cambio y se aplicó
+            if new_mode != old_mode or set(new_actions) != set(old_actions):
+                actions_str = f", actions={new_actions}" if new_actions else ""
+                print(f"[CALENDAR] applied → mode={new_mode}{actions_str}")
+            else:
+                print(f"[CALENDAR] no change (mode={new_mode} already active)")
 
             return True
 
         except Exception as e:
-            print(f"[CalendarManager] Error guardando schedule: {e}")
+            print(f"[CALENDAR] save FAILED: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def get_schedule(self) -> Dict[str, Any]:

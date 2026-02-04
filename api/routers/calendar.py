@@ -237,12 +237,13 @@ async def get_calendar_week():
 async def save_calendar(request: CalendarSaveRequest):
     """
     POST /api/v1/calendar/save
-    Guarda schedule semanal en CORE.
+    Guarda schedule semanal en CORE y aplica inmediatamente.
 
     Retorna:
     - success: bool
     - week: el week REAL que quedó en CORE (para pisar estado local)
     - warnings: lista de solapamientos detectados
+    - applied: estado aplicado actual (mode, actions, next_mode)
     """
     logger.info(f"[CALENDAR] SAVE request with {len(request.week)} days")
     result = await _forward_to_core("/core/calendar/save", {"week": request.week})
@@ -250,13 +251,22 @@ async def save_calendar(request: CalendarSaveRequest):
     if result.get("ok"):
         warnings = result.get("warnings", [])
         week_data = result.get("week", {})
+        applied = result.get("applied", {})
+
         week_days = list(week_data.keys()) if week_data else []
         total_blocks = sum(len(week_data.get(d, [])) for d in week_days)
-        logger.info(f"[CALENDAR] SAVE OK | week_days={week_days} | blocks={total_blocks} | warnings={len(warnings)}")
+
+        # Log del estado aplicado
+        applied_mode = applied.get("mode") if applied else None
+        applied_actions = applied.get("actions", []) if applied else []
+        actions_str = f", actions={applied_actions}" if applied_actions else ""
+        logger.info(f"[CALENDAR] SAVE OK | blocks={total_blocks} | applied={applied_mode}{actions_str} | warnings={len(warnings)}")
+
         return {
             "success": True,
             "week": week_data,
-            "warnings": warnings
+            "warnings": warnings,
+            "applied": applied
         }
     else:
         logger.error(f"[CALENDAR] SAVE FAILED: {result.get('error')}")
@@ -264,5 +274,6 @@ async def save_calendar(request: CalendarSaveRequest):
             "success": False,
             "week": {},
             "warnings": [],
+            "applied": None,
             "error": result.get("error")
         }

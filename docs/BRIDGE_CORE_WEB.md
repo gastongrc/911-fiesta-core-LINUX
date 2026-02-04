@@ -164,7 +164,18 @@ curl -X POST http://127.0.0.1:8010/core/calendar/save \
 
 Respuesta:
 ```json
-{"ok": true, "error": null, "calendar": {"current_mode": "boliche_desarrollo", ...}}
+{
+  "ok": true,
+  "error": null,
+  "week": {"monday": [], "friday": [...]},
+  "warnings": [],
+  "applied": {
+    "mode": "boliche_desarrollo",
+    "actions": [],
+    "next_mode": "boliche_fin",
+    "source": "AUTO"
+  }
+}
 ```
 
 ## Smoke Test
@@ -233,6 +244,56 @@ curl -s "$CORE/core/calendar/week" | jq '.week.monday'
 2. Tab HORARIOS → Agregar bloque
 3. GUARDAR
 4. **Sin F5**: bloque debe aparecer inmediatamente
+
+## SAVE Flow (Runtime Apply)
+
+Cuando la web guarda el calendario, CORE aplica los cambios inmediatamente:
+
+```
+WEB POST /calendar/save
+    │
+    ▼
+API (8000) forwards to CORE
+    │
+    ▼
+CORE (8010) calendar_save()
+    │
+    ├── 1. save_schedule() → escribe calendar.json
+    │       [CALENDAR] save ok → /path/to/calendar.json
+    │
+    ├── 2. reload_schedule() → recarga desde archivo
+    │       [CALENDAR] reload ok
+    │
+    ├── 3. resolve_now() → recalcula modo vigente
+    │       [CALENDAR] resolved → mode=X, next=Y, time_to_next=Zm
+    │
+    └── 4. apply_calendar_state() → aplica via SystemBridge
+            [CALENDAR] applied → mode=X, actions=[...]
+            (o "no change" si modo ya estaba activo)
+```
+
+**Logs esperados en CORE al guardar:**
+```
+[CALENDAR] save ok → /home/user/config/calendar.json
+[CALENDAR] reload ok
+[CALENDAR] resolved → mode=boliche_desarrollo, next=boliche_fin, time_to_next=45m
+[CALENDAR] applied → mode=boliche_desarrollo
+```
+
+**Respuesta API incluye estado aplicado:**
+```json
+{
+  "success": true,
+  "week": {...},
+  "warnings": [],
+  "applied": {
+    "mode": "boliche_desarrollo",
+    "actions": [],
+    "next_mode": "boliche_fin",
+    "source": "AUTO"
+  }
+}
+```
 
 ## gridRev Fix (re-render)
 
