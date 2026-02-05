@@ -855,9 +855,10 @@ class CalendarScheduleEditor(QWidget):
         self._day_columns: Dict[str, DayColumnWidget] = {}
         self._has_changes = False
 
-        # --- File watcher state ---
+        # --- File watcher state (ns precision to avoid Windows float-second gaps) ---
         self._cal_json_path: Optional[str] = None
-        self._last_known_mtime: float = 0.0
+        self._last_known_mtime_ns: Optional[int] = None
+        self._last_known_size: Optional[int] = None
         self._ignore_next_external: bool = False
 
         self._setup_ui()
@@ -958,11 +959,8 @@ class CalendarScheduleEditor(QWidget):
         path = getattr(calendar_manager, '_config_path', None)
         if path:
             self._cal_json_path = path
-            try:
-                self._last_known_mtime = os.path.getmtime(path)
-            except OSError:
-                self._last_known_mtime = 0.0
-            _log(f"[CAL_UI_WATCH] watching path={self._cal_json_path} mtime={self._last_known_mtime}")
+            self._snapshot_file_stat()
+            _log(f"[CAL_UI_WATCH] watching path={self._cal_json_path} mtime_ns={self._last_known_mtime_ns} size={self._last_known_size}")
 
         self._load_schedule()
 
@@ -1017,32 +1015,46 @@ class CalendarScheduleEditor(QWidget):
 
     # ==================== FILE WATCHER ====================
 
+    def _snapshot_file_stat(self):
+        """Snapshot mtime_ns + size from os.stat. Safe if file missing."""
+        try:
+            st = os.stat(self._cal_json_path)
+            self._last_known_mtime_ns = st.st_mtime_ns
+            self._last_known_size = st.st_size
+        except OSError:
+            self._last_known_mtime_ns = None
+            self._last_known_size = None
+
     def _check_file_changed(self):
-        """500ms timer: detect external writes to calendar.json via mtime."""
+        """500ms timer: detect external writes to calendar.json via st_mtime_ns + st_size."""
         if not self._cal_json_path:
             return
         try:
-            mtime = os.path.getmtime(self._cal_json_path)
+            st = os.stat(self._cal_json_path)
         except OSError:
             return
 
-        if mtime == self._last_known_mtime:
+        cur_mtime_ns = st.st_mtime_ns
+        cur_size = st.st_size
+
+        if cur_mtime_ns == self._last_known_mtime_ns and cur_size == self._last_known_size:
             return
 
-        # mtime changed
-        old_mtime = self._last_known_mtime
-        self._last_known_mtime = mtime
+        # File changed
+        prev_mtime_ns = self._last_known_mtime_ns
+        self._last_known_mtime_ns = cur_mtime_ns
+        self._last_known_size = cur_size
 
-        # First snapshot (transition from 0) — just record, don't reload
-        if old_mtime == 0.0:
+        # First snapshot (prev was None) — just record, don't reload
+        if prev_mtime_ns is None:
             return
 
         if self._ignore_next_external:
             self._ignore_next_external = False
-            _log(f"[CAL_UI_WATCH] changed mtime={mtime} (ignored: local save)")
+            _log(f"[CAL_UI_WATCH] changed mtime_ns={cur_mtime_ns} size={cur_size} (ignored: local save)")
             return
 
-        _log(f"[CAL_UI_WATCH] changed mtime={mtime}")
+        _log(f"[CAL_UI_WATCH] changed mtime_ns={cur_mtime_ns} size={cur_size}")
         self._on_external_reload()
 
     def _on_external_reload(self):
@@ -1151,12 +1163,8 @@ class CalendarScheduleEditor(QWidget):
 
         self._ignore_next_external = True
         if self._calendar.save_schedule(schedule):
-            # Snapshot mtime after local write to stay in sync
-            if self._cal_json_path:
-                try:
-                    self._last_known_mtime = os.path.getmtime(self._cal_json_path)
-                except OSError:
-                    pass
+            # Snapshot stat after local write to stay in sync
+            self._snapshot_file_stat()
             self._has_changes = False
             self._update_changes_indicator()
             self.save_requested.emit(schedule)
