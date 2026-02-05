@@ -144,18 +144,20 @@ class CalendarManager:
         # Referencia al SystemBridge para aplicar reglas automáticamente
         self._system_bridge = system_bridge
 
-        # Determinar ruta del config
+        # Determinar ruta del config — SSOT: core/calendar/calendar.json
         if config_path is None:
-            # Primero intentar config/calendar.json
-            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            config_path = os.path.join(base_dir, "config", "calendar.json")
+            config_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "calendar.json"
+            )
 
-            # Si no existe, usar el de core/calendar/calendar.json
-            if not os.path.exists(config_path):
-                config_path = os.path.join(
-                    os.path.dirname(os.path.abspath(__file__)),
-                    "calendar.json"
-                )
+        # Warn if legacy path exists (config/calendar.json) — ignore it
+        _legacy = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "config", "calendar.json"
+        )
+        if os.path.exists(_legacy):
+            print(f"[CAL_BOOT] WARN legacy path exists (ignored): {_legacy}")
 
         self._config_path = config_path
 
@@ -803,11 +805,23 @@ class CalendarManager:
             True si guardo correctamente
         """
         try:
-            # Asegurar que existe el directorio
-            os.makedirs(os.path.dirname(self._config_path), exist_ok=True)
+            # Atomic write: .tmp + rename (same as commit_from_remote)
+            dir_path = os.path.dirname(self._config_path)
+            os.makedirs(dir_path, exist_ok=True)
 
-            with open(self._config_path, 'w', encoding='utf-8') as f:
-                json.dump(schedule, f, indent=2, ensure_ascii=False)
+            tmp_fd, tmp_path = tempfile.mkstemp(
+                suffix=".tmp", prefix="calendar_", dir=dir_path
+            )
+            try:
+                with os.fdopen(tmp_fd, 'w', encoding='utf-8') as f:
+                    json.dump(schedule, f, indent=2, ensure_ascii=False)
+                os.replace(tmp_path, self._config_path)
+            except BaseException:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
 
             print(f"[CALENDAR] save ok → {self._config_path}")
 

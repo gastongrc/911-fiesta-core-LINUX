@@ -954,8 +954,9 @@ class CalendarScheduleEditor(QWidget):
         self._calendar = calendar_manager
 
         # Resolve path to calendar.json from CalendarManager
+        # Always set path (even if file missing now — it may be created later)
         path = getattr(calendar_manager, '_config_path', None)
-        if path and os.path.isfile(path):
+        if path:
             self._cal_json_path = path
             try:
                 self._last_known_mtime = os.path.getmtime(path)
