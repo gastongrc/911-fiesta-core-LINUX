@@ -374,20 +374,20 @@ class SnapshotServer:
             # Detectar solapamientos antes de guardar
             warnings = self._detect_overlaps(week)
 
-            # Guardar (esto también hace reload + resolve + apply)
-            success = self.calendar_manager.save_schedule({"week": week})
+            # commit_from_remote: atomic write + reload + resolve + forced apply
+            result = self.calendar_manager.commit_from_remote(week, source="web")
 
-            if success:
+            if result.get("ok"):
                 # Leer lo que realmente quedó en CORE
                 real_schedule = self.calendar_manager.get_schedule()
 
-                # Obtener estado aplicado actual
-                state = self.calendar_manager.get_state()
                 applied = {
-                    "mode": state.get("current_mode"),
-                    "actions": state.get("current_actions", []),
-                    "next_mode": state.get("next_mode"),
-                    "source": state.get("source"),
+                    "mode": result.get("mode"),
+                    "actions": result.get("actions", []),
+                    "applied": result.get("applied", False),
+                    "reason": result.get("reason"),
+                    "next_mode": self.calendar_manager.get_state().get("next_mode"),
+                    "source": "web",
                 }
 
                 return {
@@ -396,9 +396,17 @@ class SnapshotServer:
                     "week": real_schedule.get("week", {}),
                     "warnings": warnings,
                     "applied": applied,
+                    "req_id": result.get("req_id"),
                 }
             else:
-                return {"ok": False, "error": "save_failed", "week": {}, "warnings": [], "applied": None}
+                return {
+                    "ok": False,
+                    "error": result.get("reason", "save_failed"),
+                    "week": {},
+                    "warnings": [],
+                    "applied": None,
+                    "req_id": result.get("req_id"),
+                }
         except Exception as e:
             return {"ok": False, "error": str(e), "week": {}, "warnings": [], "applied": None}
 
