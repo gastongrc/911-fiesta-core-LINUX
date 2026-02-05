@@ -26,6 +26,7 @@ V8.2 CAMBIOS (Overflow Fix):
 SOLO UI - No ejecuta acciones del sistema.
 """
 
+import os
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Set
 from PySide6.QtWidgets import (
@@ -33,7 +34,7 @@ from PySide6.QtWidgets import (
     QPushButton, QTimeEdit, QScrollArea, QGridLayout,
     QMessageBox, QSizePolicy, QGraphicsDropShadowEffect
 )
-from PySide6.QtCore import Qt, Signal, QTime, QPropertyAnimation, QEasingCurve, Property
+from PySide6.QtCore import Qt, Signal, QTime, QTimer, QPropertyAnimation, QEasingCurve, Property
 from PySide6.QtGui import QFont, QColor
 
 
@@ -853,7 +854,20 @@ class CalendarScheduleEditor(QWidget):
         self._calendar = None
         self._day_columns: Dict[str, DayColumnWidget] = {}
         self._has_changes = False
+
+        # --- File watcher state (ns precision to avoid Windows float-second gaps) ---
+        self._cal_json_path: Optional[str] = None
+        self._last_known_mtime_ns: Optional[int] = None
+        self._last_known_size: Optional[int] = None
+        self._ignore_next_external: bool = False
+
         self._setup_ui()
+
+        # --- QTimer: check calendar.json mtime every 500ms ---
+        self._file_watch_timer = QTimer(self)
+        self._file_watch_timer.setInterval(500)
+        self._file_watch_timer.timeout.connect(self._check_file_changed)
+        self._file_watch_timer.start()
 
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
@@ -939,6 +953,15 @@ class CalendarScheduleEditor(QWidget):
 
     def set_calendar_manager(self, calendar_manager) -> None:
         self._calendar = calendar_manager
+
+        # Resolve path to calendar.json from CalendarManager
+        # Always set path (even if file missing now — it may be created later)
+        path = getattr(calendar_manager, '_config_path', None)
+        if path:
+            self._cal_json_path = path
+            self._snapshot_file_stat()
+            _log(f"[CAL_UI_WATCH] watching path={self._cal_json_path} mtime_ns={self._last_known_mtime_ns} size={self._last_known_size}")
+
         self._load_schedule()
 
     def _load_schedule(self):
@@ -989,6 +1012,58 @@ class CalendarScheduleEditor(QWidget):
         # Llamar directamente al CalendarManager si está conectado
         if self._calendar and hasattr(self._calendar, 'reapply_active_block'):
             self._calendar.reapply_active_block(mode, actions)
+
+    # ==================== FILE WATCHER ====================
+
+    def _snapshot_file_stat(self):
+        """Snapshot mtime_ns + size from os.stat. Safe if file missing."""
+        try:
+            st = os.stat(self._cal_json_path)
+            self._last_known_mtime_ns = st.st_mtime_ns
+            self._last_known_size = st.st_size
+        except OSError:
+            self._last_known_mtime_ns = None
+            self._last_known_size = None
+
+    def _check_file_changed(self):
+        """500ms timer: detect external writes to calendar.json via st_mtime_ns + st_size."""
+        if not self._cal_json_path:
+            return
+        try:
+            st = os.stat(self._cal_json_path)
+        except OSError:
+            return
+
+        cur_mtime_ns = st.st_mtime_ns
+        cur_size = st.st_size
+
+        if cur_mtime_ns == self._last_known_mtime_ns and cur_size == self._last_known_size:
+            return
+
+        # File changed
+        prev_mtime_ns = self._last_known_mtime_ns
+        self._last_known_mtime_ns = cur_mtime_ns
+        self._last_known_size = cur_size
+
+        # First snapshot (prev was None) — just record, don't reload
+        if prev_mtime_ns is None:
+            return
+
+        if self._ignore_next_external:
+            self._ignore_next_external = False
+            _log(f"[CAL_UI_WATCH] changed mtime_ns={cur_mtime_ns} size={cur_size} (ignored: local save)")
+            return
+
+        _log(f"[CAL_UI_WATCH] changed mtime_ns={cur_mtime_ns} size={cur_size}")
+        self._on_external_reload()
+
+    def _on_external_reload(self):
+        """Reload schedule from disk after external change (web SAVE)."""
+        if not self._calendar:
+            return
+        self._load_schedule()
+        total_blocks = sum(len(col.get_blocks()) for col in self._day_columns.values())
+        _log(f"[CAL_UI_REFRESH] source=external blocks={total_blocks} dirty_reset=true")
 
     def _update_changes_indicator(self):
         if self._has_changes:
@@ -1086,13 +1161,17 @@ class CalendarScheduleEditor(QWidget):
         if reply != QMessageBox.Yes:
             return
 
+        self._ignore_next_external = True
         if self._calendar.save_schedule(schedule):
+            # Snapshot stat after local write to stay in sync
+            self._snapshot_file_stat()
             self._has_changes = False
             self._update_changes_indicator()
             self.save_requested.emit(schedule)
             QMessageBox.information(self, "Guardado", "Horarios guardados")
             _log("Schedule saved")
         else:
+            self._ignore_next_external = False
             QMessageBox.critical(self, "Error", "Error al guardar")
 
     def has_unsaved_changes(self) -> bool:

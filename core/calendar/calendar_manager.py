@@ -24,6 +24,8 @@ boliche_inicio, boliche_desarrollo, boliche_fin, apagado
 import threading
 import json
 import os
+import tempfile
+import uuid
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, Callable, List
 from enum import Enum
@@ -142,18 +144,20 @@ class CalendarManager:
         # Referencia al SystemBridge para aplicar reglas automáticamente
         self._system_bridge = system_bridge
 
-        # Determinar ruta del config
+        # Determinar ruta del config — SSOT: core/calendar/calendar.json
         if config_path is None:
-            # Primero intentar config/calendar.json
-            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            config_path = os.path.join(base_dir, "config", "calendar.json")
+            config_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "calendar.json"
+            )
 
-            # Si no existe, usar el de core/calendar/calendar.json
-            if not os.path.exists(config_path):
-                config_path = os.path.join(
-                    os.path.dirname(os.path.abspath(__file__)),
-                    "calendar.json"
-                )
+        # Warn if legacy path exists (config/calendar.json) — ignore it
+        _legacy = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "config", "calendar.json"
+        )
+        if os.path.exists(_legacy):
+            print(f"[CAL_BOOT] WARN legacy path exists (ignored): {_legacy}")
 
         self._config_path = config_path
 
@@ -192,6 +196,7 @@ class CalendarManager:
         self._start_polling()
 
         print("[CalendarManager] v6.4 Inicializado - polling cada 60s")
+        print(f"[CAL_BOOT] app_id={id(self)} cwd={os.getcwd()} cal_abs_path={os.path.abspath(self._config_path)}")
 
         # Aplicar estado inicial si hay system_bridge
         if self._system_bridge is not None:
@@ -271,6 +276,7 @@ class CalendarManager:
         with self._lock:
             # Si hay override activo, no resolver automaticamente
             if self._override.active:
+                print(f"[CAL_RESOLVE] skip reason=override_active mode={self._override.mode}")
                 self._state.update_progress(now)
                 return
 
@@ -799,11 +805,23 @@ class CalendarManager:
             True si guardo correctamente
         """
         try:
-            # Asegurar que existe el directorio
-            os.makedirs(os.path.dirname(self._config_path), exist_ok=True)
+            # Atomic write: .tmp + rename (same as commit_from_remote)
+            dir_path = os.path.dirname(self._config_path)
+            os.makedirs(dir_path, exist_ok=True)
 
-            with open(self._config_path, 'w', encoding='utf-8') as f:
-                json.dump(schedule, f, indent=2, ensure_ascii=False)
+            tmp_fd, tmp_path = tempfile.mkstemp(
+                suffix=".tmp", prefix="calendar_", dir=dir_path
+            )
+            try:
+                with os.fdopen(tmp_fd, 'w', encoding='utf-8') as f:
+                    json.dump(schedule, f, indent=2, ensure_ascii=False)
+                os.replace(tmp_path, self._config_path)
+            except BaseException:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
 
             print(f"[CALENDAR] save ok → {self._config_path}")
 
@@ -845,6 +863,103 @@ class CalendarManager:
             import traceback
             traceback.print_exc()
             return False
+
+    def commit_from_remote(self, week: Dict[str, Any], source: str = "web") -> Dict[str, Any]:
+        """
+        Commit completo desde web: atomic write + reload + resolve + forced apply.
+
+        A diferencia de save_schedule(), este método:
+        - Usa escritura atómica (.tmp + rename)
+        - Fuerza apply vía SystemBridge SIEMPRE (incluso si el modo no cambió)
+        - Genera req_id para trazabilidad end-to-end
+        - Retorna dict con resultado detallado para respuesta HTTP
+
+        Args:
+            week: Dict con schedule semanal {monday: [...], ...}
+            source: Origen del cambio (default "web")
+
+        Returns:
+            Dict con {ok, req_id, applied, mode, actions, reason}
+        """
+        req_id = uuid.uuid4().hex[:8]
+        print(f"[CAL_RECV] req_id={req_id} source={source} days={list(week.keys())}")
+
+        try:
+            schedule = {"week": week}
+
+            # --- Atomic write: .tmp + rename ---
+            dir_path = os.path.dirname(self._config_path)
+            os.makedirs(dir_path, exist_ok=True)
+
+            tmp_fd, tmp_path = tempfile.mkstemp(
+                suffix=".tmp", prefix="calendar_", dir=dir_path
+            )
+            try:
+                with os.fdopen(tmp_fd, 'w', encoding='utf-8') as f:
+                    json.dump(schedule, f, indent=2, ensure_ascii=False)
+                os.replace(tmp_path, self._config_path)
+            except BaseException:
+                # Cleanup tmp on failure
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
+
+            print(f"[CAL_WRITE_OK] req_id={req_id} path={self._config_path}")
+
+            # --- Reload schedule from disk ---
+            self._resolver.reload_schedule()
+            print(f"[CAL_RELOAD_OK] req_id={req_id}")
+
+            # --- Resolve NOW ---
+            old_mode = self._state.current_mode
+            old_actions = list(self._state.current_actions)
+            self._resolve_now()
+            new_mode = self._state.current_mode
+            new_actions = list(self._state.current_actions)
+
+            print(f"[CAL_RESOLVE] req_id={req_id} mode={new_mode} prev={old_mode} actions={new_actions}")
+
+            # --- Forced apply via SystemBridge ---
+            applied = False
+            reason = "no_bridge"
+            has_bridge = self._system_bridge is not None
+
+            if has_bridge:
+                try:
+                    self._system_bridge.apply_calendar_state(new_mode, new_actions)
+                    applied = True
+                    if new_mode != old_mode or set(new_actions) != set(old_actions):
+                        reason = "changed"
+                    else:
+                        reason = "forced_reapply"
+                except Exception as e:
+                    reason = f"apply_error:{e}"
+            else:
+                reason = "no_bridge"
+
+            print(f"[CAL_APPLY] req_id={req_id} applied={applied} reason={reason} bridge={has_bridge}")
+
+            return {
+                "ok": True,
+                "req_id": req_id,
+                "applied": applied,
+                "mode": new_mode,
+                "actions": new_actions,
+                "reason": reason,
+            }
+
+        except Exception as e:
+            print(f"[CAL_APPLY] req_id={req_id} applied=false reason=exception:{e} bridge={self._system_bridge is not None}")
+            return {
+                "ok": False,
+                "req_id": req_id,
+                "applied": False,
+                "mode": self._state.current_mode,
+                "actions": list(self._state.current_actions),
+                "reason": f"exception:{e}",
+            }
 
     def get_schedule(self) -> Dict[str, Any]:
         """
