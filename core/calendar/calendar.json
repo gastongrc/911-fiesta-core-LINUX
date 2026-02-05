@@ -1,44 +1,56 @@
 {
   "week": {
-    "monday": [],
-    "tuesday": [
+    "monday": [
       {
-        "from": "09:00",
-        "to": "00:00",
-        "mode": "boliche_desarrollo"
+        "from": "20:00",
+        "to": "22:00",
+        "mode": "clima_1"
       }
     ],
-    "wednesday": [],
-    "thursday": [
+    "tuesday": [
       {
-        "from": "12:00",
-        "to": "05:00",
-        "mode": "boliche_desarrollo",
+        "from": "20:00",
+        "to": "22:00",
+        "mode": "clima_1"
+      }
+    ],
+    "wednesday": [
+      {
+        "from": "20:00",
+        "to": "22:00",
+        "mode": "clima_1",
         "actions": [
-          "vision_haze",
           "vision_dj"
         ]
       }
     ],
+    "thursday": [
+      {
+        "from": "20:00",
+        "to": "22:00",
+        "mode": "clima_1"
+      }
+    ],
     "friday": [
       {
-        "from": "07:00",
-        "to": "00:00",
-        "mode": "boliche_desarrollo"
+        "from": "20:00",
+        "to": "22:00",
+        "mode": "clima_1"
       }
     ],
     "saturday": [
       {
-        "from": "01:00",
-        "to": "00:00",
-        "mode": "boliche_desarrollo"
+        "from": "20:00",
+        "to": "22:00",
+        "mode": "clima_1"
       }
     ],
     "sunday": [
       {
-        "from": "00:00",
-        "to": "09:00",
-        "mode": "boliche_desarrollo"
+        "from": "20:00",
+        "to": "22:00",
+        "mode": "clima_1",
+        "actions": []
       }
     ]
   }
