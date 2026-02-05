@@ -1,0 +1,7 @@
+system: Linux
+release: 4.4.0
+version: #1 SMP Sun Jan 10 15:06:54 PST 2016
+machine: x86_64
+processor: x86_64
+platform: Linux-4.4.0-x86_64-with-glibc2.39
+python_implementation: CPython

@@ -1,0 +1,34 @@
+# 911 Fiesta V7 - AUDIO Dependencies (BPM detection/analysis)
+#
+# Adds audio capture and analysis packages on top of base.in.
+#
+# USAGE:
+#   pip-compile audio.in -o lock/audio.lock.txt --resolver=backtracking
+#   pip install -r lock/audio.lock.txt
+#
+# NOTE: sounddevice requires libportaudio2 (apt install libportaudio2).
+#       soundfile requires libsndfile1 (apt install libsndfile1).
+#       aubio may require libaubio-dev or a conda install.
+
+-r base.in
+
+# === Audio Capture ===
+sounddevice>=0.4.6
+soundfile>=0.12.0
+
+# === Audio Analysis ===
+librosa>=0.10.0
+audioread>=3.0.0
+
+# === Beat/Onset Detection ===
+# aubio — uncomment if wheel available, else use conda
+# aubio>=0.4.9
+
+# === Torch Audio ===
+torchaudio>=2.1.0
+
+# === Resampling ===
+soxr>=0.3.0
+
+# === Numerical (needed by librosa) ===
+numba>=0.58.0

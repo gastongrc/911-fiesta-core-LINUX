@@ -1,0 +1,35 @@
+# 911 Fiesta V7 - VISION Dependencies (camera/detection/ML)
+#
+# Adds vision/ML packages on top of base.in.
+# For headless Linux, use opencv-python-headless.
+#
+# USAGE:
+#   pip-compile vision.in -o lock/vision.lock.txt --resolver=backtracking
+#   pip install -r lock/vision.lock.txt
+#
+# NOTE: PyTorch GPU builds require a specific index URL.
+#   CPU:  pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+#   CUDA: pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+
+-r base.in
+
+# === OpenCV (headless for Linux servers) ===
+opencv-python-headless>=4.8.0
+
+# === PyTorch (CPU by default — override with --index-url for GPU) ===
+torch>=2.1.0
+torchvision>=0.16.0
+
+# === YOLO Object Detection ===
+ultralytics>=8.0.0
+
+# === Image Processing ===
+pillow>=10.0.0
+scikit-image>=0.21.0
+
+# === Video Streaming (RTSP / PyAV) ===
+av>=12.0.0
+
+# === ML Utilities ===
+scikit-learn>=1.3.0
+matplotlib>=3.7.0

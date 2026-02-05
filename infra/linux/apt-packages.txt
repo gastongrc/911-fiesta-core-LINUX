@@ -1,0 +1,68 @@
+# 911 Fiesta V7 - System packages for Ubuntu/Debian headless
+#
+# Install with:
+#   sudo apt-get update && sudo apt-get install -y $(grep -v '^#' infra/linux/apt-packages.txt | grep -v '^$')
+#
+# Legend:
+#   [required]  - needed for base operation
+#   [vision]    - needed for camera/detection pipeline
+#   [audio]     - needed for audio capture/analysis
+#   [candidate] - may be needed; verify with your setup
+
+# === Python Runtime [required] ===
+python3
+python3-pip
+python3-venv
+python3-dev
+
+# === Build Tools [required] ===
+build-essential
+pkg-config
+git
+curl
+wget
+
+# === OpenCV / GL [vision] ===
+libgl1
+libglib2.0-0
+libsm6
+libxext6
+libxrender1
+
+# === Qt / PySide6 headless [candidate] ===
+# Only needed if PySide6 is imported on the server (e.g. offscreen rendering).
+# Set QT_QPA_PLATFORM=offscreen if using.
+libegl1
+libxkbcommon0
+libdbus-1-3
+libfontconfig1
+libxcb-xinerama0
+
+# === FFmpeg [vision][audio] ===
+ffmpeg
+
+# === FFmpeg dev libs (for building PyAV from source) [vision][candidate] ===
+libavformat-dev
+libavcodec-dev
+libavdevice-dev
+libavutil-dev
+libswscale-dev
+libswresample-dev
+
+# === Audio: PortAudio [audio] ===
+libportaudio2
+portaudio19-dev
+
+# === Audio: libsndfile [audio] ===
+libsndfile1
+libsndfile1-dev
+
+# === Audio: aubio (optional, for building from source) [audio][candidate] ===
+# libaubio-dev
+
+# === HDF5 (tensorflow/keras models) [vision][candidate] ===
+libhdf5-dev
+
+# === Networking tools [candidate] ===
+net-tools
+iputils-ping

@@ -1,0 +1,39 @@
+# 911 Fiesta V7 - BASE Dependencies (headless, no vision/audio)
+#
+# These are the minimum packages for the API server and core logic
+# on a Linux headless machine.
+#
+# USAGE:
+#   pip-compile base.in -o lock/base.lock.txt --resolver=backtracking
+#   pip install -r lock/base.lock.txt
+
+# === FastAPI Stack ===
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+python-multipart>=0.0.6
+
+# === Core Scientific ===
+numpy>=1.24.0,<2.0
+scipy>=1.10.0
+pandas>=2.0.0
+
+# === Network / HTTP ===
+requests>=2.31.0
+urllib3>=2.0.0
+
+# === Flask Legacy API ===
+Flask>=3.0.0
+flask-cors>=4.0.0
+
+# === Lighting Protocols ===
+pyartnet>=1.0.0
+sacn>=1.9.0
+
+# === Utilities ===
+python-dotenv>=1.0.0
+typing_extensions>=4.8.0
+PyYAML>=6.0
+rich>=13.0.0
+python-dateutil>=2.8.0
+psutil>=5.9.0

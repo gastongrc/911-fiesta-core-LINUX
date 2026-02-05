@@ -1,0 +1,258 @@
+{
+  "timestamp": "2026-02-05T21:14:34+0000",
+  "python": "3.11.14 (main, Oct 10 2025, 08:54:04) [GCC 13.3.0]",
+  "platform": "Linux-4.4.0-x86_64-with-glibc2.39",
+  "summary": {
+    "ok": 2,
+    "fail": 31,
+    "skipped": 2,
+    "total": 35
+  },
+  "results": [
+    {
+      "category": "core",
+      "name": "numpy",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'numpy'",
+      "version": ""
+    },
+    {
+      "category": "core",
+      "name": "scipy",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'scipy'",
+      "version": ""
+    },
+    {
+      "category": "core",
+      "name": "pandas",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'pandas'",
+      "version": ""
+    },
+    {
+      "category": "core",
+      "name": "requests",
+      "status": "OK",
+      "detail": "",
+      "version": "2.32.5"
+    },
+    {
+      "category": "core",
+      "name": "python-dotenv",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'dotenv'",
+      "version": ""
+    },
+    {
+      "category": "core",
+      "name": "typing_extensions",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'typing_extensions'",
+      "version": ""
+    },
+    {
+      "category": "core",
+      "name": "pydantic",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'pydantic'",
+      "version": ""
+    },
+    {
+      "category": "core",
+      "name": "PyYAML",
+      "status": "OK",
+      "detail": "",
+      "version": "6.0.1"
+    },
+    {
+      "category": "core",
+      "name": "rich",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'rich'",
+      "version": ""
+    },
+    {
+      "category": "api",
+      "name": "fastapi",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'fastapi'",
+      "version": ""
+    },
+    {
+      "category": "api",
+      "name": "uvicorn",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'uvicorn'",
+      "version": ""
+    },
+    {
+      "category": "api",
+      "name": "starlette",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'starlette'",
+      "version": ""
+    },
+    {
+      "category": "api",
+      "name": "flask",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'flask'",
+      "version": ""
+    },
+    {
+      "category": "api",
+      "name": "flask-cors",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'flask_cors'",
+      "version": ""
+    },
+    {
+      "category": "vision",
+      "name": "opencv (cv2)",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'cv2'",
+      "version": ""
+    },
+    {
+      "category": "vision",
+      "name": "torch",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'torch'",
+      "version": ""
+    },
+    {
+      "category": "vision",
+      "name": "torchvision",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'torchvision'",
+      "version": ""
+    },
+    {
+      "category": "vision",
+      "name": "ultralytics",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'ultralytics'",
+      "version": ""
+    },
+    {
+      "category": "vision",
+      "name": "scikit-image",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'skimage'",
+      "version": ""
+    },
+    {
+      "category": "vision",
+      "name": "pillow",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'PIL'",
+      "version": ""
+    },
+    {
+      "category": "audio",
+      "name": "librosa",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'librosa'",
+      "version": ""
+    },
+    {
+      "category": "audio",
+      "name": "soundfile",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'soundfile'",
+      "version": ""
+    },
+    {
+      "category": "audio",
+      "name": "audioread",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'audioread'",
+      "version": ""
+    },
+    {
+      "category": "audio",
+      "name": "sounddevice",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'sounddevice'",
+      "version": ""
+    },
+    {
+      "category": "audio",
+      "name": "aubio",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'aubio'",
+      "version": ""
+    },
+    {
+      "category": "audio",
+      "name": "torchaudio",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'torchaudio'",
+      "version": ""
+    },
+    {
+      "category": "network",
+      "name": "pyartnet",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'pyartnet'",
+      "version": ""
+    },
+    {
+      "category": "network",
+      "name": "python-artnet",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'python_artnet'",
+      "version": ""
+    },
+    {
+      "category": "network",
+      "name": "sacn",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'sacn'",
+      "version": ""
+    },
+    {
+      "category": "system",
+      "name": "ffmpeg",
+      "status": "SKIPPED",
+      "detail": "binary not found in PATH",
+      "version": ""
+    },
+    {
+      "category": "system",
+      "name": "nvidia-smi",
+      "status": "SKIPPED",
+      "detail": "binary not found (no NVIDIA GPU or drivers)",
+      "version": ""
+    },
+    {
+      "category": "system",
+      "name": "libportaudio",
+      "status": "FAIL",
+      "detail": "FileNotFoundError: libportaudio not found",
+      "version": ""
+    },
+    {
+      "category": "system",
+      "name": "libsndfile",
+      "status": "FAIL",
+      "detail": "FileNotFoundError: libsndfile not found",
+      "version": ""
+    },
+    {
+      "category": "gpu",
+      "name": "torch.cuda",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'torch'",
+      "version": ""
+    },
+    {
+      "category": "gpu",
+      "name": "cuDNN",
+      "status": "FAIL",
+      "detail": "ImportError: No module named 'torch'",
+      "version": ""
+    }
+  ]
+}

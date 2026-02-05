@@ -1,0 +1,1287 @@
+{
+  "summary": {
+    "total_files_scanned": 158,
+    "total_unique_imports": 136,
+    "stdlib_count": 39,
+    "internal_count": 29,
+    "third_party_count": 68
+  },
+  "third_party": {
+    "PIL": {
+      "count": 2,
+      "files": [
+        "tools/audit/runtime_smoke_tests.py"
+      ],
+      "import_variants": [
+        "PIL"
+      ]
+    },
+    "PySide6": {
+      "count": 63,
+      "files": [
+        "analyzers/super_analyzer.py",
+        "analyzers/waveform_widget.py",
+        "bpm_ui.py",
+        "bpm_widget.py",
+        "clock_widget.py",
+        "cue_engine_debug_widget.py",
+        "cues_monitor_tab.py",
+        "main.py",
+        "module_card.py",
+        "scripts/smoke_show.py",
+        "state_manager.py",
+        "timers.py",
+        "tools/diag_boot.py",
+        "ui/bpm_master_tab.py",
+        "ui/calendar_schedule_editor.py",
+        "ui/calendar_status_widget.py",
+        "ui/calendar_tab.py",
+        "ui/layered_zone_editor.py",
+        "ui/vision_artist_tab.py",
+        "ui/vision_config_widget.py",
+        "ui/vision_dj_tab.py",
+        "ui/vision_haze_tab.py",
+        "ui/vision_tab.py",
+        "waveform_smooth.py"
+      ],
+      "import_variants": [
+        "PySide6",
+        "PySide6.QtCore",
+        "PySide6.QtGui",
+        "PySide6.QtWidgets"
+      ]
+    },
+    "artist_detector": {
+      "count": 1,
+      "files": [
+        "core_vision/vision_manager.py"
+      ],
+      "import_variants": [
+        "artist_detector"
+      ]
+    },
+    "aubio": {
+      "count": 1,
+      "files": [
+        "tools/audit/runtime_smoke_tests.py"
+      ],
+      "import_variants": [
+        "aubio"
+      ]
+    },
+    "auto_clock": {
+      "count": 2,
+      "files": [
+        "tempo/__init__.py",
+        "tempo/tap_bridge.py"
+      ],
+      "import_variants": [
+        "auto_clock"
+      ]
+    },
+    "av": {
+      "count": 2,
+      "files": [
+        "core_vision/camera_source.py",
+        "scripts/smoke_show.py"
+      ],
+      "import_variants": [
+        "av"
+      ]
+    },
+    "boot_manager": {
+      "count": 1,
+      "files": [
+        "core/__init__.py"
+      ],
+      "import_variants": [
+        "boot_manager"
+      ]
+    },
+    "calendar_manager": {
+      "count": 1,
+      "files": [
+        "core/calendar/__init__.py"
+      ],
+      "import_variants": [
+        "calendar_manager"
+      ]
+    },
+    "calendar_resolver": {
+      "count": 2,
+      "files": [
+        "core/calendar/__init__.py",
+        "core/calendar/calendar_manager.py"
+      ],
+      "import_variants": [
+        "calendar_resolver"
+      ]
+    },
+    "calendar_rules": {
+      "count": 2,
+      "files": [
+        "core/calendar/__init__.py",
+        "core/calendar/calendar_manager.py"
+      ],
+      "import_variants": [
+        "calendar_rules"
+      ]
+    },
+    "calendar_schedule_editor": {
+      "count": 1,
+      "files": [
+        "ui/calendar_tab.py"
+      ],
+      "import_variants": [
+        "calendar_schedule_editor"
+      ]
+    },
+    "calendar_state": {
+      "count": 3,
+      "files": [
+        "core/calendar/__init__.py",
+        "core/calendar/calendar_manager.py",
+        "core/calendar/calendar_resolver.py"
+      ],
+      "import_variants": [
+        "calendar_state"
+      ]
+    },
+    "camera_haze": {
+      "count": 3,
+      "files": [
+        "core_vision/__init__.py",
+        "core_vision/vision_manager.py",
+        "sensors/__init__.py"
+      ],
+      "import_variants": [
+        "camera_haze"
+      ]
+    },
+    "camera_loop": {
+      "count": 2,
+      "files": [
+        "core_vision/__init__.py",
+        "core_vision/vision_manager.py"
+      ],
+      "import_variants": [
+        "camera_loop"
+      ]
+    },
+    "camera_manager": {
+      "count": 1,
+      "files": [
+        "core/__init__.py"
+      ],
+      "import_variants": [
+        "camera_manager"
+      ]
+    },
+    "camera_people": {
+      "count": 1,
+      "files": [
+        "sensors/__init__.py"
+      ],
+      "import_variants": [
+        "camera_people"
+      ]
+    },
+    "camera_source": {
+      "count": 2,
+      "files": [
+        "core_vision/camera_loop.py",
+        "core_vision/vision_manager.py"
+      ],
+      "import_variants": [
+        "camera_source"
+      ]
+    },
+    "camera_tracking": {
+      "count": 2,
+      "files": [
+        "core_vision/__init__.py",
+        "sensors/__init__.py"
+      ],
+      "import_variants": [
+        "camera_tracking"
+      ]
+    },
+    "core_bpm": {
+      "count": 1,
+      "files": [
+        "tools/test_bpm_master.py"
+      ],
+      "import_variants": [
+        "core_bpm"
+      ]
+    },
+    "cue_map": {
+      "count": 2,
+      "files": [
+        "core/cues/__init__.py",
+        "core/cues/family_manager.py"
+      ],
+      "import_variants": [
+        "cue_map"
+      ]
+    },
+    "cues": {
+      "count": 1,
+      "files": [
+        "core/system_bridge.py"
+      ],
+      "import_variants": [
+        "cues"
+      ]
+    },
+    "cv2": {
+      "count": 19,
+      "files": [
+        "api_server.py",
+        "core/camera_manager.py",
+        "core/smart_camera.py",
+        "core_vision/camera_haze.py",
+        "core_vision/camera_source.py",
+        "core_vision/camera_tracking.py",
+        "core_vision/haze_detector.py",
+        "core_vision/yolo_roi_detector.py",
+        "scripts/smoke_server.py",
+        "scripts/smoke_show.py",
+        "sensors/camera_haze.py",
+        "sensors/camera_people.py",
+        "sensors/camera_tracking.py",
+        "tools/audit/runtime_smoke_tests.py",
+        "ui/layered_zone_editor.py",
+        "ui/vision_artist_tab.py",
+        "ui/vision_dj_tab.py",
+        "ui/vision_haze_tab.py",
+        "ui/vision_tab.py"
+      ],
+      "import_variants": [
+        "cv2"
+      ]
+    },
+    "dj_detector": {
+      "count": 2,
+      "files": [
+        "core_vision/__init__.py",
+        "core_vision/vision_manager.py"
+      ],
+      "import_variants": [
+        "dj_detector"
+      ]
+    },
+    "dotenv": {
+      "count": 1,
+      "files": [
+        "scripts/smoke_show.py"
+      ],
+      "import_variants": [
+        "dotenv"
+      ]
+    },
+    "energy_detector": {
+      "count": 1,
+      "files": [
+        "main.py"
+      ],
+      "import_variants": [
+        "energy_detector"
+      ]
+    },
+    "family_manager": {
+      "count": 1,
+      "files": [
+        "core/cues/__init__.py"
+      ],
+      "import_variants": [
+        "family_manager"
+      ]
+    },
+    "fastapi": {
+      "count": 16,
+      "files": [
+        "api/dependencies.py",
+        "api/main.py",
+        "api/routers/alerts.py",
+        "api/routers/analyzers.py",
+        "api/routers/calendar.py",
+        "api/routers/config.py",
+        "api/routers/cues.py",
+        "api/routers/network.py",
+        "api/routers/presets.py",
+        "api/routers/status.py",
+        "scripts/smoke_server.py"
+      ],
+      "import_variants": [
+        "fastapi",
+        "fastapi.middleware.cors",
+        "fastapi.responses"
+      ]
+    },
+    "flask": {
+      "count": 2,
+      "files": [
+        "api_server.py",
+        "scripts/smoke_show.py"
+      ],
+      "import_variants": [
+        "flask"
+      ]
+    },
+    "flask_cors": {
+      "count": 2,
+      "files": [
+        "api_server.py",
+        "scripts/smoke_show.py"
+      ],
+      "import_variants": [
+        "flask_cors"
+      ]
+    },
+    "httpx": {
+      "count": 5,
+      "files": [
+        "api/main.py",
+        "api/routers/calendar.py",
+        "api/routers/status.py"
+      ],
+      "import_variants": [
+        "httpx"
+      ]
+    },
+    "layered_zone_editor": {
+      "count": 3,
+      "files": [
+        "ui/__init__.py",
+        "ui/vision_artist_tab.py",
+        "ui/vision_dj_tab.py"
+      ],
+      "import_variants": [
+        "layered_zone_editor"
+      ]
+    },
+    "librosa": {
+      "count": 2,
+      "files": [
+        "analyzers/bpm_detector.py",
+        "scripts/smoke_show.py"
+      ],
+      "import_variants": [
+        "librosa"
+      ]
+    },
+    "numpy": {
+      "count": 67,
+      "files": [
+        "analyzers/accent_catcher.py",
+        "analyzers/ambient_confirmator.py",
+        "analyzers/beat_steady.py",
+        "analyzers/bpm_detector.py",
+        "analyzers/brake.py",
+        "analyzers/break_spotter.py",
+        "analyzers/burst_continuity.py",
+        "analyzers/burst_sharpness.py",
+        "analyzers/cadence_spotter.py",
+        "analyzers/deep_listener.py",
+        "analyzers/dynamic_flattener.py",
+        "analyzers/dynamic_pulse.py",
+        "analyzers/energy_cliff.py",
+        "analyzers/energy_detector.py",
+        "analyzers/flow_monitor.py",
+        "analyzers/groove_keeper.py",
+        "analyzers/hf_swell.py",
+        "analyzers/hi_roll.py",
+        "analyzers/high_silence.py",
+        "analyzers/loop_dissolver.py",
+        "analyzers/mid_range_finder.py",
+        "analyzers/no_hits.py",
+        "analyzers/pattern_lock.py",
+        "analyzers/percussive_build.py",
+        "analyzers/placeholder.py",
+        "analyzers/pre_steady_coherence.py",
+        "analyzers/pulse_finder.py",
+        "analyzers/ramp_down.py",
+        "analyzers/ramp_up.py",
+        "analyzers/rhythm_highlighter.py",
+        "analyzers/rhythm_tools.py",
+        "analyzers/rhythm_tracker.py",
+        "analyzers/rhythm_void.py",
+        "analyzers/snare_roll.py",
+        "analyzers/soft_peaks.py",
+        "analyzers/super_analyzer.py",
+        "analyzers/texture_cleaner.py",
+        "analyzers/waveform_widget.py",
+        "analyzers/wideband_blackout.py",
+        "analyzers/yes_hits.py",
+        "api_server.py",
+        "core/audio_monitor.py",
+        "core/smart_camera.py",
+        "core_vision/camera_haze.py",
+        "core_vision/camera_source.py",
+        "core_vision/camera_tracking.py",
+        "core_vision/haze_detector.py",
+        "core_vision/yolo_roi_detector.py",
+        "dsp_utils.py",
+        "engine_audio.py",
+        "flow_monitor.py",
+        "main.py",
+        "mod_basegolpe.py",
+        "sensors/camera_haze.py",
+        "sensors/camera_people.py",
+        "sensors/camera_tracking.py",
+        "tempo/auto_clock.py",
+        "tempo/kick_detector.py",
+        "tests/test_v11.py",
+        "tools/taptempo_only.py",
+        "tools/test_bpm_master.py",
+        "ui/layered_zone_editor.py",
+        "ui/vision_artist_tab.py",
+        "ui/vision_dj_tab.py",
+        "ui/vision_haze_tab.py",
+        "ui/vision_tab.py",
+        "waveform_smooth.py"
+      ],
+      "import_variants": [
+        "numpy"
+      ]
+    },
+    "psutil": {
+      "count": 3,
+      "files": [
+        "api/core_bridge.py",
+        "core/http_snapshot.py",
+        "main.py"
+      ],
+      "import_variants": [
+        "psutil"
+      ]
+    },
+    "pulse_finder": {
+      "count": 1,
+      "files": [
+        "analyzers/pulse_finder_wrapper.py"
+      ],
+      "import_variants": [
+        "pulse_finder"
+      ]
+    },
+    "pydantic": {
+      "count": 4,
+      "files": [
+        "api/models.py",
+        "api/routers/alerts.py",
+        "scripts/smoke_server.py"
+      ],
+      "import_variants": [
+        "pydantic"
+      ]
+    },
+    "pyqtgraph": {
+      "count": 3,
+      "files": [
+        "analyzers/super_analyzer.py",
+        "scripts/smoke_show.py",
+        "ui/bpm_master_tab.py"
+      ],
+      "import_variants": [
+        "pyqtgraph"
+      ]
+    },
+    "pytest": {
+      "count": 2,
+      "files": [
+        "tests/test_states.py",
+        "tests/test_v11.py"
+      ],
+      "import_variants": [
+        "pytest"
+      ]
+    },
+    "python_artnet": {
+      "count": 1,
+      "files": [
+        "tools/audit/runtime_smoke_tests.py"
+      ],
+      "import_variants": [
+        "python_artnet"
+      ]
+    },
+    "requests": {
+      "count": 9,
+      "files": [
+        "avolites_config.py",
+        "core/transport/titan_transport.py",
+        "core_vision/camera_source.py",
+        "tests/test_titan_transport.py"
+      ],
+      "import_variants": [
+        "requests",
+        "requests.adapters",
+        "requests.exceptions"
+      ]
+    },
+    "rhythm_tools": {
+      "count": 6,
+      "files": [
+        "analyzers/cadence_spotter.py",
+        "analyzers/dynamic_pulse.py",
+        "analyzers/flow_monitor.py",
+        "analyzers/groove_keeper.py",
+        "analyzers/rhythm_highlighter.py",
+        "flow_monitor.py"
+      ],
+      "import_variants": [
+        "rhythm_tools"
+      ]
+    },
+    "runtime_smoke_tests": {
+      "count": 1,
+      "files": [
+        "tools/audit/run_audit.py"
+      ],
+      "import_variants": [
+        "runtime_smoke_tests"
+      ]
+    },
+    "scipy": {
+      "count": 3,
+      "files": [
+        "analyzers/bpm_detector.py",
+        "analyzers/rhythm_highlighter.py",
+        "tempo/auto_clock.py"
+      ],
+      "import_variants": [
+        "scipy",
+        "scipy.signal"
+      ]
+    },
+    "smart_camera": {
+      "count": 1,
+      "files": [
+        "core/__init__.py"
+      ],
+      "import_variants": [
+        "smart_camera"
+      ]
+    },
+    "sounddevice": {
+      "count": 5,
+      "files": [
+        "engine_audio.py",
+        "main.py",
+        "scripts/smoke_show.py",
+        "tools/audit/runtime_smoke_tests.py",
+        "tools/taptempo_only.py"
+      ],
+      "import_variants": [
+        "sounddevice"
+      ]
+    },
+    "starlette": {
+      "count": 1,
+      "files": [
+        "scripts/smoke_server.py"
+      ],
+      "import_variants": [
+        "starlette"
+      ]
+    },
+    "static_import_scan": {
+      "count": 1,
+      "files": [
+        "tools/audit/run_audit.py"
+      ],
+      "import_variants": [
+        "static_import_scan"
+      ]
+    },
+    "system_bridge": {
+      "count": 1,
+      "files": [
+        "core/__init__.py"
+      ],
+      "import_variants": [
+        "system_bridge"
+      ]
+    },
+    "tap_bridge": {
+      "count": 1,
+      "files": [
+        "tempo/__init__.py"
+      ],
+      "import_variants": [
+        "tap_bridge"
+      ]
+    },
+    "titan_queue": {
+      "count": 2,
+      "files": [
+        "core/transport/__init__.py",
+        "core/transport/titan_sync.py"
+      ],
+      "import_variants": [
+        "titan_queue"
+      ]
+    },
+    "titan_sync": {
+      "count": 1,
+      "files": [
+        "core/transport/__init__.py"
+      ],
+      "import_variants": [
+        "titan_sync"
+      ]
+    },
+    "titan_transport": {
+      "count": 3,
+      "files": [
+        "core/transport/__init__.py",
+        "core/transport/titan_queue.py",
+        "core/transport/titan_sync.py"
+      ],
+      "import_variants": [
+        "titan_transport"
+      ]
+    },
+    "torch": {
+      "count": 5,
+      "files": [
+        "core_vision/yolo_roi_detector.py",
+        "scripts/smoke_show.py",
+        "tools/audit/runtime_smoke_tests.py"
+      ],
+      "import_variants": [
+        "torch"
+      ]
+    },
+    "transport": {
+      "count": 1,
+      "files": [
+        "core/__init__.py"
+      ],
+      "import_variants": [
+        "transport"
+      ]
+    },
+    "ultralytics": {
+      "count": 4,
+      "files": [
+        "core_vision/yolo_roi_detector.py",
+        "scripts/smoke_show.py",
+        "tools/audit/runtime_smoke_tests.py"
+      ],
+      "import_variants": [
+        "ultralytics"
+      ]
+    },
+    "uvicorn": {
+      "count": 3,
+      "files": [
+        "api/main.py",
+        "scripts/smoke_server.py"
+      ],
+      "import_variants": [
+        "uvicorn"
+      ]
+    },
+    "vision_artist_engine": {
+      "count": 1,
+      "files": [
+        "core_vision/artist_detector.py"
+      ],
+      "import_variants": [
+        "vision_artist_engine"
+      ]
+    },
+    "vision_artist_tab": {
+      "count": 1,
+      "files": [
+        "ui/__init__.py"
+      ],
+      "import_variants": [
+        "vision_artist_tab"
+      ]
+    },
+    "vision_config": {
+      "count": 2,
+      "files": [
+        "core_vision/__init__.py",
+        "core_vision/vision_manager.py"
+      ],
+      "import_variants": [
+        "vision_config"
+      ]
+    },
+    "vision_config_widget": {
+      "count": 1,
+      "files": [
+        "ui/__init__.py"
+      ],
+      "import_variants": [
+        "vision_config_widget"
+      ]
+    },
+    "vision_diagnostics": {
+      "count": 1,
+      "files": [
+        "sensors/__init__.py"
+      ],
+      "import_variants": [
+        "vision_diagnostics"
+      ]
+    },
+    "vision_dj_engine": {
+      "count": 2,
+      "files": [
+        "core_vision/__init__.py",
+        "core_vision/dj_detector.py"
+      ],
+      "import_variants": [
+        "vision_dj_engine"
+      ]
+    },
+    "vision_dj_tab": {
+      "count": 1,
+      "files": [
+        "ui/__init__.py"
+      ],
+      "import_variants": [
+        "vision_dj_tab"
+      ]
+    },
+    "vision_haze_tab": {
+      "count": 1,
+      "files": [
+        "ui/__init__.py"
+      ],
+      "import_variants": [
+        "vision_haze_tab"
+      ]
+    },
+    "vision_manager": {
+      "count": 1,
+      "files": [
+        "core_vision/__init__.py"
+      ],
+      "import_variants": [
+        "vision_manager"
+      ]
+    },
+    "vision_router": {
+      "count": 1,
+      "files": [
+        "core/__init__.py"
+      ],
+      "import_variants": [
+        "vision_router"
+      ]
+    },
+    "vision_state": {
+      "count": 2,
+      "files": [
+        "core_vision/__init__.py",
+        "core_vision/vision_manager.py"
+      ],
+      "import_variants": [
+        "vision_state"
+      ]
+    },
+    "yolo_roi_detector": {
+      "count": 3,
+      "files": [
+        "core_vision/__init__.py",
+        "core_vision/artist_detector.py",
+        "core_vision/dj_detector.py"
+      ],
+      "import_variants": [
+        "yolo_roi_detector"
+      ]
+    }
+  },
+  "internal": {
+    "analyzers": {
+      "count": 23,
+      "files": [
+        "analyzers/pulse_finder_wrapper.py",
+        "main.py",
+        "tests/test_v11.py"
+      ]
+    },
+    "api": {
+      "count": 20,
+      "files": [
+        "api/main.py",
+        "api/routers/alerts.py",
+        "api/routers/analyzers.py",
+        "api/routers/calendar.py",
+        "api/routers/config.py",
+        "api/routers/cues.py",
+        "api/routers/network.py",
+        "api/routers/presets.py",
+        "api/routers/status.py",
+        "main.py",
+        "scripts/smoke_server.py"
+      ]
+    },
+    "aux_state_manager": {
+      "count": 1,
+      "files": [
+        "cue_engine.py"
+      ]
+    },
+    "avolites_config": {
+      "count": 2,
+      "files": [
+        "main.py",
+        "tempo/tap_bridge.py"
+      ]
+    },
+    "base_module": {
+      "count": 13,
+      "files": [
+        "analyzers/accent_catcher.py",
+        "analyzers/ambient_confirmator.py",
+        "analyzers/break_spotter.py",
+        "analyzers/cadence_spotter.py",
+        "analyzers/dynamic_pulse.py",
+        "analyzers/flow_monitor.py",
+        "analyzers/groove_keeper.py",
+        "analyzers/high_silence.py",
+        "analyzers/ramp_down.py",
+        "analyzers/rhythm_highlighter.py",
+        "analyzers/texture_cleaner.py",
+        "analyzers/yes_hits.py",
+        "flow_monitor.py"
+      ]
+    },
+    "clock_widget": {
+      "count": 1,
+      "files": [
+        "main.py"
+      ]
+    },
+    "core": {
+      "count": 31,
+      "files": [
+        "api/core_bridge.py",
+        "api_server.py",
+        "avolites_config.py",
+        "core/boot_manager.py",
+        "core/http_snapshot.py",
+        "core_vision/artist_detector.py",
+        "core_vision/camera_haze.py",
+        "core_vision/camera_tracking.py",
+        "core_vision/dj_detector.py",
+        "core_vision/vision_artist_engine.py",
+        "core_vision/vision_dj_engine.py",
+        "cues_monitor_tab.py",
+        "main.py",
+        "tests/test_titan_transport.py",
+        "ui/calendar_tab.py"
+      ]
+    },
+    "core_vision": {
+      "count": 3,
+      "files": [
+        "core/boot_manager.py",
+        "main.py",
+        "ui/vision_config_widget.py"
+      ]
+    },
+    "cue_engine": {
+      "count": 4,
+      "files": [
+        "core/boot_manager.py",
+        "core/cues/family_manager.py",
+        "core/system_bridge.py",
+        "main.py"
+      ]
+    },
+    "cue_engine_debug_widget": {
+      "count": 1,
+      "files": [
+        "main.py"
+      ]
+    },
+    "cues_monitor_tab": {
+      "count": 1,
+      "files": [
+        "main.py"
+      ]
+    },
+    "dsp_utils": {
+      "count": 9,
+      "files": [
+        "analyzers/accent_catcher.py",
+        "analyzers/ambient_confirmator.py",
+        "analyzers/break_spotter.py",
+        "analyzers/dynamic_flattener.py",
+        "analyzers/high_silence.py",
+        "analyzers/ramp_down.py",
+        "analyzers/soft_peaks.py",
+        "analyzers/texture_cleaner.py",
+        "analyzers/yes_hits.py"
+      ]
+    },
+    "engine_audio": {
+      "count": 1,
+      "files": [
+        "main.py"
+      ]
+    },
+    "mod_ataque": {
+      "count": 1,
+      "files": [
+        "cue_engine.py"
+      ]
+    },
+    "mod_bajada": {
+      "count": 1,
+      "files": [
+        "cue_engine.py"
+      ]
+    },
+    "mod_basegolpe": {
+      "count": 6,
+      "files": [
+        "cue_engine.py",
+        "tests/test_v11.py"
+      ]
+    },
+    "mod_break": {
+      "count": 1,
+      "files": [
+        "cue_engine.py"
+      ]
+    },
+    "mod_control_dimmer": {
+      "count": 2,
+      "files": [
+        "cue_engine.py",
+        "mod_basegolpe.py"
+      ]
+    },
+    "mod_movimiento": {
+      "count": 1,
+      "files": [
+        "cue_engine.py"
+      ]
+    },
+    "mod_timed_sequence": {
+      "count": 1,
+      "files": [
+        "cue_engine.py"
+      ]
+    },
+    "module_card": {
+      "count": 38,
+      "files": [
+        "analyzers/accent_catcher.py",
+        "analyzers/ambient_confirmator.py",
+        "analyzers/beat_steady.py",
+        "analyzers/brake.py",
+        "analyzers/break_spotter.py",
+        "analyzers/burst_continuity.py",
+        "analyzers/burst_sharpness.py",
+        "analyzers/cadence_spotter.py",
+        "analyzers/deep_listener.py",
+        "analyzers/dynamic_flattener.py",
+        "analyzers/dynamic_pulse.py",
+        "analyzers/energy_cliff.py",
+        "analyzers/flow_monitor.py",
+        "analyzers/groove_keeper.py",
+        "analyzers/hf_swell.py",
+        "analyzers/hi_roll.py",
+        "analyzers/high_silence.py",
+        "analyzers/loop_dissolver.py",
+        "analyzers/mid_range_finder.py",
+        "analyzers/no_hits.py",
+        "analyzers/pattern_lock.py",
+        "analyzers/percussive_build.py",
+        "analyzers/placeholder.py",
+        "analyzers/pre_steady_coherence.py",
+        "analyzers/pulse_finder.py",
+        "analyzers/ramp_down.py",
+        "analyzers/ramp_up.py",
+        "analyzers/rhythm_highlighter.py",
+        "analyzers/rhythm_tracker.py",
+        "analyzers/rhythm_void.py",
+        "analyzers/snare_roll.py",
+        "analyzers/soft_peaks.py",
+        "analyzers/super_analyzer.py",
+        "analyzers/texture_cleaner.py",
+        "analyzers/wideband_blackout.py",
+        "analyzers/yes_hits.py",
+        "flow_monitor.py",
+        "main.py"
+      ]
+    },
+    "neon_styles": {
+      "count": 1,
+      "files": [
+        "main.py"
+      ]
+    },
+    "network_utils": {
+      "count": 4,
+      "files": [
+        "api/routers/network.py",
+        "avolites_config.py",
+        "main.py"
+      ]
+    },
+    "sensors": {
+      "count": 4,
+      "files": [
+        "api_server.py"
+      ]
+    },
+    "services": {
+      "count": 16,
+      "files": [
+        "api/core_bridge.py",
+        "api/dependencies.py",
+        "api/main.py",
+        "api/routers/alerts.py",
+        "api/routers/analyzers.py",
+        "api/routers/config.py",
+        "api/routers/cues.py",
+        "api/routers/network.py",
+        "api/routers/presets.py",
+        "api/routers/status.py",
+        "main.py",
+        "services/analyzer_service.py",
+        "services/preset_service.py"
+      ]
+    },
+    "state_manager": {
+      "count": 3,
+      "files": [
+        "main.py",
+        "tests/test_states.py"
+      ]
+    },
+    "tempo": {
+      "count": 5,
+      "files": [
+        "main.py",
+        "tools/taptempo_only.py"
+      ]
+    },
+    "ui": {
+      "count": 6,
+      "files": [
+        "analyzers/brake.py",
+        "main.py"
+      ]
+    },
+    "waveform_smooth": {
+      "count": 1,
+      "files": [
+        "main.py"
+      ]
+    }
+  },
+  "stdlib": [
+    "__future__",
+    "abc",
+    "argparse",
+    "ast",
+    "asyncio",
+    "calendar",
+    "collections",
+    "dataclasses",
+    "datetime",
+    "enum",
+    "gc",
+    "glob",
+    "hashlib",
+    "http",
+    "importlib",
+    "inspect",
+    "ipaddress",
+    "json",
+    "logging",
+    "math",
+    "os",
+    "pathlib",
+    "platform",
+    "queue",
+    "random",
+    "re",
+    "shutil",
+    "site",
+    "socket",
+    "subprocess",
+    "sys",
+    "tempfile",
+    "textwrap",
+    "threading",
+    "time",
+    "traceback",
+    "typing",
+    "unittest",
+    "uuid"
+  ],
+  "files_scanned": [
+    "analyzers/__init__.py",
+    "analyzers/accent_catcher.py",
+    "analyzers/ambient_confirmator.py",
+    "analyzers/beat_steady.py",
+    "analyzers/bpm_detector.py",
+    "analyzers/brake.py",
+    "analyzers/break_spotter.py",
+    "analyzers/burst_continuity.py",
+    "analyzers/burst_sharpness.py",
+    "analyzers/cadence_spotter.py",
+    "analyzers/deep_listener.py",
+    "analyzers/dynamic_flattener.py",
+    "analyzers/dynamic_pulse.py",
+    "analyzers/energy_cliff.py",
+    "analyzers/energy_detector.py",
+    "analyzers/flow_monitor.py",
+    "analyzers/groove_keeper.py",
+    "analyzers/hf_swell.py",
+    "analyzers/hi_roll.py",
+    "analyzers/high_silence.py",
+    "analyzers/loop_dissolver.py",
+    "analyzers/mid_range_finder.py",
+    "analyzers/module_config.py",
+    "analyzers/no_hits.py",
+    "analyzers/pattern_lock.py",
+    "analyzers/percussive_build.py",
+    "analyzers/placeholder.py",
+    "analyzers/pre_steady_coherence.py",
+    "analyzers/pulse_finder.py",
+    "analyzers/pulse_finder_wrapper.py",
+    "analyzers/ramp_down.py",
+    "analyzers/ramp_up.py",
+    "analyzers/rhythm_highlighter.py",
+    "analyzers/rhythm_tools.py",
+    "analyzers/rhythm_tracker.py",
+    "analyzers/rhythm_void.py",
+    "analyzers/snare_roll.py",
+    "analyzers/soft_peaks.py",
+    "analyzers/super_analyzer.py",
+    "analyzers/texture_cleaner.py",
+    "analyzers/waveform_widget.py",
+    "analyzers/wideband_blackout.py",
+    "analyzers/yes_hits.py",
+    "api/__init__.py",
+    "api/core_bridge.py",
+    "api/dependencies.py",
+    "api/main.py",
+    "api/models.py",
+    "api/routers/__init__.py",
+    "api/routers/alerts.py",
+    "api/routers/analyzers.py",
+    "api/routers/calendar.py",
+    "api/routers/config.py",
+    "api/routers/cues.py",
+    "api/routers/network.py",
+    "api/routers/presets.py",
+    "api/routers/status.py",
+    "api_server.py",
+    "aux_state_manager.py",
+    "avolites_config.py",
+    "base_module.py",
+    "bpm_ui.py",
+    "bpm_widget.py",
+    "clock_widget.py",
+    "core/__init__.py",
+    "core/audio_monitor.py",
+    "core/boot_manager.py",
+    "core/calendar/__init__.py",
+    "core/calendar/calendar_manager.py",
+    "core/calendar/calendar_resolver.py",
+    "core/calendar/calendar_rules.py",
+    "core/calendar/calendar_state.py",
+    "core/camera_manager.py",
+    "core/cues/__init__.py",
+    "core/cues/cue_map.py",
+    "core/cues/family_manager.py",
+    "core/http_snapshot.py",
+    "core/smart_camera.py",
+    "core/system_bridge.py",
+    "core/transport/__init__.py",
+    "core/transport/titan_queue.py",
+    "core/transport/titan_sync.py",
+    "core/transport/titan_transport.py",
+    "core/vision_router.py",
+    "core_vision/__init__.py",
+    "core_vision/artist_detector.py",
+    "core_vision/artist_tracker.py",
+    "core_vision/camera_haze.py",
+    "core_vision/camera_loop.py",
+    "core_vision/camera_source.py",
+    "core_vision/camera_tracking.py",
+    "core_vision/dj_detector.py",
+    "core_vision/haze_detector.py",
+    "core_vision/vision_artist_engine.py",
+    "core_vision/vision_config.py",
+    "core_vision/vision_dj_engine.py",
+    "core_vision/vision_manager.py",
+    "core_vision/vision_state.py",
+    "core_vision/yolo_roi_detector.py",
+    "cue_engine.py",
+    "cue_engine_debug_widget.py",
+    "cues_monitor_tab.py",
+    "dsp_utils.py",
+    "engine_audio.py",
+    "flow_monitor.py",
+    "main.py",
+    "mod_ataque.py",
+    "mod_bajada.py",
+    "mod_basegolpe.py",
+    "mod_break.py",
+    "mod_control_dimmer.py",
+    "mod_movimiento.py",
+    "mod_timed_sequence.py",
+    "module_card.py",
+    "module_config.py",
+    "neon_styles.py",
+    "network_utils.py",
+    "scripts/smoke_server.py",
+    "scripts/smoke_show.py",
+    "sensors/__init__.py",
+    "sensors/camera_haze.py",
+    "sensors/camera_people.py",
+    "sensors/camera_tracking.py",
+    "sensors/vision_diagnostics.py",
+    "services/__init__.py",
+    "services/analyzer_service.py",
+    "services/app_state.py",
+    "services/preset_service.py",
+    "state_manager.py",
+    "tempo/__init__.py",
+    "tempo/auto_clock.py",
+    "tempo/kick_detector.py",
+    "tempo/tap_bridge.py",
+    "tests/__init__.py",
+    "tests/test_states.py",
+    "tests/test_titan_transport.py",
+    "tests/test_v11.py",
+    "timers.py",
+    "tools/audit/__init__.py",
+    "tools/audit/run_audit.py",
+    "tools/audit/runtime_smoke_tests.py",
+    "tools/audit/static_import_scan.py",
+    "tools/diag_boot.py",
+    "tools/taptempo_only.py",
+    "tools/test_bpm_master.py",
+    "ui/__init__.py",
+    "ui/bpm_master_tab.py",
+    "ui/calendar_schedule_editor.py",
+    "ui/calendar_status_widget.py",
+    "ui/calendar_tab.py",
+    "ui/layered_zone_editor.py",
+    "ui/vision_artist_tab.py",
+    "ui/vision_config_widget.py",
+    "ui/vision_dj_tab.py",
+    "ui/vision_haze_tab.py",
+    "ui/vision_tab.py",
+    "union_bridge.py",
+    "waveform_smooth.py"
+  ]
+}
