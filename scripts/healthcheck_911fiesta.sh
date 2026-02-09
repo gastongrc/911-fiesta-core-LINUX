@@ -6,9 +6,10 @@
 # Validates that the 911 Fiesta installation is functional:
 #   1. System prerequisites (python3, ffmpeg, user, dirs)
 #   2. Python venv and critical imports
-#   3. Camera connectivity (RTSP/HTTP from vision_config.json)
-#   4. Systemd service status
-#   5. API endpoint responsiveness
+#   3. Camera connectivity (MJPEG HTTP / RTSP from vision_config.json)
+#   4. Hardware: GPU (NVIDIA) and Audio (USB device)
+#   5. Systemd service status
+#   6. API endpoint responsiveness
 #
 # Usage:
 #   bash scripts/healthcheck_911fiesta.sh
@@ -89,7 +90,8 @@ fi
 
 # Fiesta user
 if id fiesta &>/dev/null; then
-    pass "User 'fiesta' exists."
+    FIESTA_GROUPS=$(id -Gn fiesta 2>/dev/null | tr ' ' ',')
+    pass "User 'fiesta' exists. Groups: ${FIESTA_GROUPS}"
 else
     fail "User 'fiesta' not found. Run bootstrap_linux.sh."
 fi
@@ -115,6 +117,13 @@ if [[ -d "${CONFIG_DIR}" ]]; then
     pass "Config directory exists: ${CONFIG_DIR}"
 else
     warn "Config directory missing: ${CONFIG_DIR}"
+fi
+
+# Env file
+if [[ -f "${CONFIG_DIR}/911fiesta.env" ]]; then
+    pass "Environment file exists: ${CONFIG_DIR}/911fiesta.env"
+else
+    warn "Environment file missing: ${CONFIG_DIR}/911fiesta.env"
 fi
 
 echo ""
@@ -174,7 +183,7 @@ except Exception as e:
     fi
 }
 
-# Core imports
+# Core imports (required for all profiles)
 check_python_import "numpy" "numpy"
 check_python_import "cv2" "cv2 (OpenCV)"
 
@@ -291,8 +300,10 @@ if [[ -z "${VISION_CONFIG}" ]]; then
 else
     info "Reading cameras from ${VISION_CONFIG}"
 
-    # Extract camera URLs using Python (more reliable than jq for nested JSON)
-    CAMERA_URLS=$("${VENV_PYTHON}" -c "
+    # Extract camera info using Python — matches real vision_config.py logic:
+    #   type=mjpeg  -> build http://{user}:{pass}@{host}{path}
+    #   type=rtsp   -> use url / url_main / url_sub directly
+    CAMERA_LINES=$("${VENV_PYTHON}" -c "
 import json, sys
 try:
     with open('${VISION_CONFIG}') as f:
@@ -301,36 +312,69 @@ try:
     for name, cam in cameras.items():
         if not cam.get('enabled', False):
             continue
+        cam_type = cam.get('type', 'mjpeg').lower()
         host = cam.get('host', '')
         path = cam.get('path', '')
         user = cam.get('username', '')
         pwd  = cam.get('password', '')
-        if host:
+
+        # RTSP mode: use url / url_main / url_sub
+        if cam_type == 'rtsp' or cam.get('url_main') or cam.get('url_sub'):
+            url = cam.get('url', '') or cam.get('url_sub', '') or cam.get('url_main', '')
+            if not url:
+                print(f'{name}|rtsp||{host}|NO_URL')
+                continue
+            # Inject credentials if not in URL
+            if user and pwd and '@' not in url and url.startswith('rtsp://'):
+                url = f'rtsp://{user}:{pwd}@{url[7:]}'
+            target_host = host or url.split('@')[-1].split('/')[0].split(':')[0]
+            print(f'{name}|rtsp|{url}|{target_host}|OK')
+
+        # MJPEG mode: build from host + path
+        elif host:
             auth = f'{user}:{pwd}@' if user else ''
-            url = f'http://{auth}{host}{path}'
-            print(f'{name}|{url}|{host}')
+            if host.startswith('http://') or host.startswith('https://'):
+                url = f'{host}{path}'
+            else:
+                url = f'http://{auth}{host}{path}'
+            print(f'{name}|mjpeg|{url}|{host}|OK')
+
+        else:
+            print(f'{name}|{cam_type}||{host}|NO_HOST')
 except Exception as e:
-    print(f'ERROR|{e}|', file=sys.stderr)
+    print(f'ERROR|error|{e}||PARSE_FAIL', file=sys.stderr)
+    sys.exit(1)
 " 2>&1)
 
-    if [[ -z "${CAMERA_URLS}" ]]; then
+    if [[ -z "${CAMERA_LINES}" ]]; then
         warn "No enabled cameras found in vision_config.json."
     else
         CAMERA_TESTED=false
-        while IFS='|' read -r cam_name cam_url cam_host; do
+        while IFS='|' read -r cam_name cam_proto cam_url cam_host cam_status; do
             if [[ "${cam_name}" == "ERROR" ]]; then
                 fail "Could not parse vision_config.json: ${cam_url}"
                 continue
             fi
 
+            if [[ "${cam_status}" == "NO_URL" ]]; then
+                fail "Camera '${cam_name}': type=${cam_proto} but no URL configured."
+                continue
+            fi
+
+            if [[ "${cam_status}" == "NO_HOST" ]]; then
+                fail "Camera '${cam_name}': no host or URL configured."
+                continue
+            fi
+
             CAMERA_TESTED=true
-            info "Testing camera '${cam_name}' at ${cam_host} ..."
+            info "Testing camera '${cam_name}' (${cam_proto}) at ${cam_host} ..."
 
             # Test 1: Can we reach the host? (ping, 2 sec timeout)
             if ping -c 1 -W 2 "${cam_host}" &>/dev/null; then
                 pass "Camera '${cam_name}': host ${cam_host} is reachable."
             else
                 fail "Camera '${cam_name}': host ${cam_host} is NOT reachable."
+                info "  Protocol: ${cam_proto}"
                 info "  Possible causes:"
                 info "    - Camera is powered off or disconnected"
                 info "    - Wrong IP in vision_config.json"
@@ -340,19 +384,27 @@ except Exception as e:
             fi
 
             # Test 2: Can ffprobe open the stream? (5 sec timeout)
-            if timeout 5 ffprobe -v quiet -print_format json -show_streams "${cam_url}" &>/dev/null 2>&1; then
-                pass "Camera '${cam_name}': stream is accessible."
+            info "  Probing: ${cam_url}"
+            FFPROBE_OUT=$(timeout 5 ffprobe -v error -print_format json -show_streams "${cam_url}" 2>&1) || true
+            if echo "${FFPROBE_OUT}" | grep -q '"codec_type"'; then
+                pass "Camera '${cam_name}': ${cam_proto} stream is accessible."
             else
-                # Try with just HTTP (no auth in URL, some cameras block ffprobe)
-                warn "Camera '${cam_name}': ffprobe could not open stream."
-                info "  URL: ${cam_url}"
+                warn "Camera '${cam_name}': ffprobe could not open ${cam_proto} stream."
+                info "  URL tested: ${cam_url}"
+                info "  ffprobe output: $(echo "${FFPROBE_OUT}" | head -3)"
                 info "  Possible causes:"
-                info "    - Camera requires different auth method"
-                info "    - Incorrect path in vision_config.json"
-                info "    - Camera firmware does not support MJPEG on this path"
+                if [[ "${cam_proto}" == "rtsp" ]]; then
+                    info "    - RTSP port 554 blocked by firewall"
+                    info "    - Wrong RTSP path or credentials"
+                    info "    - Camera does not support RTSP on this URL"
+                else
+                    info "    - Camera requires different auth method (digest vs basic)"
+                    info "    - Incorrect MJPEG path in vision_config.json"
+                    info "    - Camera firmware does not serve MJPEG on this path"
+                fi
                 info "    - Network timeout (camera may be slow to respond)"
             fi
-        done <<< "${CAMERA_URLS}"
+        done <<< "${CAMERA_LINES}"
 
         if [[ "${CAMERA_TESTED}" == false ]]; then
             warn "No cameras could be tested."
@@ -363,10 +415,82 @@ fi
 echo ""
 
 # ===================================================================
-# Section 4: Systemd Service
+# Section 4: Hardware (GPU + Audio)
 # ===================================================================
 sep
-info "Section 4: Systemd Service"
+info "Section 4: Hardware — GPU & Audio"
+sep
+
+# --- NVIDIA GPU ---
+info "GPU check:"
+if command -v nvidia-smi &>/dev/null; then
+    GPU_INFO=$(nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader 2>/dev/null || echo "")
+    if [[ -n "${GPU_INFO}" ]]; then
+        pass "NVIDIA GPU detected: ${GPU_INFO}"
+    else
+        warn "nvidia-smi found but could not query GPU."
+    fi
+
+    # If torch is installed, verify CUDA is visible to PyTorch
+    if [[ "${TORCH_RESULT:-}" == OK:* ]]; then
+        CUDA_CHECK=$("${VENV_PYTHON}" -c "
+import torch
+if torch.cuda.is_available():
+    print(f'OK:{torch.cuda.get_device_name(0)} (CUDA {torch.version.cuda})')
+else:
+    print('NOCUDA:torch installed but CUDA not available')
+" 2>&1)
+        if [[ "${CUDA_CHECK}" == OK:* ]]; then
+            pass "PyTorch CUDA: ${CUDA_CHECK#OK:}"
+        else
+            warn "PyTorch CUDA: ${CUDA_CHECK#NOCUDA:}"
+            info "  Check: nvidia-smi, driver version, and torch CUDA build match."
+        fi
+    fi
+else
+    warn "nvidia-smi not found. No NVIDIA driver installed."
+    info "  If this machine has a GPU (e.g. 1080 Ti):"
+    info "    sudo ubuntu-drivers install && sudo reboot"
+fi
+
+# --- USB Audio Device ---
+info "Audio device check:"
+if command -v arecord &>/dev/null; then
+    AUDIO_DEVICES=$(arecord -l 2>/dev/null || true)
+    if [[ -n "${AUDIO_DEVICES}" ]] && echo "${AUDIO_DEVICES}" | grep -q "card"; then
+        pass "Audio capture devices found:"
+        # Print each card line
+        echo "${AUDIO_DEVICES}" | while IFS= read -r line; do
+            if [[ "${line}" == *"card"* ]]; then
+                info "  ${line}"
+            fi
+        done
+
+        # Specifically look for Maono PS22
+        if echo "${AUDIO_DEVICES}" | grep -qi "maono\|ps22"; then
+            pass "Maono PS22 USB audio detected."
+        else
+            warn "Maono PS22 not detected. Found other device(s) above."
+            info "  If Maono PS22 is connected, check: lsusb | grep -i maono"
+        fi
+    else
+        warn "No audio capture devices found."
+        info "  If a USB audio device (Maono PS22) should be present:"
+        info "    1. Check USB connection: lsusb"
+        info "    2. Check ALSA: cat /proc/asound/cards"
+        info "    3. Ensure fiesta user is in 'audio' group: id fiesta"
+    fi
+else
+    warn "arecord not found. Install: sudo apt install alsa-utils"
+fi
+
+echo ""
+
+# ===================================================================
+# Section 5: Systemd Service
+# ===================================================================
+sep
+info "Section 5: Systemd Service"
 sep
 
 # Unit file installed
@@ -394,10 +518,10 @@ fi
 echo ""
 
 # ===================================================================
-# Section 5: API Endpoint
+# Section 6: API Endpoint
 # ===================================================================
 sep
-info "Section 5: API Responsiveness"
+info "Section 6: API Responsiveness"
 sep
 
 # Check if the API is reachable on port 8000
