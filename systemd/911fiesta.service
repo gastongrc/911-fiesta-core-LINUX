@@ -1,0 +1,64 @@
+# 911 Fiesta V7 - Systemd Service Unit
+#
+# Installed by: scripts/install_911fiesta.sh
+# Destination:  /etc/systemd/system/911fiesta.service
+#
+# Configuration:
+#   /etc/911fiesta/911fiesta.env  (entrypoint, port, environment)
+#
+# Usage:
+#   systemctl start  911fiesta
+#   systemctl stop   911fiesta
+#   systemctl status 911fiesta
+#   journalctl -u 911fiesta -f
+
+[Unit]
+Description=911 Fiesta V7 - Vision & Lighting Control
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fiesta
+Group=fiesta
+
+WorkingDirectory=/opt/911fiesta
+
+# --- Environment ---
+# Base environment (always set)
+Environment="PATH=/opt/911fiesta/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+
+# Configurable environment from env file.
+# Edit /etc/911fiesta/911fiesta.env to change entrypoint, port, etc.
+EnvironmentFile=/etc/911fiesta/911fiesta.env
+
+# --- Entrypoint ---
+# FIESTA_EXEC_START is defined in /etc/911fiesta/911fiesta.env
+# Default: uvicorn api.main:app --host 0.0.0.0 --port 8000
+ExecStart=/opt/911fiesta/.venv/bin/${FIESTA_EXEC_START}
+
+# --- Restart Policy ---
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# --- Resource Limits ---
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# --- Logging ---
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=911fiesta
+
+# --- Security Hardening ---
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/911fiesta /etc/911fiesta /tmp
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
