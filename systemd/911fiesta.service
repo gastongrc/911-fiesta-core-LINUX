@@ -1,0 +1,55 @@
+# 911 Fiesta V7 - Systemd Service Unit
+#
+# Installed by: scripts/install_911fiesta.sh
+# Destination:  /etc/systemd/system/911fiesta.service
+#
+# Usage:
+#   systemctl start  911fiesta
+#   systemctl stop   911fiesta
+#   systemctl status 911fiesta
+#   journalctl -u 911fiesta -f
+
+[Unit]
+Description=911 Fiesta V7 - Vision & Lighting Control
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fiesta
+Group=fiesta
+
+WorkingDirectory=/opt/911fiesta
+Environment="PATH=/opt/911fiesta/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+Environment="QT_QPA_PLATFORM=offscreen"
+
+# --- Entrypoint ---
+# Default: headless API server (FastAPI @ port 8000)
+# Change to "python main.py" for GUI/kiosk mode (requires display)
+ExecStart=/opt/911fiesta/.venv/bin/uvicorn api.main:app --host 0.0.0.0 --port 8000
+
+# --- Restart Policy ---
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# --- Resource Limits ---
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# --- Logging ---
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=911fiesta
+
+# --- Security Hardening ---
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/911fiesta /etc/911fiesta /tmp
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
