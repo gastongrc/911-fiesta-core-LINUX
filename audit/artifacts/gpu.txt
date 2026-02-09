@@ -1,1 +1,44 @@
-# nvidia-smi not found — no NVIDIA GPU detected or drivers missing
+Thu Feb  5 18:19:02 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 572.60                 Driver Version: 572.60         CUDA Version: 12.8     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                  Driver-Model | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA GeForce RTX 3080      WDDM  |   00000000:01:00.0  On |                  N/A |
+| 41%   59C    P8             51W /  340W |    1223MiB /  10240MiB |     18%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A            1868    C+G   ....0.3719.93\msedgewebview2.exe      N/A      |
+|    0   N/A  N/A            6796    C+G   ...4__8wekyb3d8bbwe\ms-teams.exe      N/A      |
+|    0   N/A  N/A            8160    C+G   ...lus\logioptionsplus_agent.exe      N/A      |
+|    0   N/A  N/A            9668    C+G   ...App_cw5n1h2txyewy\LockApp.exe      N/A      |
+|    0   N/A  N/A            9812    C+G   C:\Windows\explorer.exe               N/A      |
+|    0   N/A  N/A           10428    C+G   ...2txyewy\CrossDeviceResume.exe      N/A      |
+|    0   N/A  N/A           10480    C+G   ....0.3719.93\msedgewebview2.exe      N/A      |
+|    0   N/A  N/A           10572    C+G   ...xyewy\ShellExperienceHost.exe      N/A      |
+|    0   N/A  N/A           10580    C+G   ...yb3d8bbwe\Notepad\Notepad.exe      N/A      |
+|    0   N/A  N/A           12352    C+G   ..._cw5n1h2txyewy\SearchHost.exe      N/A      |
+|    0   N/A  N/A           12360    C+G   ...y\StartMenuExperienceHost.exe      N/A      |
+|    0   N/A  N/A           14384    C+G   ....0.3719.93\msedgewebview2.exe      N/A      |
+|    0   N/A  N/A           16072    C+G   ...em32\ApplicationFrameHost.exe      N/A      |
+|    0   N/A  N/A           16552    C+G   ...IA app\CEF\NVIDIA Overlay.exe      N/A      |
+|    0   N/A  N/A           17916    C+G   ...IA app\CEF\NVIDIA Overlay.exe      N/A      |
+|    0   N/A  N/A           18620    C+G   ...2p2nqsd0c76g0\app\ChatGPT.exe      N/A      |
+|    0   N/A  N/A           18704    C+G   ...Chrome\Application\chrome.exe      N/A      |
+|    0   N/A  N/A           19816    C+G   ...1g1gvanyjgm\WhatsApp.Root.exe      N/A      |
+|    0   N/A  N/A           21172    C+G   ...8bbwe\PhoneExperienceHost.exe      N/A      |
+|    0   N/A  N/A           21368    C+G   ...5n1h2txyewy\TextInputHost.exe      N/A      |
+|    0   N/A  N/A           24672    C+G   ...Chrome\Application\chrome.exe      N/A      |
+|    0   N/A  N/A           24988    C+G   ...ntrolPanel\SystemSettings.exe      N/A      |
+|    0   N/A  N/A           27464    C+G   ...t\Edge\Application\msedge.exe      N/A      |
+|    0   N/A  N/A           30156    C+G   ...yb3d8bbwe\WindowsTerminal.exe      N/A      |
+|    0   N/A  N/A           37468    C+G   ...indows\System32\ShellHost.exe      N/A      |
++-----------------------------------------------------------------------------------------+

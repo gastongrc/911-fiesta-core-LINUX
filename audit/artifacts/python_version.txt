@@ -1,2 +1,2 @@
-3.11.14 (main, Oct 10 2025, 08:54:04) [GCC 13.3.0]
-/usr/local/bin/python
+3.11.14 | packaged by conda-forge | (main, Oct 22 2025, 22:35:28) [MSC v.1944 64 bit (AMD64)]
+C:\Users\gasto\.conda\envs\ohfiesta911\python.exe

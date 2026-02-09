@@ -1,7 +1,7 @@
-system: Linux
-release: 4.4.0
-version: #1 SMP Sun Jan 10 15:06:54 PST 2016
-machine: x86_64
-processor: x86_64
-platform: Linux-4.4.0-x86_64-with-glibc2.39
+system: Windows
+release: 10
+version: 10.0.26200
+machine: AMD64
+processor: Intel64 Family 6 Model 151 Stepping 2, GenuineIntel
+platform: Windows-10-10.0.26200-SP0
 python_implementation: CPython
