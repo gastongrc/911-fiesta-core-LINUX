@@ -216,7 +216,8 @@ sudo ufw allow 5000/tcp comment "911 Fiesta Vision API"
 ## Camera Configuration
 
 Cameras are configured in `/etc/911fiesta/vision_config.json` (or
-`vision_config.json` in the repo root). The system supports MJPEG over HTTP.
+`vision_config.json` in the repo root). The system supports MJPEG over HTTP
+and RTSP. See `docs/CAMERAS_PROTOCOLS.md` for full protocol reference.
 
 Example camera entry:
 
@@ -250,6 +251,27 @@ bash scripts/healthcheck_911fiesta.sh
 
 ---
 
+## Changing the Entrypoint
+
+The service entrypoint is configured in `/etc/911fiesta/911fiesta.env`:
+
+```bash
+sudo nano /etc/911fiesta/911fiesta.env
+```
+
+Available entrypoints:
+
+| Profile | `FIESTA_EXEC_START` value |
+|---------|---------------------------|
+| Server (headless API) | `uvicorn api.main:app --host 0.0.0.0 --port 8000` |
+| GUI (show) | `python main.py` |
+| Vision API only | `python api_server.py` |
+
+After editing, restart:
+```bash
+sudo systemctl restart 911fiesta
+```
+
 ## GUI / Kiosk Mode (Optional)
 
 For SHOW profile with a display attached:
@@ -259,17 +281,14 @@ For SHOW profile with a display attached:
    sudo bash scripts/install_911fiesta.sh --profile show --torch-gpu
    ```
 
-2. Edit the systemd service to use the GUI entrypoint:
+2. Edit the env file to use the GUI entrypoint:
    ```bash
-   sudo systemctl edit 911fiesta
+   sudo nano /etc/911fiesta/911fiesta.env
    ```
-   Add:
-   ```ini
-   [Service]
-   Environment="DISPLAY=:0"
-   Environment="QT_QPA_PLATFORM=xcb"
-   ExecStart=
-   ExecStart=/opt/911fiesta/.venv/bin/python /opt/911fiesta/main.py
+   Change:
+   ```bash
+   FIESTA_EXEC_START=python main.py
+   QT_QPA_PLATFORM=xcb
    ```
 
 3. Ensure the `fiesta` user has display access:
@@ -286,6 +305,13 @@ For SHOW profile with a display attached:
 
 For a kiosk setup that auto-starts the GUI on boot, configure auto-login
 in your display manager and use the systemd service with the GUI entrypoint.
+
+## Related Documentation
+
+- `docs/DEPENDENCIES_LINUX.md` — Package inventory and lock file regeneration
+- `docs/CAMERAS_PROTOCOLS.md` — MJPEG and RTSP protocol details
+- `docs/HARDWARE_CORE911.md` — NVIDIA 1080 Ti and Maono PS22 setup
+- `docs/UPDATE_RUNBOOK.md` — Update and rollback procedures
 
 ---
 
