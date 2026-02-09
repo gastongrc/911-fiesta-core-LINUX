@@ -114,6 +114,10 @@ apt-get install -y -qq \
     libsndfile1 \
     libsndfile1-dev
 
+# ALSA utilities (USB audio device detection: Maono PS22 etc.)
+apt-get install -y -qq \
+    alsa-utils
+
 # HDF5 (for tensorflow/keras model loading)
 apt-get install -y -qq \
     libhdf5-dev
@@ -124,6 +128,31 @@ apt-get install -y -qq \
     iputils-ping
 
 log "System packages installed."
+
+# ---------------------------------------------------------------------------
+# 1b. NVIDIA GPU driver (documentation only - manual step)
+# ---------------------------------------------------------------------------
+# The core911 machine has an NVIDIA 1080 Ti.
+# The NVIDIA driver is NOT installed automatically because:
+#   - Ubuntu 24.04 server may already have the driver via HWE kernel
+#   - The correct driver version depends on the specific kernel
+#   - Wrong driver can break the display / boot
+#
+# To install (if not already present):
+#   sudo ubuntu-drivers install
+#   # or for a specific version:
+#   sudo apt install nvidia-driver-535
+#   sudo reboot
+#
+# After reboot, verify with:
+#   nvidia-smi
+#
+if command -v nvidia-smi &>/dev/null; then
+    log "NVIDIA driver detected: $(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null || echo 'unknown version')"
+else
+    log "NOTE: NVIDIA driver not detected. If this machine has a GPU (e.g. 1080 Ti),"
+    log "  install the driver manually: sudo ubuntu-drivers install && sudo reboot"
+fi
 
 # ---------------------------------------------------------------------------
 # 2. Create fiesta user
@@ -141,6 +170,14 @@ else
         "${FIESTA_USER}"
     log "User '${FIESTA_USER}' created."
 fi
+
+# Ensure fiesta user is in audio and video groups (for USB audio + GPU access)
+for grp in audio video; do
+    if getent group "${grp}" &>/dev/null; then
+        usermod -aG "${grp}" "${FIESTA_USER}" 2>/dev/null || true
+        log "User '${FIESTA_USER}' added to '${grp}' group."
+    fi
+done
 
 # ---------------------------------------------------------------------------
 # 3. Create directories

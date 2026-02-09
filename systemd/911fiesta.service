@@ -3,6 +3,9 @@
 # Installed by: scripts/install_911fiesta.sh
 # Destination:  /etc/systemd/system/911fiesta.service
 #
+# Configuration:
+#   /etc/911fiesta/911fiesta.env  (entrypoint, port, environment)
+#
 # Usage:
 #   systemctl start  911fiesta
 #   systemctl stop   911fiesta
@@ -20,14 +23,20 @@ User=fiesta
 Group=fiesta
 
 WorkingDirectory=/opt/911fiesta
+
+# --- Environment ---
+# Base environment (always set)
 Environment="PATH=/opt/911fiesta/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="PYTHONUNBUFFERED=1"
-Environment="QT_QPA_PLATFORM=offscreen"
+
+# Configurable environment from env file.
+# Edit /etc/911fiesta/911fiesta.env to change entrypoint, port, etc.
+EnvironmentFile=/etc/911fiesta/911fiesta.env
 
 # --- Entrypoint ---
-# Default: headless API server (FastAPI @ port 8000)
-# Change to "python main.py" for GUI/kiosk mode (requires display)
-ExecStart=/opt/911fiesta/.venv/bin/uvicorn api.main:app --host 0.0.0.0 --port 8000
+# FIESTA_EXEC_START is defined in /etc/911fiesta/911fiesta.env
+# Default: uvicorn api.main:app --host 0.0.0.0 --port 8000
+ExecStart=/opt/911fiesta/.venv/bin/${FIESTA_EXEC_START}
 
 # --- Restart Policy ---
 Restart=on-failure

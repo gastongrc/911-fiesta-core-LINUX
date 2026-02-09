@@ -241,6 +241,16 @@ if [[ ! -f "${CONFIG_DIR}/audio_monitor.json" ]]; then
     fi
 fi
 
+# Copy environment file (systemd entrypoint config)
+if [[ ! -f "${CONFIG_DIR}/911fiesta.env" ]]; then
+    if [[ -f "${FIESTA_HOME}/systemd/911fiesta.env" ]]; then
+        cp "${FIESTA_HOME}/systemd/911fiesta.env" "${CONFIG_DIR}/911fiesta.env"
+        chown "${FIESTA_USER}:${FIESTA_USER}" "${CONFIG_DIR}/911fiesta.env"
+        chmod 640 "${CONFIG_DIR}/911fiesta.env"
+        log "Copied 911fiesta.env to ${CONFIG_DIR}/"
+    fi
+fi
+
 log "Configuration files ready in ${CONFIG_DIR}/."
 
 # ---------------------------------------------------------------------------
