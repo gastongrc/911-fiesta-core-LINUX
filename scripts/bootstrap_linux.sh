@@ -175,6 +175,16 @@ if [[ "${INSTALL_PROFILE}" == "show" ]]; then
         libxcb-shape0 \
         libxcb-xfixes0
     log "GUI dependencies installed."
+
+    # Xorg kiosk: minimal X + window manager (NO desktop environment)
+    log "Installing Xorg kiosk packages ..."
+    apt-get install -y -qq \
+        xinit \
+        x11-xserver-utils \
+        openbox
+    # Optional: hide cursor after inactivity
+    apt-get install -y -qq unclutter 2>/dev/null || true
+    log "Kiosk packages installed."
 fi
 
 # ---------------------------------------------------------------------------

@@ -618,7 +618,7 @@ class Main(QMainWindow):
         self.showFullScreen()
         self.raise_()
         self.activateWindow()
-        # Delayed re-focus: GNOME compositor needs time after session start
+        # Delayed re-focus: safety net for Xorg/WM startup timing
         QTimer.singleShot(700, lambda: (
             self.raise_(),
             self.activateWindow()

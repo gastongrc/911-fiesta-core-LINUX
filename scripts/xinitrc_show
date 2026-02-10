@@ -1,0 +1,31 @@
+#!/bin/sh
+# =============================================================================
+# 911 Fiesta V7 - SHOW Xorg Session (.xinitrc)
+# =============================================================================
+#
+# Started by 'startx' from fiesta911's .bash_profile on TTY1.
+# Launches Xorg + openbox (minimal WM) + 911 Fiesta in kiosk mode.
+#
+# NO desktop environment. NO GNOME. NO compositor. NO dock. NO panels.
+#
+# Install:
+#   cp /opt/911fiesta/scripts/xinitrc_show /opt/911fiesta/.xinitrc
+#   chown fiesta911:fiesta911 /opt/911fiesta/.xinitrc
+#
+# =============================================================================
+
+# Disable screen blanking, DPMS power saving, and screensaver
+xset s off
+xset -dpms
+xset s noblank
+
+# Hide cursor after 5 seconds of inactivity (if unclutter is installed)
+if command -v unclutter >/dev/null 2>&1; then
+    unclutter -idle 5 -root &
+fi
+
+# Start openbox (minimal window manager — focus handling, no decorations)
+openbox &
+
+# Launch 911 Fiesta — when this process exits, X session ends
+exec /opt/911fiesta/scripts/run_show.sh
