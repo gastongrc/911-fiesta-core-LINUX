@@ -37,9 +37,9 @@ WARN_COUNT=0
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-pass()  { echo "[PASS] $*";  ((PASS_COUNT++)); }
-fail()  { echo "[FAIL] $*";  ((FAIL_COUNT++)); }
-warn()  { echo "[WARN] $*";  ((WARN_COUNT++)); }
+pass()  { echo "[PASS] $*";  PASS_COUNT=$((PASS_COUNT + 1)); }
+fail()  { echo "[FAIL] $*";  FAIL_COUNT=$((FAIL_COUNT + 1)); }
+warn()  { echo "[WARN] $*";  WARN_COUNT=$((WARN_COUNT + 1)); }
 info()  { echo "[INFO] $*"; }
 sep()   { echo "-------------------------------------------"; }
 
