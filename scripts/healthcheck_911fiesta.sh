@@ -539,7 +539,7 @@ if [[ "${PYSIDE_RESULT}" == OK:* ]]; then
     fi
 
     # Check libxcb-cursor0 (common missing dep)
-    if ldconfig -p 2>/dev/null | grep -q "libxcb-cursor"; then
+    if ldconfig -p 2>/dev/null | grep -q "libxcb-cursor.so"; then
         pass "libxcb-cursor0 is installed."
     else
         fail "libxcb-cursor0 NOT found. PySide6 xcb plugin will fail."
