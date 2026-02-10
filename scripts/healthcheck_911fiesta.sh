@@ -487,6 +487,69 @@ fi
 echo ""
 
 # ===================================================================
+# Section 4b: GUI / Display (SHOW profile)
+# ===================================================================
+sep
+info "Section 4b: GUI / Display Readiness (SHOW profile)"
+sep
+
+# Check PySide6 import
+PYSIDE_RESULT=$("${VENV_PYTHON}" -c "
+try:
+    import PySide6.QtWidgets; print(f'OK:{PySide6.__version__}')
+except ImportError as e:
+    print(f'MISSING:{e}')
+except Exception as e:
+    print(f'ERROR:{e}')
+" 2>&1)
+
+if [[ "${PYSIDE_RESULT}" == OK:* ]]; then
+    pass "PySide6: ${PYSIDE_RESULT#OK:}"
+
+    # If PySide6 is installed, this is a SHOW machine — check display
+    if [[ -n "${DISPLAY:-}" ]]; then
+        pass "DISPLAY is set: ${DISPLAY}"
+    elif [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+        pass "WAYLAND_DISPLAY is set: ${WAYLAND_DISPLAY}"
+    else
+        warn "No DISPLAY or WAYLAND_DISPLAY set."
+        info "  SHOW requires a graphical session (X11 or Wayland)."
+        info "  If running from SSH, this is expected. On the actual"
+        info "  SHOW machine, the fiesta user must log into a desktop."
+    fi
+
+    # Check X socket exists
+    if [[ -e "/tmp/.X11-unix/X0" ]]; then
+        pass "X11 socket exists: /tmp/.X11-unix/X0"
+    else
+        warn "X11 socket /tmp/.X11-unix/X0 not found."
+        info "  Expected on a machine with a running X server."
+    fi
+
+    # Check libxcb-cursor0 (common missing dep)
+    if ldconfig -p 2>/dev/null | grep -q "libxcb-cursor"; then
+        pass "libxcb-cursor0 is installed."
+    else
+        fail "libxcb-cursor0 NOT found. PySide6 xcb plugin will fail."
+        info "  Fix: sudo apt install libxcb-cursor0"
+    fi
+
+    # Check autostart desktop file
+    if [[ -f "/etc/xdg/autostart/911fiesta-show.desktop" ]]; then
+        pass "XDG autostart file installed."
+    else
+        warn "XDG autostart file not installed."
+        info "  Install: sudo cp /opt/911fiesta/systemd/911fiesta-show.desktop /etc/xdg/autostart/"
+    fi
+elif [[ "${PYSIDE_RESULT}" == MISSING:* ]]; then
+    info "PySide6 not installed (server profile — GUI checks skipped)."
+else
+    warn "PySide6 import error: ${PYSIDE_RESULT#ERROR:}"
+fi
+
+echo ""
+
+# ===================================================================
 # Section 5: Systemd Service
 # ===================================================================
 sep

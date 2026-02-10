@@ -1,4 +1,4 @@
-# 911 Fiesta V7 - System packages for Ubuntu/Debian headless
+# 911 Fiesta V7 - System packages for Ubuntu/Debian
 #
 # Install with:
 #   sudo apt-get update && sudo apt-get install -y $(grep -v '^#' infra/linux/apt-packages.txt | grep -v '^$')
@@ -7,6 +7,7 @@
 #   [required]  - needed for base operation
 #   [vision]    - needed for camera/detection pipeline
 #   [audio]     - needed for audio capture/analysis
+#   [gui]       - needed for SHOW profile (PySide6 on X11)
 #   [candidate] - may be needed; verify with your setup
 
 # === Python Runtime [required] ===
@@ -37,6 +38,18 @@ libxkbcommon0
 libdbus-1-3
 libfontconfig1
 libxcb-xinerama0
+
+# === Qt / PySide6 GUI (SHOW profile) [gui] ===
+# Required for PySide6 xcb plugin on Ubuntu. Without these, Qt fails with:
+#   "could not find or load the Qt platform plugin xcb"
+libxcb-cursor0
+libxcb-icccm4
+libxcb-image0
+libxcb-keysyms1
+libxcb-randr0
+libxcb-render-util0
+libxcb-shape0
+libxcb-xfixes0
 
 # === FFmpeg [vision][audio] ===
 ffmpeg

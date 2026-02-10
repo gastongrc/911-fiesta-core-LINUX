@@ -1,0 +1,20 @@
+[Desktop Entry]
+# 911 Fiesta V7 - SHOW GUI Autostart
+#
+# Install to /etc/xdg/autostart/ for all users, or
+# ~/.config/autostart/ for the fiesta user only.
+#
+# Install command:
+#   sudo cp /opt/911fiesta/systemd/911fiesta-show.desktop /etc/xdg/autostart/
+#
+# To disable without removing:
+#   Add "Hidden=true" below, or remove from /etc/xdg/autostart/
+#
+Type=Application
+Name=911 Fiesta SHOW
+Comment=911 Fiesta V7 - Lighting Show GUI
+Exec=/opt/911fiesta/scripts/run_show.sh
+Path=/opt/911fiesta
+Terminal=false
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
