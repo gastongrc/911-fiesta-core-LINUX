@@ -296,6 +296,13 @@ if [[ "${INSTALL_PROFILE}" == "show" ]]; then
     chmod 755 "${FIESTA_HOME}/.xinitrc"
     log "Installed .xinitrc for ${FIESTA_USER}."
 
+    # --- Xorg monitor config (force 1920x1080 at framebuffer level) ---
+    XORG_CONF_DIR="/etc/X11/xorg.conf.d"
+    mkdir -p "${XORG_CONF_DIR}"
+    cp "${FIESTA_HOME}/xorg/10-monitor.conf" "${XORG_CONF_DIR}/10-monitor.conf"
+    chmod 644 "${XORG_CONF_DIR}/10-monitor.conf"
+    log "Installed Xorg monitor config (1920x1080) to ${XORG_CONF_DIR}/."
+
     # --- .bash_profile (auto-startx on TTY1) ---
     BASH_PROFILE="${FIESTA_HOME}/.bash_profile"
     STARTX_MARKER="# 911fiesta-kiosk-startx"
