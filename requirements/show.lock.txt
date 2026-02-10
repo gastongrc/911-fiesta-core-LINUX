@@ -2,7 +2,7 @@
 #
 # GENERATED: 2026-01-26 (updated 2026-02-10)
 # PYTHON: 3.10.x / 3.11.x
-# PLATFORM: Linux x86_64 (Ubuntu 24.04 target) / Windows 64-bit
+# PLATFORM: Linux x86_64 (Ubuntu 22.04.5 Desktop target) / Windows 64-bit
 #
 # IMPORTANTE: torch/torchvision se instalan por separado
 # Ver docs/SHOW_RUNBOOK.md (Linux) o docs/INSTALL_WINDOWS_GPU.md (Windows)

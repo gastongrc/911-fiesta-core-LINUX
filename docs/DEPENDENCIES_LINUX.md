@@ -2,8 +2,8 @@
 
 ## Python Version
 
-**Target: Python 3.11.x** (Ubuntu 24.04 ships python3 3.12; 3.11 from deadsnakes
-if needed, but the lock files are tested with 3.10.x / 3.11.x).
+**Target: Python 3.10.x** (Ubuntu 22.04 ships python3 3.10; the lock files are
+tested with 3.10.x / 3.11.x).
 
 The venv uses the system `python3` unless a specific version is required.
 

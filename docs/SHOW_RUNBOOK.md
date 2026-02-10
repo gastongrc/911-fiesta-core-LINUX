@@ -3,18 +3,19 @@
 ## Overview
 
 The **SHOW** profile runs the full 911 Fiesta application with a PySide6 GUI
-on a machine with a physical display (monitor + keyboard). It includes audio
-analysis, vision/camera pipelines, and the lighting cue engine.
+on a dedicated Core911 machine with a physical display (monitor + keyboard).
+It includes audio analysis, vision/camera pipelines, and the lighting cue engine.
 
 **Entrypoint:** `main.py` (PySide6 QApplication)
-**Launch method:** XDG autostart via `.desktop` file (recommended)
-**User:** `fiesta` (login user with `/bin/bash` shell)
+**Launch method:** XDG autostart via `.desktop` file + GDM autologin
+**User:** `fiesta911` (login user with `/bin/bash` shell)
+**Target OS:** Ubuntu 22.04.5 LTS Desktop (amd64)
 
 ---
 
 ## Prerequisites
 
-- Ubuntu 24.04 LTS (desktop or server with desktop environment installed)
+- Ubuntu 22.04.5 LTS Desktop (amd64) — only supported target
 - Physical display connected (HDMI/DP)
 - NVIDIA GPU with driver installed (for YOLO/vision)
 - USB audio device (Maono PS22) connected
@@ -31,8 +32,8 @@ cd /tmp/911fiesta-installer
 # 2. Bootstrap with SHOW profile (installs GUI deps, creates login user)
 sudo bash scripts/bootstrap_linux.sh --profile show
 
-# 3. Set password for fiesta user (needed for desktop login)
-sudo passwd fiesta
+# 3. Set password for fiesta911 user
+sudo passwd fiesta911
 
 # 4. Install application with SHOW profile
 sudo bash scripts/install_911fiesta.sh --profile show --torch-gpu
@@ -40,15 +41,22 @@ sudo bash scripts/install_911fiesta.sh --profile show --torch-gpu
 # 5. Install autostart desktop file
 sudo cp /opt/911fiesta/systemd/911fiesta-show.desktop /etc/xdg/autostart/
 
-# 6. Verify
+# 6. Configure GDM autologin (MANDATORY for Core911)
+sudo nano /etc/gdm3/custom.conf
+# Set: AutomaticLoginEnable=true / AutomaticLogin=fiesta911
+
+# 7. Verify
 bash scripts/healthcheck_911fiesta.sh
+
+# 8. Reboot — SHOW starts automatically
+sudo reboot
 ```
 
 ---
 
 ## How SHOW Starts
 
-1. The `fiesta` user logs into a graphical desktop session (GDM, LightDM, etc.)
+1. Machine boots → GDM auto-logs in as `fiesta911` (autologin is mandatory)
 2. The desktop environment reads `/etc/xdg/autostart/911fiesta-show.desktop`
 3. The `.desktop` file calls `/opt/911fiesta/scripts/run_show.sh`
 4. `run_show.sh` activates the venv, sets `QT_QPA_PLATFORM=xcb`, and executes
@@ -65,14 +73,12 @@ GUI applications at login, and it works across GNOME, KDE, XFCE, etc.
 
 ---
 
-## Auto-Login (Kiosk Mode)
+## GDM Autologin (Mandatory)
 
-For a SHOW machine that should boot directly into the GUI without manual login:
-
-### GNOME (Ubuntu Desktop)
+Core911 is a dedicated SHOW machine. GDM autologin is **mandatory** so
+the machine boots directly into the GUI without manual login.
 
 ```bash
-# Edit GDM config
 sudo nano /etc/gdm3/custom.conf
 ```
 
@@ -80,33 +86,29 @@ Set:
 ```ini
 [daemon]
 AutomaticLoginEnable=true
-AutomaticLogin=fiesta
+AutomaticLogin=fiesta911
 ```
 
-Then reboot. The machine will auto-login as `fiesta` and the SHOW starts
+Then reboot. The machine will auto-login as `fiesta911` and the SHOW starts
 via XDG autostart.
 
-### LightDM
-
-```bash
-sudo nano /etc/lightdm/lightdm.conf
-```
-
-Set:
-```ini
-[Seat:*]
-autologin-user=fiesta
-autologin-user-timeout=0
-```
+> **Note:** LightDM is NOT the default on Ubuntu 22.04 Desktop. If your
+> install uses LightDM instead of GDM, set:
+> ```ini
+> # /etc/lightdm/lightdm.conf
+> [Seat:*]
+> autologin-user=fiesta911
+> autologin-user-timeout=0
+> ```
 
 ---
 
 ## Manual Launch
 
-If autostart is not configured, or for testing:
+For testing only (autologin should be configured on production machines):
 
 ```bash
-# As the fiesta user, in a graphical session:
+# As the fiesta911 user, in a graphical session:
 bash /opt/911fiesta/scripts/run_show.sh
 
 # Or directly:
@@ -171,7 +173,7 @@ pip install PySide6==6.9.0
 ### SHOW starts but no audio
 
 - Check USB audio device: `arecord -l`
-- Ensure fiesta is in `audio` group: `id fiesta`
+- Ensure fiesta911 is in `audio` group: `id fiesta911`
 - Check config: `/etc/911fiesta/audio_monitor.json`
 
 ### SHOW starts but cameras fail

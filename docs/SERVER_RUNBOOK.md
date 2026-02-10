@@ -8,7 +8,7 @@ and provides endpoints for status, analyzers, cues, presets, and vision proxy.
 
 **Entrypoint:** `uvicorn api.main:app --host 0.0.0.0 --port 8000`
 **Launch method:** systemd service `911fiesta.service`
-**User:** `fiesta` (system user with `/usr/sbin/nologin` shell)
+**User:** `fiesta911` (system user with `/usr/sbin/nologin` shell)
 
 ---
 
@@ -149,19 +149,19 @@ The venv PATH may not be set. Check:
 
 If missing, reinstall:
 ```bash
-sudo -u fiesta /opt/911fiesta/.venv/bin/pip install uvicorn
+sudo -u fiesta911 /opt/911fiesta/.venv/bin/pip install uvicorn
 ```
 
 ### Permission denied on /opt/911fiesta
 
 ```bash
-sudo chown -R fiesta:fiesta /opt/911fiesta
+sudo chown -R fiesta911:fiesta911 /opt/911fiesta
 ```
 
 ### git safe.directory error
 
 ```bash
-sudo -u fiesta git config --global --add safe.directory /opt/911fiesta
+sudo -u fiesta911 git config --global --add safe.directory /opt/911fiesta
 ```
 
 ---

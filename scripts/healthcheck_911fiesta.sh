@@ -88,12 +88,12 @@ else
     fail "ffprobe not found. Install: sudo apt install ffmpeg"
 fi
 
-# Fiesta user
-if id fiesta &>/dev/null; then
-    FIESTA_GROUPS=$(id -Gn fiesta 2>/dev/null | tr ' ' ',')
-    pass "User 'fiesta' exists. Groups: ${FIESTA_GROUPS}"
+# Fiesta911 user
+if id fiesta911 &>/dev/null; then
+    FIESTA_GROUPS=$(id -Gn fiesta911 2>/dev/null | tr ' ' ',')
+    pass "User 'fiesta911' exists. Groups: ${FIESTA_GROUPS}"
 else
-    fail "User 'fiesta' not found. Run bootstrap_linux.sh."
+    fail "User 'fiesta911' not found. Run bootstrap_linux.sh."
 fi
 
 # Application directory
@@ -478,7 +478,7 @@ if command -v arecord &>/dev/null; then
         info "  If a USB audio device (Maono PS22) should be present:"
         info "    1. Check USB connection: lsusb"
         info "    2. Check ALSA: cat /proc/asound/cards"
-        info "    3. Ensure fiesta user is in 'audio' group: id fiesta"
+        info "    3. Ensure fiesta911 user is in 'audio' group: id fiesta911"
     fi
 else
     warn "arecord not found. Install: sudo apt install alsa-utils"
@@ -515,7 +515,7 @@ if [[ "${PYSIDE_RESULT}" == OK:* ]]; then
         warn "No DISPLAY or WAYLAND_DISPLAY set."
         info "  SHOW requires a graphical session (X11 or Wayland)."
         info "  If running from SSH, this is expected. On the actual"
-        info "  SHOW machine, the fiesta user must log into a desktop."
+        info "  SHOW machine, the fiesta911 user must log into a desktop."
     fi
 
     # Check X socket exists

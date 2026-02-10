@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # =============================================================================
-# 911 Fiesta V7 - Bootstrap Script for Ubuntu 24.04.3
+# 911 Fiesta V7 - Bootstrap Script for Ubuntu 22.04.5 Desktop
 # =============================================================================
 #
-# Prepares a clean Ubuntu 24.04.3 server for 911 Fiesta installation.
-# Installs system packages, creates the fiesta user, and sets up directories.
+# Prepares a clean Ubuntu 22.04.5 Desktop server for 911 Fiesta installation.
+# Installs system packages, creates the fiesta911 user, and sets up directories.
 #
 # Usage:
 #   sudo bash scripts/bootstrap_linux.sh [--profile server|show]
@@ -21,12 +21,12 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-readonly FIESTA_USER="fiesta"
+readonly FIESTA_USER="fiesta911"
 readonly FIESTA_HOME="/opt/911fiesta"
 readonly CONFIG_DIR="/etc/911fiesta"
 readonly LOG_TAG="[bootstrap]"
 readonly REQUIRED_OS="Ubuntu"
-readonly REQUIRED_VERSION="24.04"
+readonly REQUIRED_VERSION="22.04"
 
 # Defaults
 INSTALL_PROFILE="server"
@@ -68,7 +68,7 @@ if [[ $EUID -ne 0 ]]; then
     die "This script must be run as root (sudo)."
 fi
 
-# Verify we are on Ubuntu 24.04
+# Verify we are on Ubuntu 22.04
 if [[ -f /etc/os-release ]]; then
     # shellcheck source=/dev/null
     source /etc/os-release
@@ -182,7 +182,7 @@ fi
 # ---------------------------------------------------------------------------
 # The core911 machine has an NVIDIA 1080 Ti.
 # The NVIDIA driver is NOT installed automatically because:
-#   - Ubuntu 24.04 server may already have the driver via HWE kernel
+#   - Ubuntu 22.04 desktop may already have the driver via HWE kernel
 #   - The correct driver version depends on the specific kernel
 #   - Wrong driver can break the display / boot
 #
@@ -203,7 +203,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 2. Create fiesta user
+# 2. Create fiesta911 user
 # ---------------------------------------------------------------------------
 if id "${FIESTA_USER}" &>/dev/null; then
     log "User '${FIESTA_USER}' already exists."
@@ -240,7 +240,7 @@ else
     log "User '${FIESTA_USER}' created."
 fi
 
-# Ensure fiesta user is in required groups
+# Ensure fiesta911 user is in required groups
 GROUPS_LIST="audio video"
 if [[ "${INSTALL_PROFILE}" == "show" ]]; then
     GROUPS_LIST="audio video render"

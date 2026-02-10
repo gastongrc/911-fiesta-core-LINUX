@@ -7,7 +7,7 @@
 # and launches the PySide6 GUI (main.py).
 #
 # Intended to be called from:
-#   - XDG autostart (.desktop file) when the fiesta user logs in
+#   - XDG autostart (.desktop file) when the fiesta911 user logs in
 #   - Manual launch: bash /opt/911fiesta/scripts/run_show.sh
 #
 # Prerequisites:

@@ -58,7 +58,7 @@ This is already set in the systemd unit for the server profile.
 /opt/911fiesta/.venv/bin/uvicorn --version
 
 # If missing:
-sudo -u fiesta /opt/911fiesta/.venv/bin/pip install uvicorn
+sudo -u fiesta911 /opt/911fiesta/.venv/bin/pip install uvicorn
 ```
 
 ### "ModuleNotFoundError: No module named 'fastapi'"
@@ -67,7 +67,7 @@ sudo -u fiesta /opt/911fiesta/.venv/bin/pip install uvicorn
 
 **Fix:**
 ```bash
-sudo -u fiesta /opt/911fiesta/.venv/bin/pip install -r /opt/911fiesta/requirements/server.lock.txt
+sudo -u fiesta911 /opt/911fiesta/.venv/bin/pip install -r /opt/911fiesta/requirements/server.lock.txt
 ```
 
 ### Port 8000 already in use
@@ -88,20 +88,20 @@ sudo systemctl edit 911fiesta
 ### "Permission denied" on /opt/911fiesta
 
 ```bash
-sudo chown -R fiesta:fiesta /opt/911fiesta
+sudo chown -R fiesta911:fiesta911 /opt/911fiesta
 sudo chmod 755 /opt/911fiesta
 ```
 
 ### git "fatal: detected dubious ownership"
 
 ```bash
-sudo -u fiesta git config --global --add safe.directory /opt/911fiesta
+sudo -u fiesta911 git config --global --add safe.directory /opt/911fiesta
 ```
 
 ### Camera config not readable
 
 ```bash
-sudo chown fiesta:fiesta /etc/911fiesta/vision_config.json
+sudo chown fiesta911:fiesta911 /etc/911fiesta/vision_config.json
 sudo chmod 640 /etc/911fiesta/vision_config.json
 ```
 
@@ -247,26 +247,26 @@ ExecStart=/opt/911fiesta/.venv/bin/uvicorn api.main:app --host 0.0.0.0 --port 90
 /opt/911fiesta/.venv/bin/python -c "import <module>"
 
 # Reinstall deps
-sudo -u fiesta /opt/911fiesta/.venv/bin/pip install -r /opt/911fiesta/requirements/show.lock.txt
+sudo -u fiesta911 /opt/911fiesta/.venv/bin/pip install -r /opt/911fiesta/requirements/show.lock.txt
 ```
 
 ### Rebuild venv from scratch
 
 ```bash
 sudo rm -rf /opt/911fiesta/.venv
-sudo -u fiesta python3 -m venv /opt/911fiesta/.venv
-sudo -u fiesta /opt/911fiesta/.venv/bin/pip install --upgrade pip setuptools wheel
-sudo -u fiesta /opt/911fiesta/.venv/bin/pip install -r /opt/911fiesta/requirements/show.lock.txt
+sudo -u fiesta911 python3 -m venv /opt/911fiesta/.venv
+sudo -u fiesta911 /opt/911fiesta/.venv/bin/pip install --upgrade pip setuptools wheel
+sudo -u fiesta911 /opt/911fiesta/.venv/bin/pip install -r /opt/911fiesta/requirements/show.lock.txt
 ```
 
 ---
 
-## Ubuntu 22.04 Notes (Best Effort)
+## Ubuntu 22.04 Notes
 
-Ubuntu 22.04 is supported on a best-effort basis. Known differences:
+Ubuntu 22.04.5 Desktop (amd64) is the **only supported target**.
 
-- systemd is older (< 250): `StartLimitIntervalSec` must be in `[Unit]`,
-  not `[Service]`. The current unit file already handles this.
-- Python 3.10 is the default (not 3.12). Lock files are tested with 3.10/3.11.
-- Some `libxcb-*` packages may have different names. If installation fails,
-  check with `apt-cache search libxcb`.
+Key characteristics:
+- systemd < 250: `StartLimitIntervalSec` must be in `[Unit]`, not `[Service]`.
+  The current unit file already handles this.
+- Python 3.10 is the system default. Lock files are tested with 3.10/3.11.
+- GDM3 is the default display manager (for autologin configuration).

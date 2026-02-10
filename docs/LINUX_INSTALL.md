@@ -1,14 +1,14 @@
-# 911 Fiesta V7 - Linux Installation Guide (Ubuntu 24.04.3)
+# 911 Fiesta V7 - Linux Installation Guide (Ubuntu 22.04.5 Desktop)
 
 ## Overview
 
 This guide covers a reproducible, one-command installation of 911 Fiesta V7 on
-Ubuntu 24.04.3 Live Server. The entire flow is scripted and non-interactive.
+Ubuntu 22.04.5 Desktop (amd64). The entire flow is scripted and non-interactive.
 
-**Target OS:** Ubuntu 24.04.3 LTS (server or desktop)
-**Best effort:** Ubuntu 22.04 LTS (see `docs/TROUBLESHOOTING_LINUX.md`)
-**Runtime:** Python 3.11 via system `python3-venv`
+**Target OS:** Ubuntu 22.04.5 LTS Desktop (amd64) — only supported target
+**Runtime:** Python 3.10 via system `python3-venv`
 **Profiles:** `server` (headless API) or `show` (full GUI + vision + audio)
+**User:** `fiesta911`
 
 ---
 
@@ -31,11 +31,12 @@ bash scripts/healthcheck_911fiesta.sh
 git clone https://github.com/gastongrc/911-fiesta-core-LINUX.git /tmp/911fiesta-installer
 cd /tmp/911fiesta-installer
 sudo bash scripts/bootstrap_linux.sh --profile show
-sudo passwd fiesta
+sudo passwd fiesta911
 sudo bash scripts/install_911fiesta.sh --profile show --torch-gpu
 sudo cp /opt/911fiesta/systemd/911fiesta-show.desktop /etc/xdg/autostart/
 bash scripts/healthcheck_911fiesta.sh
-# Log in as fiesta in the desktop — SHOW starts automatically
+# Configure GDM autologin for fiesta911 (see docs/SHOW_RUNBOOK.md)
+# Reboot — SHOW starts automatically
 ```
 
 See `docs/SHOW_RUNBOOK.md` for detailed SHOW setup including auto-login.
@@ -44,7 +45,7 @@ See `docs/SHOW_RUNBOOK.md` for detailed SHOW setup including auto-login.
 
 ## Prerequisites
 
-- Ubuntu 24.04.3 LTS (server or desktop)
+- Ubuntu 22.04.5 LTS Desktop (amd64)
 - Root/sudo access
 - Internet connectivity (for apt and pip)
 - Minimum 4 GB RAM, 20 GB disk (more for SHOW profile with ML models)
@@ -88,7 +89,7 @@ Run as root. This script:
    - HDF5: `libhdf5-dev`
    - Network tools: `net-tools`, `iputils-ping`
 
-2. **Creates system user** `fiesta` (nologin shell, home at `/opt/911fiesta`)
+2. **Creates user** `fiesta911` (nologin for server, /bin/bash for show; home at `/opt/911fiesta`)
 
 3. **Creates directories**:
    - `/opt/911fiesta` - Application root
@@ -147,7 +148,7 @@ curl http://127.0.0.1:8000/docs
 
 ### Static IP with Netplan
 
-Ubuntu 24.04 uses **netplan** for network configuration. 911 Fiesta reads camera
+Ubuntu 22.04 uses **netplan** for network configuration. 911 Fiesta reads camera
 and console IPs from its own config files -- it does not manage network interfaces.
 
 To set a static IP for the server:
@@ -271,7 +272,7 @@ bash scripts/healthcheck_911fiesta.sh
 | Qt platform | `offscreen` | `xcb` |
 
 The systemd service is **only for the server profile**. The SHOW profile
-launches via XDG autostart when the fiesta user logs into a desktop session.
+launches via XDG autostart when the fiesta911 user logs into a desktop session.
 
 To change the server port, use a systemd drop-in:
 ```bash
@@ -285,7 +286,7 @@ sudo systemctl edit 911fiesta
 ## GUI / SHOW Mode
 
 The SHOW does **not** use systemd. It launches via XDG autostart when the
-`fiesta` user logs into a graphical desktop session.
+`fiesta911` user logs into a graphical desktop session.
 
 For full setup instructions, see **`docs/SHOW_RUNBOOK.md`**.
 
@@ -293,11 +294,11 @@ Quick overview:
 1. Bootstrap with `--profile show` (installs xcb/Qt GUI deps, creates login user)
 2. Install with `--profile show` (installs PySide6, torch, audio, vision deps)
 3. Copy autostart file: `sudo cp systemd/911fiesta-show.desktop /etc/xdg/autostart/`
-4. Set fiesta password: `sudo passwd fiesta`
-5. Log in as fiesta — SHOW starts automatically
+4. Set fiesta911 password: `sudo passwd fiesta911`
+5. Configure GDM autologin for fiesta911 (**mandatory** for Core911 machines)
+6. Reboot — SHOW starts automatically
 
-For kiosk mode (auto-login), configure GDM or LightDM auto-login.
-See `docs/SHOW_RUNBOOK.md` for details.
+See `docs/SHOW_RUNBOOK.md` for GDM autologin configuration.
 
 ## Related Documentation
 
@@ -314,7 +315,7 @@ See `docs/SHOW_RUNBOOK.md` for details.
 ## Directory Structure After Install
 
 ```
-/opt/911fiesta/              # Application root (owned by fiesta)
+/opt/911fiesta/              # Application root (owned by fiesta911)
   .git/                      # Git repository
   .venv/                     # Python virtual environment
   api/                       # FastAPI server
@@ -447,7 +448,7 @@ nvidia-smi
 
 ## Security Notes
 
-- The `fiesta` system user has `nologin` shell and cannot be used for SSH.
+- The `fiesta911` user has `nologin` shell (server) or `/bin/bash` (show).
 - The systemd service runs with `NoNewPrivileges=true` and `ProtectSystem=strict`.
 - Write access is limited to `/opt/911fiesta`, `/etc/911fiesta`, and `/tmp`.
 - Camera credentials in `vision_config.json` should be protected:

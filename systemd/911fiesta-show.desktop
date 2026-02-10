@@ -2,7 +2,7 @@
 # 911 Fiesta V7 - SHOW GUI Autostart
 #
 # Install to /etc/xdg/autostart/ for all users, or
-# ~/.config/autostart/ for the fiesta user only.
+# ~/.config/autostart/ for the fiesta911 user only.
 #
 # Install command:
 #   sudo cp /opt/911fiesta/systemd/911fiesta-show.desktop /etc/xdg/autostart/
