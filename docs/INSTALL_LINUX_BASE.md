@@ -209,7 +209,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=fiesta
+User=fiesta911
 WorkingDirectory=/opt/911fiesta
 Environment="PATH=/opt/911fiesta/.venv/bin"
 ExecStart=/opt/911fiesta/.venv/bin/uvicorn api.main:app --host 0.0.0.0 --port 8000

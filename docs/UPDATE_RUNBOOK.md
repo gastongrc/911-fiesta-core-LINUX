@@ -2,7 +2,7 @@
 
 ## Overview
 
-This runbook covers updating 911 Fiesta on Ubuntu 24.04.3, including
+This runbook covers updating 911 Fiesta on Ubuntu 22.04.5 Desktop, including
 routine updates, tagged releases, and rollback procedures.
 
 ---
@@ -75,8 +75,8 @@ re-syncs dependencies, restarts the service, and runs the healthcheck.
 
 ```bash
 cd /opt/911fiesta
-sudo -u fiesta git log --oneline -20          # Find the target commit
-sudo -u fiesta git checkout <commit-hash>     # Checkout
+sudo -u fiesta911 git log --oneline -20          # Find the target commit
+sudo -u fiesta911 git checkout <commit-hash>     # Checkout
 sudo bash scripts/update_911fiesta.sh --skip-healthcheck  # Re-sync and restart
 bash scripts/healthcheck_911fiesta.sh         # Verify
 ```
@@ -107,8 +107,8 @@ Before updating a production system:
 3. **Review what will change:**
    ```bash
    cd /opt/911fiesta
-   sudo -u fiesta git fetch origin
-   sudo -u fiesta git log --oneline HEAD..origin/baseline/linux-foja-cero
+   sudo -u fiesta911 git fetch origin
+   sudo -u fiesta911 git log --oneline HEAD..origin/baseline/linux-foja-cero
    ```
 
 4. **Schedule downtime if needed** - the service restarts during update,
@@ -189,12 +189,12 @@ sudo systemctl disable 911fiesta
 ```bash
 # Check for local modifications
 cd /opt/911fiesta
-sudo -u fiesta git status
+sudo -u fiesta911 git status
 
 # If there are local changes, stash them
-sudo -u fiesta git stash
+sudo -u fiesta911 git stash
 sudo bash scripts/update_911fiesta.sh
-sudo -u fiesta git stash pop  # Re-apply if needed
+sudo -u fiesta911 git stash pop  # Re-apply if needed
 ```
 
 ### Pip install fails
@@ -223,7 +223,7 @@ sudo bash scripts/update_911fiesta.sh --rollback
 # Or rollback manually
 cat /etc/911fiesta/last-known-good-commit
 cd /opt/911fiesta
-sudo -u fiesta git checkout <commit-from-above>
+sudo -u fiesta911 git checkout <commit-from-above>
 sudo systemctl restart 911fiesta
 ```
 

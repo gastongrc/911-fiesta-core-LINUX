@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# 911 Fiesta V7 - Update Script for Ubuntu 24.04.3
+# 911 Fiesta V7 - Update Script for Ubuntu 22.04.5 Desktop
 # =============================================================================
 #
 # Pulls the latest code, re-syncs Python dependencies, restarts the service,
@@ -25,7 +25,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-readonly FIESTA_USER="fiesta"
+readonly FIESTA_USER="fiesta911"
 readonly FIESTA_HOME="/opt/911fiesta"
 readonly CONFIG_DIR="/etc/911fiesta"
 readonly VENV_DIR="${FIESTA_HOME}/.venv"

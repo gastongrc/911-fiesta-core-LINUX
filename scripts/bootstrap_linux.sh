@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
 # =============================================================================
-# 911 Fiesta V7 - Bootstrap Script for Ubuntu 24.04.3
+# 911 Fiesta V7 - Bootstrap Script for Ubuntu 22.04.5 Desktop
 # =============================================================================
 #
-# Prepares a clean Ubuntu 24.04.3 server for 911 Fiesta installation.
-# Installs system packages, creates the fiesta user, and sets up directories.
+# Prepares a clean Ubuntu 22.04.5 Desktop server for 911 Fiesta installation.
+# Installs system packages, creates the fiesta911 user, and sets up directories.
 #
 # Usage:
-#   sudo bash scripts/bootstrap_linux.sh
+#   sudo bash scripts/bootstrap_linux.sh [--profile server|show]
+#
+# Profiles:
+#   server (default) - headless API, system user with nologin shell
+#   show             - GUI with display, login user with /bin/bash shell,
+#                      extra xcb/Qt packages for PySide6 GUI
 #
 # Idempotent: safe to re-run.
 # =============================================================================
@@ -16,12 +21,15 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-readonly FIESTA_USER="fiesta"
+readonly FIESTA_USER="fiesta911"
 readonly FIESTA_HOME="/opt/911fiesta"
 readonly CONFIG_DIR="/etc/911fiesta"
 readonly LOG_TAG="[bootstrap]"
 readonly REQUIRED_OS="Ubuntu"
-readonly REQUIRED_VERSION="24.04"
+readonly REQUIRED_VERSION="22.04"
+
+# Defaults
+INSTALL_PROFILE="server"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -31,13 +39,36 @@ err()  { echo "${LOG_TAG} ERROR: $*" >&2; }
 die()  { err "$@"; exit 1; }
 
 # ---------------------------------------------------------------------------
+# Parse arguments
+# ---------------------------------------------------------------------------
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --profile)
+            INSTALL_PROFILE="${2:?'--profile requires a value (server|show)'}"
+            shift 2
+            ;;
+        --help|-h)
+            grep '^#' "$0" | head -20 | sed 's/^# \?//'
+            exit 0
+            ;;
+        *)
+            die "Unknown argument: $1"
+            ;;
+    esac
+done
+
+if [[ "${INSTALL_PROFILE}" != "server" && "${INSTALL_PROFILE}" != "show" ]]; then
+    die "Invalid profile '${INSTALL_PROFILE}'. Use 'server' or 'show'."
+fi
+
+# ---------------------------------------------------------------------------
 # Pre-flight checks
 # ---------------------------------------------------------------------------
 if [[ $EUID -ne 0 ]]; then
     die "This script must be run as root (sudo)."
 fi
 
-# Verify we are on Ubuntu 24.04
+# Verify we are on Ubuntu 22.04
 if [[ -f /etc/os-release ]]; then
     # shellcheck source=/dev/null
     source /etc/os-release
@@ -51,10 +82,10 @@ else
     log "WARNING: /etc/os-release not found. Cannot verify OS version."
 fi
 
-log "Starting bootstrap on $(hostname) ..."
+log "Starting bootstrap on $(hostname) (profile=${INSTALL_PROFILE}) ..."
 
 # ---------------------------------------------------------------------------
-# 1. System packages
+# 1. System packages (common to both profiles)
 # ---------------------------------------------------------------------------
 log "Updating apt package index ..."
 export DEBIAN_FRONTEND=noninteractive
@@ -89,7 +120,7 @@ apt-get install -y -qq \
     libxext6 \
     libxrender1
 
-# Qt / PySide6 headless dependencies
+# Qt / PySide6 base dependencies (headless-safe)
 apt-get install -y -qq \
     libegl1 \
     libxkbcommon0 \
@@ -127,14 +158,31 @@ apt-get install -y -qq \
     net-tools \
     iputils-ping
 
-log "System packages installed."
+log "Common system packages installed."
 
 # ---------------------------------------------------------------------------
-# 1b. NVIDIA GPU driver (documentation only - manual step)
+# 1b. SHOW profile: extra Qt/xcb packages for GUI (PySide6 on X11)
+# ---------------------------------------------------------------------------
+if [[ "${INSTALL_PROFILE}" == "show" ]]; then
+    log "Installing GUI/xcb dependencies for SHOW profile ..."
+    apt-get install -y -qq \
+        libxcb-cursor0 \
+        libxcb-icccm4 \
+        libxcb-image0 \
+        libxcb-keysyms1 \
+        libxcb-randr0 \
+        libxcb-render-util0 \
+        libxcb-shape0 \
+        libxcb-xfixes0
+    log "GUI dependencies installed."
+fi
+
+# ---------------------------------------------------------------------------
+# 1c. NVIDIA GPU driver (documentation only - manual step)
 # ---------------------------------------------------------------------------
 # The core911 machine has an NVIDIA 1080 Ti.
 # The NVIDIA driver is NOT installed automatically because:
-#   - Ubuntu 24.04 server may already have the driver via HWE kernel
+#   - Ubuntu 22.04 desktop may already have the driver via HWE kernel
 #   - The correct driver version depends on the specific kernel
 #   - Wrong driver can break the display / boot
 #
@@ -155,24 +203,50 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 2. Create fiesta user
+# 2. Create fiesta911 user
 # ---------------------------------------------------------------------------
 if id "${FIESTA_USER}" &>/dev/null; then
     log "User '${FIESTA_USER}' already exists."
+
+    # If SHOW profile, ensure user has a real login shell
+    if [[ "${INSTALL_PROFILE}" == "show" ]]; then
+        CURRENT_SHELL=$(getent passwd "${FIESTA_USER}" | cut -d: -f7)
+        if [[ "${CURRENT_SHELL}" == */nologin || "${CURRENT_SHELL}" == */false ]]; then
+            log "Upgrading '${FIESTA_USER}' shell to /bin/bash for SHOW (GUI login) ..."
+            usermod --shell /bin/bash "${FIESTA_USER}"
+        fi
+    fi
 else
-    log "Creating system user '${FIESTA_USER}' ..."
-    useradd \
-        --system \
-        --create-home \
-        --home-dir "${FIESTA_HOME}" \
-        --shell /usr/sbin/nologin \
-        --comment "911 Fiesta service account" \
-        "${FIESTA_USER}"
+    if [[ "${INSTALL_PROFILE}" == "show" ]]; then
+        # SHOW: real user with login shell (can log into graphical session)
+        log "Creating user '${FIESTA_USER}' with login shell (SHOW profile) ..."
+        useradd \
+            --create-home \
+            --home-dir "${FIESTA_HOME}" \
+            --shell /bin/bash \
+            --comment "911 Fiesta SHOW operator" \
+            "${FIESTA_USER}"
+    else
+        # SERVER: system user with nologin shell
+        log "Creating system user '${FIESTA_USER}' (SERVER profile) ..."
+        useradd \
+            --system \
+            --create-home \
+            --home-dir "${FIESTA_HOME}" \
+            --shell /usr/sbin/nologin \
+            --comment "911 Fiesta service account" \
+            "${FIESTA_USER}"
+    fi
     log "User '${FIESTA_USER}' created."
 fi
 
-# Ensure fiesta user is in audio and video groups (for USB audio + GPU access)
-for grp in audio video; do
+# Ensure fiesta911 user is in required groups
+GROUPS_LIST="audio video"
+if [[ "${INSTALL_PROFILE}" == "show" ]]; then
+    GROUPS_LIST="audio video render"
+fi
+
+for grp in ${GROUPS_LIST}; do
     if getent group "${grp}" &>/dev/null; then
         usermod -aG "${grp}" "${FIESTA_USER}" 2>/dev/null || true
         log "User '${FIESTA_USER}' added to '${grp}' group."
@@ -221,13 +295,14 @@ log "=========================================="
 log "Bootstrap complete."
 log "=========================================="
 log ""
+log "  Profile:    ${INSTALL_PROFILE}"
 log "  User:       ${FIESTA_USER}"
 log "  App dir:    ${FIESTA_HOME}"
 log "  Config dir: ${CONFIG_DIR}"
 log "  Log dir:    /var/log/911fiesta"
 log ""
 log "Next step:"
-log "  sudo bash scripts/install_911fiesta.sh"
+log "  sudo bash scripts/install_911fiesta.sh --profile ${INSTALL_PROFILE}"
 log ""
 
 exit 0

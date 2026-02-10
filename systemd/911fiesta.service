@@ -1,10 +1,13 @@
-# 911 Fiesta V7 - Systemd Service Unit
+# 911 Fiesta V7 - Systemd Service Unit (SERVER / headless API)
 #
 # Installed by: scripts/install_911fiesta.sh
 # Destination:  /etc/systemd/system/911fiesta.service
 #
+# This unit runs the FastAPI/uvicorn API server (headless, no GUI).
+# For the SHOW GUI entrypoint, see docs/SHOW_RUNBOOK.md (XDG autostart).
+#
 # Configuration:
-#   /etc/911fiesta/911fiesta.env  (entrypoint, port, environment)
+#   /etc/911fiesta/911fiesta.env  (port, log level, runtime overrides)
 #
 # Usage:
 #   systemctl start  911fiesta
@@ -13,36 +16,37 @@
 #   journalctl -u 911fiesta -f
 
 [Unit]
-Description=911 Fiesta V7 - Vision & Lighting Control
+Description=911 Fiesta V7 - API Server (headless)
 After=network-online.target
 Wants=network-online.target
+# Rate-limit restarts (must be in [Unit] for systemd < 250 / Ubuntu 22.04)
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
-User=fiesta
-Group=fiesta
+User=fiesta911
+Group=fiesta911
 
 WorkingDirectory=/opt/911fiesta
 
 # --- Environment ---
-# Base environment (always set)
 Environment="PATH=/opt/911fiesta/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="PYTHONUNBUFFERED=1"
+Environment="QT_QPA_PLATFORM=offscreen"
 
-# Configurable environment from env file.
-# Edit /etc/911fiesta/911fiesta.env to change entrypoint, port, etc.
+# Configurable overrides (port, log level, etc.)
 EnvironmentFile=/etc/911fiesta/911fiesta.env
 
 # --- Entrypoint ---
-# FIESTA_EXEC_START is defined in /etc/911fiesta/911fiesta.env
-# Default: uvicorn api.main:app --host 0.0.0.0 --port 8000
-ExecStart=/opt/911fiesta/.venv/bin/${FIESTA_EXEC_START}
+# Fixed command — no ${VAR} expansion (systemd treats it as one token).
+# To change host/port, edit /etc/911fiesta/911fiesta.env and use
+# UVICORN_HOST / UVICORN_PORT, or override ExecStart via drop-in.
+ExecStart=/opt/911fiesta/.venv/bin/uvicorn api.main:app --host 0.0.0.0 --port 8000
 
 # --- Restart Policy ---
 Restart=on-failure
 RestartSec=5
-StartLimitIntervalSec=300
-StartLimitBurst=5
 
 # --- Resource Limits ---
 LimitNOFILE=65536

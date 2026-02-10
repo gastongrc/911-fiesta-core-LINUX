@@ -6,7 +6,7 @@
 |-----------|-------|-------|
 | **GPU** | NVIDIA GeForce GTX 1080 Ti | 11 GB VRAM, CUDA 12.1 compatible |
 | **Audio** | Maono PS22 USB | USB audio interface for live mic input |
-| **OS** | Ubuntu 24.04.3 LTS | Server or desktop |
+| **OS** | Ubuntu 22.04.5 LTS Desktop | Dedicated SHOW machine |
 
 ---
 
@@ -95,7 +95,7 @@ The `sounddevice` Python library uses PortAudio to access it.
 ### Prerequisites
 
 - `alsa-utils` package (installed by `bootstrap_linux.sh`)
-- `fiesta` user in the `audio` group (set by `bootstrap_linux.sh`)
+- `fiesta911` user in the `audio` group (set by `bootstrap_linux.sh`)
 - `libportaudio2` and `portaudio19-dev` (installed by `bootstrap_linux.sh`)
 
 ### Verification
@@ -147,7 +147,7 @@ for i, d in enumerate(devices):
 ### What happens if audio check fails
 
 - **arecord not found**: WARN. Install `alsa-utils`.
-- **No capture devices**: WARN. USB not connected or `fiesta` not in `audio` group.
+- **No capture devices**: WARN. USB not connected or `fiesta911` not in `audio` group.
 - **Maono PS22 not found**: WARN. Other capture devices may work. The Maono
   check is informational — any ALSA capture device can be used.
 
@@ -155,8 +155,8 @@ for i, d in enumerate(devices):
 
 ```bash
 # No devices found
-id fiesta                    # Check for 'audio' group
-sudo usermod -aG audio fiesta  # Add to group (requires re-login/reboot)
+id fiesta911                    # Check for 'audio' group
+sudo usermod -aG audio fiesta911  # Add to group (requires re-login/reboot)
 
 # USB device not appearing
 lsusb                       # Check if USB device is listed

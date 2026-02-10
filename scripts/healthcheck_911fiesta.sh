@@ -37,9 +37,9 @@ WARN_COUNT=0
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-pass()  { echo "[PASS] $*";  ((PASS_COUNT++)); }
-fail()  { echo "[FAIL] $*";  ((FAIL_COUNT++)); }
-warn()  { echo "[WARN] $*";  ((WARN_COUNT++)); }
+pass()  { echo "[PASS] $*";  PASS_COUNT=$((PASS_COUNT + 1)); }
+fail()  { echo "[FAIL] $*";  FAIL_COUNT=$((FAIL_COUNT + 1)); }
+warn()  { echo "[WARN] $*";  WARN_COUNT=$((WARN_COUNT + 1)); }
 info()  { echo "[INFO] $*"; }
 sep()   { echo "-------------------------------------------"; }
 
@@ -88,12 +88,12 @@ else
     fail "ffprobe not found. Install: sudo apt install ffmpeg"
 fi
 
-# Fiesta user
-if id fiesta &>/dev/null; then
-    FIESTA_GROUPS=$(id -Gn fiesta 2>/dev/null | tr ' ' ',')
-    pass "User 'fiesta' exists. Groups: ${FIESTA_GROUPS}"
+# Fiesta911 user
+if id fiesta911 &>/dev/null; then
+    FIESTA_GROUPS=$(id -Gn fiesta911 2>/dev/null | tr ' ' ',')
+    pass "User 'fiesta911' exists. Groups: ${FIESTA_GROUPS}"
 else
-    fail "User 'fiesta' not found. Run bootstrap_linux.sh."
+    fail "User 'fiesta911' not found. Run bootstrap_linux.sh."
 fi
 
 # Application directory
@@ -478,10 +478,73 @@ if command -v arecord &>/dev/null; then
         info "  If a USB audio device (Maono PS22) should be present:"
         info "    1. Check USB connection: lsusb"
         info "    2. Check ALSA: cat /proc/asound/cards"
-        info "    3. Ensure fiesta user is in 'audio' group: id fiesta"
+        info "    3. Ensure fiesta911 user is in 'audio' group: id fiesta911"
     fi
 else
     warn "arecord not found. Install: sudo apt install alsa-utils"
+fi
+
+echo ""
+
+# ===================================================================
+# Section 4b: GUI / Display (SHOW profile)
+# ===================================================================
+sep
+info "Section 4b: GUI / Display Readiness (SHOW profile)"
+sep
+
+# Check PySide6 import
+PYSIDE_RESULT=$("${VENV_PYTHON}" -c "
+try:
+    import PySide6.QtWidgets; print(f'OK:{PySide6.__version__}')
+except ImportError as e:
+    print(f'MISSING:{e}')
+except Exception as e:
+    print(f'ERROR:{e}')
+" 2>&1)
+
+if [[ "${PYSIDE_RESULT}" == OK:* ]]; then
+    pass "PySide6: ${PYSIDE_RESULT#OK:}"
+
+    # If PySide6 is installed, this is a SHOW machine — check display
+    if [[ -n "${DISPLAY:-}" ]]; then
+        pass "DISPLAY is set: ${DISPLAY}"
+    elif [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+        pass "WAYLAND_DISPLAY is set: ${WAYLAND_DISPLAY}"
+    else
+        warn "No DISPLAY or WAYLAND_DISPLAY set."
+        info "  SHOW requires a graphical session (X11 or Wayland)."
+        info "  If running from SSH, this is expected. On the actual"
+        info "  SHOW machine, the fiesta911 user must log into a desktop."
+    fi
+
+    # Check X socket exists
+    if [[ -e "/tmp/.X11-unix/X0" ]]; then
+        pass "X11 socket exists: /tmp/.X11-unix/X0"
+    else
+        warn "X11 socket /tmp/.X11-unix/X0 not found."
+        info "  Expected on a machine with a running X server."
+    fi
+
+    # Check libxcb-cursor0 (common missing dep)
+    if ldconfig -p 2>/dev/null | grep -q "libxcb-cursor"; then
+        pass "libxcb-cursor0 is installed."
+    else
+        fail "libxcb-cursor0 NOT found. PySide6 xcb plugin will fail."
+        info "  Fix: sudo apt install libxcb-cursor0"
+    fi
+
+    # Check autostart desktop file
+    if [[ -f "/etc/xdg/autostart/911fiesta-show.desktop" ]]; then
+        pass "XDG autostart file installed."
+    else
+        warn "XDG autostart file not installed."
+        info "  Install: sudo cp /opt/911fiesta/systemd/911fiesta-show.desktop /etc/xdg/autostart/"
+    fi
+elif [[ "${PYSIDE_RESULT}" == MISSING:* ]]; then
+    info "PySide6 not installed (server profile — GUI checks skipped)."
+else
+    warn "PySide6 import error: ${PYSIDE_RESULT#ERROR:}"
 fi
 
 echo ""
