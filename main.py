@@ -609,7 +609,13 @@ class Main(QMainWindow):
         global API_AVAILABLE
         super().__init__()
         self.setWindowTitle("911 Fiesta - Sistema Modular v4.2 + BRAKE ANALYZER REAL + RED PANEL + HEALTH")
-        self.resize(1200, 800)
+
+        # Kiosk mode: frameless + always-on-top → showFullScreen() at entrypoint
+        self.setWindowFlags(
+            Qt.FramelessWindowHint |
+            Qt.WindowStaysOnTopHint
+        )
+        self.setFixedSize(self.screen().size())
 
         # Preset path - SINGLE PROFILE (source of truth)
         # ABSOLUTE PATH anchored to main.py directory (Windows CWD fix)
@@ -4195,7 +4201,7 @@ if __name__ == "__main__":
         print("=" * 60)
         app = QApplication(sys.argv)
         w = Main()
-        w.show()
+        w.showFullScreen()
         sys.exit(app.exec())
     except Exception as e:
         print(f"\nERROR: {e}")
