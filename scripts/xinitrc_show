@@ -23,5 +23,17 @@ xset s noblank
 # Start openbox (minimal window manager — focus handling, no decorations)
 openbox &
 
+# Wait for openbox to register as WM (prevents fullscreen race condition).
+# Without this, Qt can call showFullScreen() before any WM is listening,
+# resulting in a window that renders at the wrong size until clicked.
+i=0
+while [ "$i" -lt 50 ]; do
+    if xprop -root _NET_SUPPORTING_WM_CHECK >/dev/null 2>&1; then
+        break
+    fi
+    sleep 0.1
+    i=$((i + 1))
+done
+
 # Launch 911 Fiesta — when this process exits, X session ends
 exec /opt/911fiesta/scripts/run_show.sh

@@ -181,9 +181,8 @@ if [[ "${INSTALL_PROFILE}" == "show" ]]; then
     apt-get install -y -qq \
         xinit \
         x11-xserver-utils \
+        x11-utils \
         openbox
-    # Optional: hide cursor after inactivity
-    apt-get install -y -qq unclutter 2>/dev/null || true
     log "Kiosk packages installed."
 fi
 
