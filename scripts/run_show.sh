@@ -44,13 +44,23 @@ if [[ -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Qt environment
+# 3. GNOME kiosk settings (idempotent, persists across reboots)
+# ---------------------------------------------------------------------------
+if command -v gsettings &>/dev/null; then
+    log "Applying GNOME kiosk settings ..."
+    gsettings set org.gnome.shell enable-hot-corners false    2>/dev/null || true
+    gsettings set org.gnome.shell favorite-apps "[]"          2>/dev/null || true
+    gsettings set org.gnome.mutter center-new-windows true    2>/dev/null || true
+fi
+
+# ---------------------------------------------------------------------------
+# 4. Qt environment
 # ---------------------------------------------------------------------------
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
 export QT_AUTO_SCREEN_SCALE_FACTOR="${QT_AUTO_SCREEN_SCALE_FACTOR:-1}"
 
 # ---------------------------------------------------------------------------
-# 4. Launch
+# 5. Launch
 # ---------------------------------------------------------------------------
 log "Starting 911 Fiesta SHOW GUI ..."
 log "  DISPLAY=${DISPLAY:-<not set>}"

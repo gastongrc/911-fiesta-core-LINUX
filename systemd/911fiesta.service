@@ -17,7 +17,7 @@
 
 [Unit]
 Description=911 Fiesta V7 - API Server (headless)
-After=network-online.target
+After=network-online.target graphical-session.target
 Wants=network-online.target
 # Rate-limit restarts (must be in [Unit] for systemd < 250 / Ubuntu 22.04)
 StartLimitIntervalSec=300
@@ -39,6 +39,8 @@ Environment="QT_QPA_PLATFORM=offscreen"
 EnvironmentFile=/etc/911fiesta/911fiesta.env
 
 # --- Entrypoint ---
+# Wait for GNOME compositor before launching (avoids race condition on SHOW)
+ExecStartPre=/bin/sleep 3
 # Fixed command — no ${VAR} expansion (systemd treats it as one token).
 # To change host/port, edit /etc/911fiesta/911fiesta.env and use
 # UVICORN_HOST / UVICORN_PORT, or override ExecStart via drop-in.

@@ -610,12 +610,19 @@ class Main(QMainWindow):
         super().__init__()
         self.setWindowTitle("911 Fiesta - Sistema Modular v4.2 + BRAKE ANALYZER REAL + RED PANEL + HEALTH")
 
-        # Kiosk mode: frameless + always-on-top → showFullScreen() at entrypoint
+        # Kiosk mode: frameless + always-on-top + forced focus
         self.setWindowFlags(
             Qt.FramelessWindowHint |
             Qt.WindowStaysOnTopHint
         )
-        self.setFixedSize(self.screen().size())
+        self.showFullScreen()
+        self.raise_()
+        self.activateWindow()
+        # Delayed re-focus: GNOME compositor needs time after session start
+        QTimer.singleShot(700, lambda: (
+            self.raise_(),
+            self.activateWindow()
+        ))
 
         # Preset path - SINGLE PROFILE (source of truth)
         # ABSOLUTE PATH anchored to main.py directory (Windows CWD fix)
@@ -4201,7 +4208,6 @@ if __name__ == "__main__":
         print("=" * 60)
         app = QApplication(sys.argv)
         w = Main()
-        w.showFullScreen()
         sys.exit(app.exec())
     except Exception as e:
         print(f"\nERROR: {e}")
