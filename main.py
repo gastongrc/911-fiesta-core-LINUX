@@ -410,6 +410,8 @@ def make_grid(modules, cols=3):
     grid.setSpacing(12)
     for i in range((len(modules) + cols - 1) // cols):
         grid.setRowMinimumHeight(i, 280)
+    for c in range(cols):
+        grid.setColumnStretch(c, 1)
     for i, m in enumerate(modules):
         row, col = divmod(i, cols)
         grid.addWidget(m.card, row, col)
@@ -609,7 +611,9 @@ class Main(QMainWindow):
         global API_AVAILABLE
         super().__init__()
         self.setWindowTitle("911 Fiesta - Sistema Modular v4.2 + BRAKE ANALYZER REAL + RED PANEL + HEALTH")
-        self.resize(1200, 800)
+
+        # Kiosk mode: frameless (no title bar, no window controls)
+        self.setWindowFlags(Qt.FramelessWindowHint)
 
         # Preset path - SINGLE PROFILE (source of truth)
         # ABSOLUTE PATH anchored to main.py directory (Windows CWD fix)
@@ -2104,17 +2108,21 @@ class Main(QMainWindow):
         self.tabs.currentChanged.connect(self._on_tab_changed)
 
         body = QWidget()
+        body.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         main_layout = QVBoxLayout(body)
-        main_layout.setContentsMargins(0,0,0,0)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
         main_layout.addWidget(top)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         page = QWidget()
         page_layout = QVBoxLayout(page)
-        page_layout.setContentsMargins(0,0,0,0)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(0)
         page_layout.addWidget(self.tabs)
         scroll.setWidget(page)
-        main_layout.addWidget(scroll)
+        main_layout.addWidget(scroll, 1)
         self.setCentralWidget(body)
 
         # V13: Audio controls removed from top bar - use Red/Consola tab instead
@@ -2129,6 +2137,11 @@ class Main(QMainWindow):
 
         self._mount_waveform("bajada")
         self._refresh_nics()
+
+        # Kiosk geometry: set to physical screen size and show (no showFullScreen)
+        screen = QApplication.primaryScreen().geometry()
+        self.setGeometry(screen)
+        self.show()
 
     # ========== HELPERS DE PERSISTENCIA ==========
 
@@ -4195,7 +4208,6 @@ if __name__ == "__main__":
         print("=" * 60)
         app = QApplication(sys.argv)
         w = Main()
-        w.show()
         sys.exit(app.exec())
     except Exception as e:
         print(f"\nERROR: {e}")

@@ -1,0 +1,39 @@
+#!/bin/sh
+# =============================================================================
+# 911 Fiesta V7 - SHOW Xorg Session (.xinitrc)
+# =============================================================================
+#
+# Started by 'startx' from fiesta911's .bash_profile on TTY1.
+# Launches Xorg + openbox (minimal WM) + 911 Fiesta in kiosk mode.
+#
+# NO desktop environment. NO GNOME. NO compositor. NO dock. NO panels.
+# Resolution is set at Xorg level via /etc/X11/xorg.conf.d/10-monitor.conf
+#
+# Install:
+#   cp /opt/911fiesta/scripts/xinitrc_show /opt/911fiesta/.xinitrc
+#   chown fiesta911:fiesta911 /opt/911fiesta/.xinitrc
+#
+# =============================================================================
+
+# Disable screen blanking, DPMS power saving, and screensaver
+xset s off
+xset -dpms
+xset s noblank
+
+# Start openbox (minimal window manager — focus handling, no decorations)
+openbox &
+
+# Wait for openbox to register as WM (prevents fullscreen race condition).
+# Without this, Qt can call showFullScreen() before any WM is listening,
+# resulting in a window that renders at the wrong size until clicked.
+i=0
+while [ "$i" -lt 50 ]; do
+    if xprop -root _NET_SUPPORTING_WM_CHECK >/dev/null 2>&1; then
+        break
+    fi
+    sleep 0.1
+    i=$((i + 1))
+done
+
+# Launch 911 Fiesta — when this process exits, X session ends
+exec /opt/911fiesta/scripts/run_show.sh

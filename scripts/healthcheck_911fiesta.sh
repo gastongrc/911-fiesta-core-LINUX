@@ -43,6 +43,18 @@ warn()  { echo "[WARN] $*";  WARN_COUNT=$((WARN_COUNT + 1)); }
 info()  { echo "[INFO] $*"; }
 sep()   { echo "-------------------------------------------"; }
 
+# Profile auto-detection: if PySide6 is installed, this is a SHOW machine.
+# Camera failures are non-blocking (WARN) for SHOW profile.
+IS_SHOW=false
+if [[ -x "${VENV_PYTHON}" ]]; then
+    if "${VENV_PYTHON}" -c "import PySide6" &>/dev/null; then
+        IS_SHOW=true
+    fi
+fi
+
+# Camera issue: WARN for SHOW, FAIL for server
+cam_issue() { if [[ "${IS_SHOW}" == true ]]; then warn "$@"; else fail "$@"; fi; }
+
 # ---------------------------------------------------------------------------
 # Header
 # ---------------------------------------------------------------------------
@@ -352,17 +364,17 @@ except Exception as e:
         CAMERA_TESTED=false
         while IFS='|' read -r cam_name cam_proto cam_url cam_host cam_status; do
             if [[ "${cam_name}" == "ERROR" ]]; then
-                fail "Could not parse vision_config.json: ${cam_url}"
+                cam_issue "Could not parse vision_config.json: ${cam_url}"
                 continue
             fi
 
             if [[ "${cam_status}" == "NO_URL" ]]; then
-                fail "Camera '${cam_name}': type=${cam_proto} but no URL configured."
+                cam_issue "Camera '${cam_name}': type=${cam_proto} but no URL configured."
                 continue
             fi
 
             if [[ "${cam_status}" == "NO_HOST" ]]; then
-                fail "Camera '${cam_name}': no host or URL configured."
+                cam_issue "Camera '${cam_name}': no host or URL configured."
                 continue
             fi
 
@@ -373,7 +385,7 @@ except Exception as e:
             if ping -c 1 -W 2 "${cam_host}" &>/dev/null; then
                 pass "Camera '${cam_name}': host ${cam_host} is reachable."
             else
-                fail "Camera '${cam_name}': host ${cam_host} is NOT reachable."
+                cam_issue "Camera '${cam_name}': host ${cam_host} is NOT reachable."
                 info "  Protocol: ${cam_proto}"
                 info "  Possible causes:"
                 info "    - Camera is powered off or disconnected"
@@ -527,7 +539,7 @@ if [[ "${PYSIDE_RESULT}" == OK:* ]]; then
     fi
 
     # Check libxcb-cursor0 (common missing dep)
-    if ldconfig -p 2>/dev/null | grep -q "libxcb-cursor"; then
+    if ldconfig -p 2>/dev/null | grep -q "libxcb-cursor.so"; then
         pass "libxcb-cursor0 is installed."
     else
         fail "libxcb-cursor0 NOT found. PySide6 xcb plugin will fail."

@@ -127,7 +127,6 @@ class ModuleCard(QFrame):
             "QLabel{color:#ddd;}"
         )
         self.setMinimumWidth(290)
-        self.setMaximumWidth(350)
         self.setMinimumHeight(180)
 
         self._sliders = {}

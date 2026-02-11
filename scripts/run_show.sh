@@ -6,13 +6,13 @@
 # Wrapper script that activates the venv, sets up Qt/display environment,
 # and launches the PySide6 GUI (main.py).
 #
-# Intended to be called from:
-#   - XDG autostart (.desktop file) when the fiesta911 user logs in
+# Called from:
+#   - xinitrc_show  (Xorg kiosk session — primary path)
 #   - Manual launch: bash /opt/911fiesta/scripts/run_show.sh
 #
 # Prerequisites:
-#   - Active graphical session (X11/Wayland with XWayland)
-#   - bootstrap_linux.sh --profile show  (installs xcb deps)
+#   - Xorg running with DISPLAY set (via startx / xinitrc_show)
+#   - bootstrap_linux.sh --profile show  (installs openbox + xcb deps)
 #   - install_911fiesta.sh --profile show (installs PySide6 + deps)
 #
 # =============================================================================
@@ -37,9 +37,8 @@ fi
 # ---------------------------------------------------------------------------
 # 2. Verify display
 # ---------------------------------------------------------------------------
-if [[ -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then
-    err "No DISPLAY or WAYLAND_DISPLAY set. SHOW requires a graphical session."
-    err "Log in to a desktop session, then run this script."
+if [[ -z "${DISPLAY:-}" ]]; then
+    err "No DISPLAY set. SHOW requires Xorg (startx via xinitrc_show)."
     exit 1
 fi
 
@@ -47,14 +46,18 @@ fi
 # 3. Qt environment
 # ---------------------------------------------------------------------------
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
-export QT_AUTO_SCREEN_SCALE_FACTOR="${QT_AUTO_SCREEN_SCALE_FACTOR:-1}"
+# Disable Qt auto-scaling: force 1:1 pixel mapping to physical framebuffer.
+# QT_AUTO_SCREEN_SCALE_FACTOR=1 causes Qt6 to read EDID DPI and scale down
+# the logical viewport if the monitor reports >96 DPI, resulting in content
+# that renders smaller than the physical screen.
+export QT_AUTO_SCREEN_SCALE_FACTOR=0
+export QT_SCALE_FACTOR=1
 
 # ---------------------------------------------------------------------------
 # 4. Launch
 # ---------------------------------------------------------------------------
 log "Starting 911 Fiesta SHOW GUI ..."
-log "  DISPLAY=${DISPLAY:-<not set>}"
-log "  WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-<not set>}"
+log "  DISPLAY=${DISPLAY}"
 log "  QT_QPA_PLATFORM=${QT_QPA_PLATFORM}"
 log "  Venv: ${VENV_DIR}"
 log "  Working dir: ${FIESTA_HOME}"

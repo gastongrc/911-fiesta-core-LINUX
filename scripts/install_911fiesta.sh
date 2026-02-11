@@ -272,6 +272,82 @@ systemctl enable "${SYSTEMD_UNIT}"
 log "Systemd service installed and enabled."
 
 # ---------------------------------------------------------------------------
+# 5b. SHOW kiosk setup (Xorg pure — no GNOME, no GDM)
+# ---------------------------------------------------------------------------
+if [[ "${INSTALL_PROFILE}" == "show" ]]; then
+    log "Configuring SHOW kiosk (Xorg + openbox, no desktop environment) ..."
+
+    # --- show.target ---
+    cp "${FIESTA_HOME}/systemd/show.target" /etc/systemd/system/show.target
+    chmod 644 /etc/systemd/system/show.target
+    log "Installed show.target."
+
+    # --- Autologin on TTY1 via agetty ---
+    GETTY_DROP_IN="/etc/systemd/system/getty@tty1.service.d"
+    mkdir -p "${GETTY_DROP_IN}"
+    cp "${FIESTA_HOME}/systemd/show-getty-autologin.conf" \
+       "${GETTY_DROP_IN}/autologin.conf"
+    chmod 644 "${GETTY_DROP_IN}/autologin.conf"
+    log "Installed getty@tty1 autologin drop-in."
+
+    # --- .xinitrc (Xorg session: openbox + run_show.sh) ---
+    cp "${FIESTA_HOME}/scripts/xinitrc_show" "${FIESTA_HOME}/.xinitrc"
+    chown "${FIESTA_USER}:${FIESTA_USER}" "${FIESTA_HOME}/.xinitrc"
+    chmod 755 "${FIESTA_HOME}/.xinitrc"
+    log "Installed .xinitrc for ${FIESTA_USER}."
+
+    # --- Xorg monitor config (force 1920x1080 at framebuffer level) ---
+    XORG_CONF_DIR="/etc/X11/xorg.conf.d"
+    mkdir -p "${XORG_CONF_DIR}"
+    cp "${FIESTA_HOME}/xorg/10-monitor.conf" "${XORG_CONF_DIR}/10-monitor.conf"
+    chmod 644 "${XORG_CONF_DIR}/10-monitor.conf"
+    log "Installed Xorg monitor config (1920x1080) to ${XORG_CONF_DIR}/."
+
+    # --- .bash_profile (auto-startx on TTY1) ---
+    BASH_PROFILE="${FIESTA_HOME}/.bash_profile"
+    STARTX_MARKER="# 911fiesta-kiosk-startx"
+    if [[ -f "${BASH_PROFILE}" ]] && grep -q "${STARTX_MARKER}" "${BASH_PROFILE}"; then
+        log ".bash_profile already has startx block."
+    else
+        cat >> "${BASH_PROFILE}" <<'PROFILE'
+
+# Auto-start Xorg on TTY1 (SHOW kiosk mode)
+# 911fiesta-kiosk-startx
+if [ -z "$DISPLAY" ] && [ "$(tty)" = "/dev/tty1" ]; then
+    exec startx "$HOME/.xinitrc"
+fi
+PROFILE
+        chown "${FIESTA_USER}:${FIESTA_USER}" "${BASH_PROFILE}"
+        log "Added startx block to .bash_profile."
+    fi
+
+    # --- Disable GDM (no desktop manager) ---
+    if systemctl is-enabled gdm 2>/dev/null | grep -q "enabled"; then
+        systemctl disable gdm
+        log "Disabled GDM."
+    else
+        log "GDM already disabled (or not installed)."
+    fi
+
+    # --- Set default target to show.target ---
+    systemctl set-default show.target
+    systemctl daemon-reload
+    log "Default target set to show.target."
+
+    log "SHOW kiosk configuration complete."
+    log ""
+    log "  Boot chain:"
+    log "    systemd → show.target → getty@tty1 (autologin)"
+    log "      → .bash_profile → startx → .xinitrc"
+    log "        → openbox → run_show.sh → main.py"
+    log ""
+    log "  Rollback to GNOME:"
+    log "    sudo systemctl set-default graphical.target"
+    log "    sudo systemctl enable gdm"
+    log "    sudo reboot"
+fi
+
+# ---------------------------------------------------------------------------
 # 6. Start the service
 # ---------------------------------------------------------------------------
 log "Starting 911fiesta service ..."
