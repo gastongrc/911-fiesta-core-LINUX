@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>911 Fiesta — Calendar V2</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+
+:root{
+  --green:#00e676;
+  --green-g:rgba(0,230,118,0.35);
+  --green-20:rgba(0,230,118,0.20);
+  --green-10:rgba(0,230,118,0.10);
+  --green-05:rgba(0,230,118,0.05);
+  --cyan:#4dd0e1;
+  --blue:#42a5f5;
+  --off:#8a8a8a;
+  --t1:#f0f0f0;
+  --t2:rgba(240,240,240,0.65);
+  --t3:rgba(240,240,240,0.38);
+  --t4:rgba(240,240,240,0.20);
+  --glass:rgba(40,40,40,0.45);
+  --glass-b:rgba(255,255,255,0.08);
+  --glass-bh:rgba(255,255,255,0.14);
+  --glass-top:rgba(255,255,255,0.06);
+  --inset:rgba(0,0,0,0.22);
+  --blur:32px;
+}
+
+body{background:#0a0a0a;color:var(--t1);font-family:'Inter',sans-serif;min-height:100vh;overflow-x:hidden;}
+
+/* ═══════ BACKGROUND ═══════ */
+.bg-canvas{position:fixed;inset:0;z-index:0;overflow:hidden;}
+.bg-canvas::before{
+  content:'';position:absolute;inset:0;
+  background:
+    radial-gradient(ellipse 65% 55% at 70% 15%, rgba(180,180,180,0.12) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 45% at 20% 75%, rgba(140,140,140,0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 55% 60% at 50% 45%, rgba(100,100,100,0.05) 0%, transparent 55%),
+    linear-gradient(155deg, #0f0f0f 0%, #161616 25%, #1a1a1a 40%, #141414 60%, #0a0a0a 100%);
+}
+.blob{position:absolute;border-radius:50%;filter:blur(90px);animation:blobFloat 22s ease-in-out infinite;}
+.blob-1{width:550px;height:420px;background:radial-gradient(circle,rgba(200,200,200,0.14),rgba(160,160,160,0.05) 55%,transparent 80%);top:-8%;right:2%;animation-duration:26s;}
+.blob-2{width:450px;height:380px;background:radial-gradient(circle,rgba(150,150,150,0.10),rgba(120,120,120,0.03) 55%,transparent 80%);bottom:2%;left:-4%;animation-duration:23s;animation-delay:-9s;}
+.blob-3{width:380px;height:320px;background:radial-gradient(circle,rgba(170,170,170,0.07),transparent 80%);top:35%;left:30%;animation-duration:19s;animation-delay:-13s;}
+@keyframes blobFloat{0%,100%{transform:translate(0,0) scale(1);}25%{transform:translate(30px,-25px) scale(1.05);}50%{transform:translate(-20px,30px) scale(0.95);}75%{transform:translate(25px,15px) scale(1.03);}}
+.bg-canvas::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 75% 75% at 50% 50%, transparent 25%, rgba(5,5,5,0.55) 100%);}
+.noise{position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0.028;background:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='0.8' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+
+/* ═══════ LAYOUT ═══════ */
+.app{display:flex;min-height:100vh;position:relative;z-index:1;}
+
+/* ═══════ SIDEBAR ═══════ */
+.side{
+  width:68px;min-height:100vh;position:fixed;left:0;top:0;z-index:20;
+  display:flex;flex-direction:column;align-items:center;
+  padding:18px 0;gap:4px;
+  background:rgba(10,10,10,0.7);backdrop-filter:blur(40px);
+  border-right:1px solid rgba(255,255,255,0.04);
+}
+.s-logo{width:40px;height:40px;margin-bottom:22px;border-radius:12px;display:flex;align-items:center;justify-content:center;position:relative;background:linear-gradient(145deg,#00e676,#00c864,#00a850);box-shadow:0 4px 16px rgba(0,230,118,0.3),inset 0 1px 0 rgba(255,255,255,0.25),inset 0 -2px 4px rgba(0,0,0,0.15);border:1px solid rgba(255,255,255,0.12);}
+.s-logo::after{content:'';position:absolute;top:3px;left:4px;right:4px;height:35%;background:linear-gradient(180deg,rgba(255,255,255,0.3),transparent);border-radius:7px 7px 50% 50%;}
+.s-logo span{font-family:'JetBrains Mono';font-weight:900;font-size:10px;color:#0a1a10;z-index:1;position:relative;}
+.s-btn{width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.2s;position:relative;border:1px solid transparent;}
+.s-btn svg{width:19px;height:19px;stroke:var(--t3);fill:none;stroke-width:1.7;transition:stroke 0.2s;}
+.s-btn:hover{background:rgba(255,255,255,0.04);}
+.s-btn:hover svg{stroke:var(--t2);}
+.s-btn.on{background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.05);}
+.s-btn.on svg{stroke:var(--t1);}
+.s-btn.on::before{content:'';position:absolute;left:-1px;top:50%;transform:translateY(-50%);width:2.5px;height:18px;border-radius:0 3px 3px 0;background:var(--green);box-shadow:0 0 8px var(--green);}
+.s-bottom{margin-top:auto;margin-bottom:8px;}
+.s-dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green),0 0 18px rgba(0,230,118,0.2);animation:breathe 2.5s ease-in-out infinite;}
+@keyframes breathe{0%,100%{opacity:1;}50%{opacity:0.3;}}
+
+/* ═══════ MAIN ═══════ */
+.main{flex:1;margin-left:68px;padding:0;display:flex;flex-direction:column;min-height:100vh;}
+
+/* ═══════ TOP BAR ═══════ */
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:20px 28px;flex-shrink:0;
+}
+.topbar-left{display:flex;align-items:center;gap:16px;}
+.topbar-title{font-family:'Space Grotesk';font-size:24px;font-weight:700;letter-spacing:-0.5px;}
+.topbar-sub{font-size:11px;font-weight:500;color:var(--t3);padding:4px 10px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.05);font-family:'JetBrains Mono';}
+.topbar-right{display:flex;align-items:center;gap:12px;}
+.pill-sse{display:flex;align-items:center;gap:7px;padding:5px 13px;border-radius:7px;background:rgba(0,230,118,0.06);border:1px solid rgba(0,230,118,0.12);font-size:10.5px;font-weight:600;color:var(--green);font-family:'JetBrains Mono';}
+.pill-sse i{width:5px;height:5px;border-radius:50%;display:block;background:var(--green);box-shadow:0 0 4px var(--green);animation:breathe 1.8s ease-in-out infinite;}
+
+/* Sub-nav tabs */
+.sub-nav{display:flex;gap:2px;padding:0 28px;margin-bottom:4px;}
+.sub-tab{
+  display:flex;align-items:center;gap:7px;padding:9px 18px;border-radius:10px 10px 0 0;cursor:pointer;
+  font-size:11.5px;font-weight:600;color:var(--t3);transition:all 0.25s;
+  border:1px solid transparent;border-bottom:none;position:relative;
+}
+.sub-tab svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;}
+.sub-tab:hover{color:var(--t2);background:rgba(255,255,255,0.03);}
+.sub-tab.on{
+  color:var(--green);background:var(--glass);backdrop-filter:blur(20px);
+  border-color:var(--glass-b);border-bottom-color:transparent;
+}
+.sub-tab.on::after{
+  content:'';position:absolute;bottom:0;left:15%;right:15%;height:2px;
+  background:var(--green);box-shadow:0 0 8px var(--green-g);border-radius:2px 2px 0 0;
+}
+
+/* ═══════ STATUS HERO (Estado tab) ═══════ */
+.status-hero{
+  display:flex;gap:14px;padding:0 28px 14px;flex-shrink:0;
+}
+.hero-clock{
+  flex:0 0 280px;padding:24px;border-radius:18px;position:relative;overflow:hidden;
+  background:var(--glass);backdrop-filter:blur(var(--blur));
+  border:1px solid var(--glass-b);
+  box-shadow:0 8px 40px rgba(0,0,0,0.25),inset 0 1px 0 var(--glass-top);
+}
+.hero-clock::before{content:'';position:absolute;inset:0;background:linear-gradient(165deg,rgba(255,255,255,0.08) 0%,rgba(255,255,255,0.03) 18%,transparent 42%);pointer-events:none;border-radius:18px;}
+.hc-time{font-family:'Space Grotesk';font-size:48px;font-weight:800;color:var(--green);text-shadow:0 0 40px rgba(0,230,118,0.2);letter-spacing:2px;line-height:1;position:relative;z-index:1;}
+.hc-date{font-size:13px;color:var(--t2);margin-top:8px;font-weight:500;position:relative;z-index:1;}
+.hc-icon{position:absolute;top:18px;right:18px;z-index:1;}
+.hc-icon svg{width:28px;height:28px;stroke:var(--green);fill:none;stroke-width:1.5;opacity:0.3;}
+
+.hero-mode{
+  flex:1;padding:24px;border-radius:18px;position:relative;overflow:hidden;
+  background:var(--glass);backdrop-filter:blur(var(--blur));
+  border:1px solid var(--glass-b);
+  box-shadow:0 8px 40px rgba(0,0,0,0.25),inset 0 1px 0 var(--glass-top);
+  display:flex;gap:20px;
+}
+.hero-mode::before{content:'';position:absolute;inset:0;background:linear-gradient(165deg,rgba(255,255,255,0.08) 0%,rgba(255,255,255,0.03) 18%,transparent 42%);pointer-events:none;border-radius:18px;}
+
+.hm-block{flex:1;display:flex;flex-direction:column;justify-content:center;position:relative;z-index:1;}
+.hm-label{font-size:9.5px;font-weight:600;letter-spacing:1.8px;text-transform:uppercase;color:var(--t4);margin-bottom:6px;display:flex;align-items:center;gap:6px;}
+.hm-label svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8;}
+.hm-value{font-family:'Space Grotesk';font-size:22px;font-weight:700;color:var(--cyan);letter-spacing:0.5px;}
+.hm-value.green{color:var(--green);}
+.hm-value.dim{color:var(--t2);font-size:14px;}
+
+.hm-divider{width:1px;background:rgba(255,255,255,0.06);align-self:stretch;margin:8px 0;}
+
+.hm-progress{margin-top:10px;}
+.hm-prog-bar{height:4px;border-radius:2px;background:rgba(255,255,255,0.05);overflow:hidden;}
+.hm-prog-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--green),var(--cyan));box-shadow:0 0 8px rgba(0,230,118,0.2);transition:width 0.8s ease;}
+.hm-prog-meta{display:flex;justify-content:space-between;margin-top:4px;font-size:9px;font-family:'JetBrains Mono';color:var(--t4);}
+
+.hero-modules{
+  flex:0 0 200px;padding:18px;border-radius:18px;position:relative;overflow:hidden;
+  background:var(--glass);backdrop-filter:blur(var(--blur));
+  border:1px solid var(--glass-b);
+  box-shadow:0 8px 40px rgba(0,0,0,0.25),inset 0 1px 0 var(--glass-top);
+}
+.hero-modules::before{content:'';position:absolute;inset:0;background:linear-gradient(165deg,rgba(255,255,255,0.08) 0%,rgba(255,255,255,0.03) 18%,transparent 42%);pointer-events:none;border-radius:18px;}
+.hmod-title{font-size:10px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--t3);margin-bottom:12px;position:relative;z-index:1;}
+.hmod-row{display:flex;align-items:center;gap:8px;padding:5px 0;position:relative;z-index:1;}
+.hmod-led{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.hmod-led.on{background:var(--green);box-shadow:0 0 6px rgba(0,230,118,0.5);}
+.hmod-led.off{background:var(--off);box-shadow:0 0 3px rgba(160,160,160,0.2);}
+.hmod-name{font-size:11px;color:var(--t2);flex:1;}
+.hmod-stat{font-size:9px;font-family:'JetBrains Mono';color:var(--t4);}
+
+/* ═══════ VERTICAL DAY STRIPS ═══════ */
+.days-container{
+  flex:1;display:flex;gap:0;padding:0 28px 20px;min-height:0;
+}
+
+.day-strip{
+  flex:1;display:flex;flex-direction:column;
+  border-right:1px solid rgba(255,255,255,0.04);
+  cursor:pointer;transition:all 0.4s cubic-bezier(0.25,0.46,0.45,0.94);
+  position:relative;overflow:hidden;min-width:0;
+}
+.day-strip:first-child{border-radius:16px 0 0 16px;overflow:hidden;}
+.day-strip:last-child{border-right:none;border-radius:0 16px 16px 0;overflow:hidden;}
+
+/* Background per strip */
+.day-strip::before{
+  content:'';position:absolute;inset:0;
+  background:var(--glass);backdrop-filter:blur(20px);
+  border-top:1px solid var(--glass-b);
+  transition:background 0.4s;z-index:0;
+}
+.day-strip:hover::before{background:rgba(50,50,50,0.5);}
+.day-strip.today::before{background:rgba(0,230,118,0.04);}
+.day-strip.today{border-right-color:rgba(0,230,118,0.08);}
+
+/* Expanded state */
+.day-strip.expanded{flex:3.5;cursor:default;}
+.day-strip.collapsed{flex:0.55;}
+.day-strip.collapsed .day-header-text{opacity:0;transform:translateY(10px);}
+.day-strip.collapsed .day-blocks{opacity:0;pointer-events:none;}
+.day-strip.collapsed .day-count{opacity:0;}
+
+/* Day header */
+.day-header{
+  padding:16px 14px 12px;display:flex;flex-direction:column;align-items:center;
+  position:relative;z-index:1;flex-shrink:0;
+}
+
+.day-abbr{
+  font-family:'Space Grotesk';font-size:13px;font-weight:700;letter-spacing:1px;
+  text-transform:uppercase;color:var(--t3);transition:color 0.3s;writing-mode:horizontal-tb;
+}
+.day-strip.today .day-abbr{color:var(--green);}
+.day-strip.expanded .day-abbr{color:var(--t1);}
+
+.day-number{
+  font-family:'Space Grotesk';font-size:28px;font-weight:800;color:var(--t4);
+  margin-top:4px;transition:all 0.3s;line-height:1;
+}
+.day-strip.today .day-number{color:var(--green);text-shadow:0 0 20px rgba(0,230,118,0.2);}
+.day-strip.expanded .day-number{color:var(--t1);}
+
+.day-header-text{transition:all 0.3s;overflow:hidden;}
+
+.day-count{
+  margin-top:6px;font-size:9px;font-family:'JetBrains Mono';color:var(--t4);
+  padding:2px 7px;border-radius:4px;background:rgba(255,255,255,0.04);
+  transition:all 0.3s;
+}
+.day-strip.today .day-count{background:var(--green-05);color:var(--green);}
+
+/* Active indicator dot */
+.day-active-dot{
+  width:6px;height:6px;border-radius:50%;margin-top:8px;
+  background:var(--green);box-shadow:0 0 8px var(--green-g);
+  animation:breathe 2s ease-in-out infinite;
+  display:none;
+}
+.day-strip.today .day-active-dot{display:block;}
+
+/* Vertical label for collapsed */
+.day-vert-label{
+  position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%) rotate(-90deg);
+  font-family:'Space Grotesk';font-size:12px;font-weight:700;
+  letter-spacing:3px;text-transform:uppercase;color:var(--t4);
+  white-space:nowrap;opacity:0;transition:opacity 0.3s;pointer-events:none;
+}
+.day-strip.collapsed .day-vert-label{opacity:1;}
+.day-strip.collapsed.today .day-vert-label{color:rgba(0,230,118,0.3);}
+
+/* ═══════ DAY BLOCKS (schedule inside expanded strip) ═══════ */
+.day-blocks{
+  flex:1;padding:0 12px 14px;overflow-y:auto;overflow-x:hidden;
+  display:flex;flex-direction:column;gap:8px;position:relative;z-index:1;
+  transition:opacity 0.3s;
+}
+.day-blocks::-webkit-scrollbar{width:3px;}
+.day-blocks::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.06);border-radius:2px;}
+
+/* Timeline line */
+.day-blocks::before{
+  content:'';position:absolute;left:24px;top:0;bottom:14px;width:1px;
+  background:linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02));
+  z-index:0;
+}
+
+.sched-block{
+  position:relative;padding:14px 14px 14px 36px;border-radius:12px;
+  background:var(--inset);border:1px solid rgba(255,255,255,0.03);
+  transition:all 0.25s;z-index:1;
+}
+.sched-block:hover{border-color:rgba(255,255,255,0.08);background:rgba(0,0,0,0.28);}
+.sched-block.active{border-color:rgba(0,230,118,0.15);box-shadow:inset 0 0 15px rgba(0,230,118,0.03);}
+
+/* Timeline dot */
+.sched-block::before{
+  content:'';position:absolute;left:-1px;top:20px;width:9px;height:9px;
+  border-radius:50%;background:rgba(255,255,255,0.08);border:2px solid rgba(255,255,255,0.12);
+  transform:translateX(-50%);margin-left:25px;
+}
+.sched-block.active::before{
+  background:var(--green);border-color:rgba(0,230,118,0.3);
+  box-shadow:0 0 8px rgba(0,230,118,0.4);
+}
+
+.sb-time{font-family:'JetBrains Mono';font-size:10px;font-weight:600;color:var(--t3);margin-bottom:4px;display:flex;align-items:center;gap:6px;}
+.sb-time svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2;}
+.sb-mode{font-family:'Space Grotesk';font-size:15px;font-weight:700;color:var(--t1);margin-bottom:6px;}
+.sched-block.active .sb-mode{color:var(--green);}
+
+.sb-extras{display:flex;gap:4px;flex-wrap:wrap;}
+.sb-tag{
+  display:flex;align-items:center;gap:3px;padding:3px 8px;border-radius:5px;
+  font-size:8.5px;font-weight:600;letter-spacing:0.3px;text-transform:uppercase;
+  background:rgba(255,255,255,0.04);color:var(--t3);
+}
+.sb-tag svg{width:10px;height:10px;stroke:currentColor;fill:none;stroke-width:2;}
+.sb-tag.t-audio{color:var(--green);background:var(--green-05);}
+.sb-tag.t-haze{color:var(--cyan);background:rgba(77,208,225,0.06);}
+.sb-tag.t-dj{color:var(--blue);background:rgba(66,165,245,0.06);}
+.sb-tag.t-strobe{color:#ffd54f;background:rgba(255,213,79,0.06);}
+.sb-tag.t-laser{color:#ef5350;background:rgba(239,83,80,0.06);}
+.sb-tag.t-full{color:var(--t2);background:rgba(255,255,255,0.05);}
+
+/* Add block button */
+.add-block{
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  padding:12px;border-radius:10px;border:1px dashed rgba(255,255,255,0.08);
+  cursor:pointer;transition:all 0.25s;color:var(--t4);font-size:11px;font-weight:500;
+  margin-left:24px;
+}
+.add-block svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;}
+.add-block:hover{border-color:var(--green-20);color:var(--green);background:rgba(0,230,118,0.03);}
+
+/* ═══════ CONTROL PANEL (bottom drawer) ═══════ */
+.ctrl-drawer{
+  flex-shrink:0;padding:0 28px 20px;
+  display:none;
+}
+.ctrl-drawer.show{display:block;}
+
+.ctrl-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+
+.ctrl-card{
+  padding:20px;border-radius:16px;position:relative;overflow:hidden;
+  background:var(--glass);backdrop-filter:blur(var(--blur));
+  border:1px solid var(--glass-b);
+  box-shadow:0 8px 40px rgba(0,0,0,0.25),inset 0 1px 0 var(--glass-top);
+}
+.ctrl-card::before{content:'';position:absolute;inset:0;background:linear-gradient(165deg,rgba(255,255,255,0.08) 0%,rgba(255,255,255,0.03) 18%,transparent 42%);pointer-events:none;border-radius:16px;}
+
+.cc-header{display:flex;align-items:center;gap:10px;margin-bottom:16px;position:relative;z-index:1;}
+.cc-icon{
+  width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+  border:1px solid rgba(255,255,255,0.06);flex-shrink:0;
+}
+.cc-icon svg{width:18px;height:18px;fill:none;stroke-width:1.8;}
+.cc-icon.green{background:var(--green-05);border-color:var(--green-10);}
+.cc-icon.green svg{stroke:var(--green);}
+.cc-icon.cyan{background:rgba(77,208,225,0.05);border-color:rgba(77,208,225,0.1);}
+.cc-icon.cyan svg{stroke:var(--cyan);}
+.cc-icon.blue{background:rgba(66,165,245,0.05);border-color:rgba(66,165,245,0.1);}
+.cc-icon.blue svg{stroke:var(--blue);}
+.cc-title{font-size:13px;font-weight:700;color:var(--t1);}
+.cc-subtitle{font-size:9.5px;color:var(--t3);margin-top:1px;}
+
+.cc-body{position:relative;z-index:1;}
+
+.cc-select{
+  width:100%;padding:9px 32px 9px 12px;border-radius:8px;background:var(--inset);
+  border:1px solid rgba(255,255,255,0.06);color:var(--t1);font-family:'JetBrains Mono';
+  font-size:11px;appearance:none;cursor:pointer;transition:border-color 0.2s;
+  background-image:url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='rgba(240,240,240,0.3)' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;
+}
+.cc-select:focus{outline:none;border-color:rgba(0,230,118,0.2);}
+.cc-select option{background:#1a1a1a;color:var(--t1);}
+
+.cc-input{
+  width:100%;padding:9px 12px;border-radius:8px;background:var(--inset);
+  border:1px solid rgba(255,255,255,0.06);color:var(--t1);font-family:'JetBrains Mono';
+  font-size:11px;transition:border-color 0.2s;
+}
+.cc-input:focus{outline:none;border-color:rgba(0,230,118,0.2);}
+.cc-input::placeholder{color:var(--t4);}
+
+.cc-label{font-size:9.5px;color:var(--t4);display:block;margin:10px 0 5px;font-weight:500;letter-spacing:0.3px;}
+.cc-label:first-child{margin-top:0;}
+
+.cc-btn{
+  width:100%;padding:10px;border-radius:9px;border:none;cursor:pointer;
+  font-family:'Inter';font-size:10.5px;font-weight:700;letter-spacing:0.3px;text-transform:uppercase;
+  transition:all 0.2s;margin-top:12px;
+}
+.cc-btn.go{
+  background:linear-gradient(180deg,rgba(0,200,100,0.3) 0%,rgba(0,160,80,0.25) 100%);
+  color:var(--green);border:1px solid rgba(0,230,118,0.2);
+  box-shadow:0 3px 0 0 rgba(0,50,25,0.5),0 4px 12px rgba(0,0,0,0.25),0 0 16px rgba(0,230,118,0.05);
+}
+.cc-btn.go:hover{box-shadow:0 3px 0 0 rgba(0,50,25,0.5),0 0 24px rgba(0,230,118,0.1);}
+.cc-btn.go:active{transform:translateY(2px);box-shadow:none;}
+.cc-btn.alt{
+  background:linear-gradient(180deg,rgba(77,208,225,0.2) 0%,rgba(60,170,185,0.15) 100%);
+  color:var(--cyan);border:1px solid rgba(77,208,225,0.15);
+  box-shadow:0 3px 0 0 rgba(20,60,70,0.5),0 4px 12px rgba(0,0,0,0.2);
+}
+.cc-btn.alt:hover{box-shadow:0 3px 0 0 rgba(20,60,70,0.5),0 0 20px rgba(77,208,225,0.08);}
+.cc-btn.alt:active{transform:translateY(2px);box-shadow:none;}
+
+.cc-info{margin-top:14px;padding:10px 12px;border-radius:8px;background:linear-gradient(135deg,rgba(0,230,118,0.03),rgba(77,208,225,0.02));border:1px solid rgba(0,230,118,0.06);}
+.cc-info-row{display:flex;justify-content:space-between;padding:3px 0;font-size:10.5px;}
+.cc-info-k{color:var(--t3);}
+.cc-info-v{font-family:'JetBrains Mono';font-weight:600;color:var(--green);font-size:10px;}
+.cc-info-v.dim{color:var(--t3);}
+.cc-info-v.cyan{color:var(--cyan);}
+
+/* ═══════ ANIMATIONS ═══════ */
+@keyframes slideUp{from{opacity:0;transform:translateY(18px) scale(0.98);}to{opacity:1;transform:translateY(0) scale(1);}}
+.hero-clock,.hero-mode,.hero-modules{animation:slideUp 0.55s cubic-bezier(0.25,0.46,0.45,0.94) both;}
+.hero-clock{animation-delay:0.03s;}
+.hero-mode{animation-delay:0.08s;}
+.hero-modules{animation-delay:0.13s;}
+
+@keyframes stripIn{from{opacity:0;transform:scaleY(0.95);}to{opacity:1;transform:scaleY(1);}}
+.day-strip{animation:stripIn 0.5s cubic-bezier(0.25,0.46,0.45,0.94) both;transform-origin:top;}
+.day-strip:nth-child(1){animation-delay:0.06s;}
+.day-strip:nth-child(2){animation-delay:0.09s;}
+.day-strip:nth-child(3){animation-delay:0.12s;}
+.day-strip:nth-child(4){animation-delay:0.15s;}
+.day-strip:nth-child(5){animation-delay:0.18s;}
+.day-strip:nth-child(6){animation-delay:0.21s;}
+.day-strip:nth-child(7){animation-delay:0.24s;}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.06);border-radius:2px;}
+</style>
+</head>
+<body>
+
+<div class="bg-canvas">
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+</div>
+<div class="noise"></div>
+
+<div class="app">
+  <!-- SIDEBAR -->
+  <aside class="side">
+    <div class="s-logo"><span>911</span></div>
+    <div class="s-btn"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke-linejoin="round" stroke-linecap="round"/></svg></div>
+    <div class="s-btn on"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
+    <div class="s-btn"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></div>
+    <div class="s-btn"><svg viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0114.08 0M8.53 16.11a6 6 0 016.95 0M12 20h.01" stroke-linecap="round"/></svg></div>
+    <div class="s-btn"><svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17,21 17,13 7,13 7,21"/></svg></div>
+    <div class="s-btn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></div>
+    <div class="s-bottom"><div class="s-dot"></div></div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <!-- TOP BAR -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <h1 class="topbar-title">Calendar</h1>
+        <span class="topbar-sub">v7.2</span>
+      </div>
+      <div class="topbar-right">
+        <div class="pill-sse"><i></i> SSE Connected</div>
+      </div>
+    </div>
+
+    <!-- SUB-NAV -->
+    <div class="sub-nav">
+      <div class="sub-tab on" data-view="estado">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>
+        Estado
+      </div>
+      <div class="sub-tab" data-view="horarios">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Horarios
+      </div>
+      <div class="sub-tab" data-view="control">
+        <svg viewBox="0 0 24 24"><path d="M12 20V10M6 20V4M18 20v-6"/></svg>
+        Control
+      </div>
+    </div>
+
+    <!-- ═══════ STATUS HERO ═══════ -->
+    <div class="status-hero" id="status-hero">
+      <!-- Clock -->
+      <div class="hero-clock">
+        <div class="hc-icon">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>
+        </div>
+        <div class="hc-time" id="clock">14:32:08</div>
+        <div class="hc-date" id="dateText">Miércoles 11 de Febrero</div>
+      </div>
+
+      <!-- Current Mode -->
+      <div class="hero-mode">
+        <div class="hm-block">
+          <div class="hm-label">
+            <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            Modo Actual
+          </div>
+          <div class="hm-value green">clima_1</div>
+          <div class="hm-progress">
+            <div class="hm-prog-bar"><div class="hm-prog-fill" style="width:42%"></div></div>
+            <div class="hm-prog-meta"><span>14:00 — 17:00</span><span>Restante: 2h 28m</span></div>
+          </div>
+        </div>
+        <div class="hm-divider"></div>
+        <div class="hm-block">
+          <div class="hm-label">
+            <svg viewBox="0 0 24 24"><polyline points="23,6 13.5,15.5 8.5,10.5 1,18"/></svg>
+            Próximo
+          </div>
+          <div class="hm-value" style="color:var(--cyan)">fiesta_noche</div>
+          <div style="margin-top:6px;font-size:10px;color:var(--t3);font-family:'JetBrains Mono';">17:00 — 23:00</div>
+        </div>
+        <div class="hm-divider"></div>
+        <div class="hm-block" style="flex:0.6;">
+          <div class="hm-label">
+            <svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22,4 12,14.01 9,11.01"/></svg>
+            Origen
+          </div>
+          <div class="hm-value dim">Calendario</div>
+          <div style="margin-top:6px;font-size:10px;color:var(--t3);font-family:'JetBrains Mono';">AUTO</div>
+        </div>
+      </div>
+
+      <!-- Modules -->
+      <div class="hero-modules">
+        <div class="hmod-title">Módulos</div>
+        <div class="hmod-row"><div class="hmod-led on"></div><span class="hmod-name">Audio Engine</span><span class="hmod-stat">12ms</span></div>
+        <div class="hmod-row"><div class="hmod-led on"></div><span class="hmod-name">Vision Haze</span><span class="hmod-stat">30fps</span></div>
+        <div class="hmod-row"><div class="hmod-led off"></div><span class="hmod-name">Vision DJ</span><span class="hmod-stat">—</span></div>
+        <div class="hmod-row"><div class="hmod-led on"></div><span class="hmod-name">Cues Clima</span><span class="hmod-stat">3 cues</span></div>
+        <div class="hmod-row"><div class="hmod-led on"></div><span class="hmod-name">CueEngine</span><span class="hmod-stat">OK</span></div>
+      </div>
+    </div>
+
+    <!-- ═══════ VERTICAL DAY STRIPS ═══════ -->
+    <div class="days-container" id="days-container">
+
+      <!-- LUN -->
+      <div class="day-strip collapsed" data-day="lun">
+        <div class="day-vert-label">LUNES</div>
+        <div class="day-header">
+          <div class="day-abbr">LUN</div>
+          <div class="day-number">10</div>
+          <div class="day-header-text">
+            <div class="day-count">2 bloques</div>
+          </div>
+        </div>
+        <div class="day-blocks">
+          <div class="sched-block">
+            <div class="sb-time">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>
+              09:00 — 14:00
+            </div>
+            <div class="sb-mode">clima_1</div>
+            <div class="sb-extras">
+              <span class="sb-tag t-haze"><svg viewBox="0 0 24 24"><path d="M3 15h4l3-9 4 18 3-9h4"/></svg>Haze</span>
+              <span class="sb-tag t-audio"><svg viewBox="0 0 24 24"><polygon points="11,5 6,9 2,9 2,15 6,15 11,19"/><path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/></svg>Audio</span>
+            </div>
+          </div>
+          <div class="sched-block">
+            <div class="sb-time">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>
+              14:00 — 20:00
+            </div>
+            <div class="sb-mode">clima_2</div>
+            <div class="sb-extras">
+              <span class="sb-tag t-full"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>Full</span>
+            </div>
+          </div>
+          <div class="add-block">
+            <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Agregar
+          </div>
+        </div>
+      </div>
+
+      <!-- MAR -->
+      <div class="day-strip collapsed" data-day="mar">
+        <div class="day-vert-label">MARTES</div>
+        <div class="day-header">
+          <div class="day-abbr">MAR</div>
+          <div class="day-number">11</div>
+          <div class="day-header-text">
+            <div class="day-count">2 bloques</div>
+          </div>
+        </div>
+        <div class="day-blocks">
+          <div class="sched-block">
+            <div class="sb-time"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>09:00 — 14:00</div>
+            <div class="sb-mode">clima_1</div>
+            <div class="sb-extras">
+              <span class="sb-tag t-haze"><svg viewBox="0 0 24 24"><path d="M3 15h4l3-9 4 18 3-9h4"/></svg>Haze</span>
+              <span class="sb-tag t-audio"><svg viewBox="0 0 24 24"><polygon points="11,5 6,9 2,9 2,15 6,15 11,19"/></svg>Audio</span>
+            </div>
+          </div>
+          <div class="sched-block">
+            <div class="sb-time"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>22:00 — 04:00</div>
+            <div class="sb-mode">fiesta_noche</div>
+            <div class="sb-extras">
+              <span class="sb-tag t-full"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>Full</span>
+              <span class="sb-tag t-dj"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 006 0v-1a10 10 0 10-3.92 7.94"/></svg>DJ</span>
+            </div>
+          </div>
+          <div class="add-block"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Agregar</div>
+        </div>
+      </div>
+
+      <!-- MIÉ (TODAY - expanded) -->
+      <div class="day-strip today expanded" data-day="mie">
+        <div class="day-vert-label">MIÉRCOLES</div>
+        <div class="day-header">
+          <div class="day-abbr">MIÉ</div>
+          <div class="day-number">12</div>
+          <div class="day-header-text">
+            <div class="day-count">2 bloques</div>
+            <div class="day-active-dot"></div>
+          </div>
+        </div>
+        <div class="day-blocks">
+          <div class="sched-block active">
+            <div class="sb-time"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>09:00 — 17:00</div>
+            <div class="sb-mode">clima_1</div>
+            <div class="sb-extras">
+              <span class="sb-tag t-haze"><svg viewBox="0 0 24 24"><path d="M3 15h4l3-9 4 18 3-9h4"/></svg>Haze</span>
+              <span class="sb-tag t-audio"><svg viewBox="0 0 24 24"><polygon points="11,5 6,9 2,9 2,15 6,15 11,19"/></svg>Audio</span>
+            </div>
+          </div>
+          <div class="sched-block">
+            <div class="sb-time"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>17:00 — 23:00</div>
+            <div class="sb-mode">fiesta_noche</div>
+            <div class="sb-extras">
+              <span class="sb-tag t-full"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>Full</span>
+              <span class="sb-tag t-dj"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/></svg>DJ</span>
+            </div>
+          </div>
+          <div class="add-block"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Agregar</div>
+        </div>
+      </div>
+
+      <!-- JUE -->
+      <div class="day-strip collapsed" data-day="jue">
+        <div class="day-vert-label">JUEVES</div>
+        <div class="day-header">
+          <div class="day-abbr">JUE</div>
+          <div class="day-number">13</div>
+          <div class="day-header-text">
+            <div class="day-count">2 bloques</div>
+          </div>
+        </div>
+        <div class="day-blocks">
+          <div class="sched-block">
+            <div class="sb-time"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>10:00 — 15:00</div>
+            <div class="sb-mode">clima_1</div>
+            <div class="sb-extras"><span class="sb-tag t-haze"><svg viewBox="0 0 24 24"><path d="M3 15h4l3-9 4 18 3-9h4"/></svg>Haze</span></div>
+          </div>
+          <div class="sched-block">
+            <div class="sb-time"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>22:00 — 05:00</div>
+            <div class="sb-mode">fiesta_max</div>
+            <div class="sb-extras">
+              <span class="sb-tag t-full"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>Full</span>
+              <span class="sb-tag t-dj"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/></svg>DJ</span>
+              <span class="sb-tag t-strobe"><svg viewBox="0 0 24 24"><polygon points="13,2 3,14 12,14 11,22 21,10 12,10"/></svg>Strobe</span>
+            </div>
+          </div>
+          <div class="add-block"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Agregar</div>
+        </div>
+      </div>
+
+      <!-- VIE -->
+      <div class="day-strip collapsed" data-day="vie">
+        <div class="day-vert-label">VIERNES</div>
+        <div class="day-header">
+          <div class="day-abbr">VIE</div>
+          <div class="day-number">14</div>
+          <div class="day-header-text">
+            <div class="day-count">2 bloques</div>
+          </div>
+        </div>
+        <div class="day-blocks">
+          <div class="sched-block">
+            <div class="sb-time"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>12:00 — 18:00</div>
+            <div class="sb-mode">clima_2</div>
+            <div class="sb-extras">
+              <span class="sb-tag t-haze"><svg viewBox="0 0 24 24"><path d="M3 15h4l3-9 4 18 3-9h4"/></svg>Haze</span>
+              <span class="sb-tag t-audio"><svg viewBox="0 0 24 24"><polygon points="11,5 6,9 2,9 2,15 6,15 11,19"/></svg>Audio</span>
+            </div>
+          </div>
+          <div class="sched-block">
+            <div class="sb-time"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>22:00 — 06:00</div>
+            <div class="sb-mode">fiesta_max</div>
+            <div class="sb-extras">
+              <span class="sb-tag t-full"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>Full</span>
+              <span class="sb-tag t-dj"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/></svg>DJ</span>
+              <span class="sb-tag t-strobe"><svg viewBox="0 0 24 24"><polygon points="13,2 3,14 12,14 11,22 21,10 12,10"/></svg>Strobe</span>
+            </div>
+          </div>
+          <div class="add-block"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Agregar</div>
+        </div>
+      </div>
+
+      <!-- SÁB -->
+      <div class="day-strip collapsed" data-day="sab">
+        <div class="day-vert-label">SÁBADO</div>
+        <div class="day-header">
+          <div class="day-abbr">SÁB</div>
+          <div class="day-number">15</div>
+          <div class="day-header-text">
+            <div class="day-count">2 bloques</div>
+          </div>
+        </div>
+        <div class="day-blocks">
+          <div class="sched-block">
+            <div class="sb-time"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>14:00 — 20:00</div>
+            <div class="sb-mode">clima_2</div>
+            <div class="sb-extras"><span class="sb-tag t-full"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>Full</span></div>
+          </div>
+          <div class="sched-block">
+            <div class="sb-time"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>23:00 — 07:00</div>
+            <div class="sb-mode">fiesta_max</div>
+            <div class="sb-extras">
+              <span class="sb-tag t-full"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>Full</span>
+              <span class="sb-tag t-dj"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/></svg>DJ</span>
+              <span class="sb-tag t-strobe"><svg viewBox="0 0 24 24"><polygon points="13,2 3,14 12,14 11,22 21,10 12,10"/></svg>Strobe</span>
+              <span class="sb-tag t-laser"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/></svg>Laser</span>
+            </div>
+          </div>
+          <div class="add-block"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Agregar</div>
+        </div>
+      </div>
+
+      <!-- DOM -->
+      <div class="day-strip collapsed" data-day="dom">
+        <div class="day-vert-label">DOMINGO</div>
+        <div class="day-header">
+          <div class="day-abbr">DOM</div>
+          <div class="day-number">16</div>
+          <div class="day-header-text">
+            <div class="day-count">1 bloque</div>
+          </div>
+        </div>
+        <div class="day-blocks">
+          <div class="sched-block">
+            <div class="sb-time"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>10:00 — 16:00</div>
+            <div class="sb-mode">clima_1</div>
+            <div class="sb-extras"><span class="sb-tag t-haze"><svg viewBox="0 0 24 24"><path d="M3 15h4l3-9 4 18 3-9h4"/></svg>Haze</span></div>
+          </div>
+          <div class="add-block"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Agregar</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ═══════ CONTROL DRAWER ═══════ -->
+    <div class="ctrl-drawer" id="ctrl-drawer">
+      <div class="ctrl-cards">
+        <!-- Cambiar Modo -->
+        <div class="ctrl-card">
+          <div class="cc-header">
+            <div class="cc-icon green">
+              <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </div>
+            <div>
+              <div class="cc-title">Cambiar Modo</div>
+              <div class="cc-subtitle">Override del calendario</div>
+            </div>
+          </div>
+          <div class="cc-body">
+            <label class="cc-label">Seleccionar Modo</label>
+            <select class="cc-select">
+              <option>clima_1</option><option>clima_2</option><option>fiesta_noche</option><option>fiesta_max</option><option>blackout</option><option>mantenimiento</option>
+            </select>
+            <button class="cc-btn go">GO — Cambiar</button>
+            <div class="cc-info">
+              <div class="cc-info-row"><span class="cc-info-k">Actual</span><span class="cc-info-v">clima_1</span></div>
+              <div class="cc-info-row"><span class="cc-info-k">Origen</span><span class="cc-info-v cyan">Calendario</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Extender Bloque -->
+        <div class="ctrl-card">
+          <div class="cc-header">
+            <div class="cc-icon cyan">
+              <svg viewBox="0 0 24 24"><polyline points="17,1 21,5 17,9"/><path d="M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
+            </div>
+            <div>
+              <div class="cc-title">Extender Bloque</div>
+              <div class="cc-subtitle">Alargar bloque actual</div>
+            </div>
+          </div>
+          <div class="cc-body">
+            <label class="cc-label">Minutos a extender</label>
+            <input type="number" class="cc-input" value="30" min="5" max="480" step="5">
+            <button class="cc-btn alt">Extender</button>
+            <div class="cc-info">
+              <div class="cc-info-row"><span class="cc-info-k">Inicio</span><span class="cc-info-v dim">14:00</span></div>
+              <div class="cc-info-row"><span class="cc-info-k">Fin Orig.</span><span class="cc-info-v dim">17:00</span></div>
+              <div class="cc-info-row"><span class="cc-info-k">Fin Actual</span><span class="cc-info-v">17:00</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Override Temporal -->
+        <div class="ctrl-card">
+          <div class="cc-header">
+            <div class="cc-icon blue">
+              <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <div>
+              <div class="cc-title">Override Temporal</div>
+              <div class="cc-subtitle">Modo temporal limitado</div>
+            </div>
+          </div>
+          <div class="cc-body">
+            <label class="cc-label">Modo Override</label>
+            <select class="cc-select">
+              <option>fiesta_noche</option><option>fiesta_max</option><option>blackout</option><option>mantenimiento</option>
+            </select>
+            <label class="cc-label">Duración (min)</label>
+            <input type="number" class="cc-input" value="60" min="5" max="480" step="5">
+            <button class="cc-btn go">Activar Override</button>
+            <div class="cc-info">
+              <div class="cc-info-row"><span class="cc-info-k">Estado</span><span class="cc-info-v dim">Inactivo</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// Clock
+function updateClock(){
+  const now = new Date();
+  const el = document.getElementById('clock');
+  if(el) el.textContent = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+  const days=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+  const months=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const dEl = document.getElementById('dateText');
+  if(dEl) dEl.textContent = `${days[now.getDay()]} ${now.getDate()} de ${months[now.getMonth()]}`;
+}
+setInterval(updateClock,1000);
+updateClock();
+
+// Day strip expand/collapse
+document.querySelectorAll('.day-strip').forEach(strip => {
+  strip.addEventListener('click', function(e){
+    if(this.classList.contains('expanded')) return;
+    document.querySelectorAll('.day-strip').forEach(s => {
+      s.classList.remove('expanded');
+      s.classList.add('collapsed');
+    });
+    this.classList.remove('collapsed');
+    this.classList.add('expanded');
+  });
+});
+
+// Sub-tab switching
+document.querySelectorAll('.sub-tab').forEach(tab => {
+  tab.addEventListener('click', function(){
+    const view = this.dataset.view;
+    document.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('on'));
+    this.classList.add('on');
+
+    const hero = document.getElementById('status-hero');
+    const days = document.getElementById('days-container');
+    const ctrl = document.getElementById('ctrl-drawer');
+
+    if(view === 'estado'){
+      hero.style.display = 'flex';
+      days.style.display = 'flex';
+      ctrl.classList.remove('show');
+    } else if(view === 'horarios'){
+      hero.style.display = 'none';
+      days.style.display = 'flex';
+      ctrl.classList.remove('show');
+    } else if(view === 'control'){
+      hero.style.display = 'none';
+      days.style.display = 'none';
+      ctrl.classList.add('show');
+    }
+  });
+});
+</script>
+</body>
+</html>
