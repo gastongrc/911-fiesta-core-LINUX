@@ -5,14 +5,21 @@ ARQUITECTURA:
 - Este server corre en puerto 8000
 - FORWARDEA /api/v1/status/* a CORE HTTP (127.0.0.1:8010)
 - FORWARDEA /api/v1/vision/* a Vision Flask (127.0.0.1:5000)
+- Sirve frontend estático (webapp/dist) en / (producción, sin Node)
 """
+from pathlib import Path
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 # Import routers
 from api.routers import status, analyzers, cues, network, presets, config, alerts, calendar
+
+# Webapp static build (Vite output)
+WEBAPP_DIST = Path(__file__).resolve().parent.parent / "webapp" / "dist"
 
 
 # FastAPI app
@@ -40,6 +47,10 @@ app.include_router(presets.router, prefix="/api/v1", tags=["presets"])
 app.include_router(config.router, prefix="/api/v1", tags=["config"])
 app.include_router(alerts.router, prefix="/api/v1", tags=["alerts"])
 app.include_router(calendar.router, prefix="/api/v1", tags=["calendar"])
+
+# Mount static assets from Vite build (JS/CSS/images)
+if (WEBAPP_DIST / "assets").is_dir():
+    app.mount("/assets", StaticFiles(directory=WEBAPP_DIST / "assets"), name="static-assets")
 
 
 # ==================== VISION PROXY (forward to Flask 5000) ====================
@@ -109,12 +120,11 @@ async def vision_status_proxy():
 
 @app.get("/")
 async def root():
-    """Root endpoint - API info"""
-    return {
-        "service": "911-fiesta-api",
-        "version": "1.0.0",
-        "docs": "/docs"
-    }
+    """Serve SPA index.html (or API info if dist not built)."""
+    index = WEBAPP_DIST / "index.html"
+    if index.is_file():
+        return FileResponse(index, media_type="text/html")
+    return {"service": "911-fiesta-api", "version": "1.0.0", "docs": "/docs"}
 
 
 @app.get("/health")
@@ -135,6 +145,20 @@ async def health():
             "initialized": False,
             "uptime": 0
         }
+
+
+# ==================== SPA CATCH-ALL (must be LAST route) ====================
+
+@app.get("/{path:path}")
+async def spa_fallback(path: str):
+    """
+    Catch-all for client-side routing (react-router-dom).
+    Returns index.html for any path not matched by API routes above.
+    """
+    index = WEBAPP_DIST / "index.html"
+    if index.is_file():
+        return FileResponse(index, media_type="text/html")
+    return Response(content="Not found", status_code=404)
 
 
 def start_api_server(host: str = "0.0.0.0", port: int = 8000):
