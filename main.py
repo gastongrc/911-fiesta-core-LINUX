@@ -612,11 +612,8 @@ class Main(QMainWindow):
         super().__init__()
         self.setWindowTitle("911 Fiesta - Sistema Modular v4.2 + BRAKE ANALYZER REAL + RED PANEL + HEALTH")
 
-        # Kiosk mode: frameless + always-on-top (fullscreen deferred to event loop)
-        self.setWindowFlags(
-            Qt.FramelessWindowHint |
-            Qt.WindowStaysOnTopHint
-        )
+        # Kiosk mode: frameless (no title bar, no window controls)
+        self.setWindowFlags(Qt.FramelessWindowHint)
 
         # Preset path - SINGLE PROFILE (source of truth)
         # ABSOLUTE PATH anchored to main.py directory (Windows CWD fix)
@@ -979,18 +976,6 @@ class Main(QMainWindow):
         # =====================================================================
         QTimer.singleShot(100, self._startup_auto_apply)
         QTimer.singleShot(500, self._execute_bootstrap)
-
-        # Fullscreen AFTER event loop starts (WM must be ready to handle it)
-        QTimer.singleShot(0, self._force_fullscreen)
-
-    def _force_fullscreen(self):
-        """Apply fullscreen + focus after the event loop is running."""
-        self.showFullScreen()
-        self.raise_()
-        self.activateWindow()
-        print(f"[KIOSK] SCREEN: {self.screen().geometry()}")
-        print(f"[KIOSK] WINDOW: {self.geometry()}")
-        print(f"[KIOSK] CENTRAL: {self.centralWidget().geometry()}")
 
     def _execute_bootstrap(self):
         """
@@ -2152,6 +2137,11 @@ class Main(QMainWindow):
 
         self._mount_waveform("bajada")
         self._refresh_nics()
+
+        # Kiosk geometry: set to physical screen size and show (no showFullScreen)
+        screen = QApplication.primaryScreen().geometry()
+        self.setGeometry(screen)
+        self.show()
 
     # ========== HELPERS DE PERSISTENCIA ==========
 
