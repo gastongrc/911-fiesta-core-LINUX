@@ -46,7 +46,12 @@ fi
 # 3. Qt environment
 # ---------------------------------------------------------------------------
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
-export QT_AUTO_SCREEN_SCALE_FACTOR="${QT_AUTO_SCREEN_SCALE_FACTOR:-1}"
+# Disable Qt auto-scaling: force 1:1 pixel mapping to physical framebuffer.
+# QT_AUTO_SCREEN_SCALE_FACTOR=1 causes Qt6 to read EDID DPI and scale down
+# the logical viewport if the monitor reports >96 DPI, resulting in content
+# that renders smaller than the physical screen.
+export QT_AUTO_SCREEN_SCALE_FACTOR=0
+export QT_SCALE_FACTOR=1
 
 # ---------------------------------------------------------------------------
 # 4. Launch
