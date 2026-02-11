@@ -986,6 +986,9 @@ class Main(QMainWindow):
         self.showFullScreen()
         self.raise_()
         self.activateWindow()
+        print(f"[KIOSK] SCREEN: {self.screen().geometry()}")
+        print(f"[KIOSK] WINDOW: {self.geometry()}")
+        print(f"[KIOSK] CENTRAL: {self.centralWidget().geometry()}")
 
     def _execute_bootstrap(self):
         """
@@ -2118,17 +2121,21 @@ class Main(QMainWindow):
         self.tabs.currentChanged.connect(self._on_tab_changed)
 
         body = QWidget()
+        body.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         main_layout = QVBoxLayout(body)
-        main_layout.setContentsMargins(0,0,0,0)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
         main_layout.addWidget(top)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         page = QWidget()
         page_layout = QVBoxLayout(page)
-        page_layout.setContentsMargins(0,0,0,0)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(0)
         page_layout.addWidget(self.tabs)
         scroll.setWidget(page)
-        main_layout.addWidget(scroll)
+        main_layout.addWidget(scroll, 1)
         self.setCentralWidget(body)
 
         # V13: Audio controls removed from top bar - use Red/Consola tab instead
