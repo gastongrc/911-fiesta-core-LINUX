@@ -410,6 +410,8 @@ def make_grid(modules, cols=3):
     grid.setSpacing(12)
     for i in range((len(modules) + cols - 1) // cols):
         grid.setRowMinimumHeight(i, 280)
+    for c in range(cols):
+        grid.setColumnStretch(c, 1)
     for i, m in enumerate(modules):
         row, col = divmod(i, cols)
         grid.addWidget(m.card, row, col)
