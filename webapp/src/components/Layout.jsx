@@ -1,148 +1,101 @@
-/**
- * Layout V7 - Control Room Navigation (NEON UI)
- *
- * Navegación:
- * - Home (dashboard)
- * - Calendar (calendario)
- * - Vision (cámaras - solo referencia)
- * - Network (configuración de red)
- * - Presets (presets)
- * - Config (configuración)
- */
 import { Link, useLocation } from 'react-router-dom';
 
 const navItems = [
-  { path: '/', label: 'HOME' },
-  { path: '/calendar', label: 'CALENDAR' },
-  { path: '/vision', label: 'VISION' },
-  { path: '/network', label: 'NETWORK' },
-  { path: '/presets', label: 'PRESETS' },
-  { path: '/config', label: 'CONFIG' },
+  {
+    path: '/',
+    icon: (
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      </svg>
+    ),
+  },
+  {
+    path: '/calendar',
+    icon: (
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2" />
+        <line x1="16" y1="2" x2="16" y2="6" />
+        <line x1="8" y1="2" x2="8" y2="6" />
+        <line x1="3" y1="10" x2="21" y2="10" />
+      </svg>
+    ),
+  },
+  {
+    path: '/vision',
+    icon: (
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+      </svg>
+    ),
+  },
+  {
+    path: '/network',
+    icon: (
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <polyline points="12 6 12 12 16 14" />
+      </svg>
+    ),
+  },
+  {
+    path: '/presets',
+    icon: (
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="4" y1="21" x2="4" y2="14" />
+        <line x1="4" y1="10" x2="4" y2="3" />
+        <line x1="12" y1="21" x2="12" y2="12" />
+        <line x1="12" y1="8" x2="12" y2="3" />
+        <line x1="20" y1="21" x2="20" y2="16" />
+        <line x1="20" y1="12" x2="20" y2="3" />
+        <line x1="1" y1="14" x2="7" y2="14" />
+        <line x1="9" y1="8" x2="15" y2="8" />
+        <line x1="17" y1="16" x2="23" y2="16" />
+      </svg>
+    ),
+  },
+  {
+    path: '/config',
+    icon: (
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="3" />
+        <path d="M12 1v6m0 6v6m8.66-15l-5.2 3M8.54 14l-5.2 3m13.32 0l-5.2-3M8.54 10l-5.2-3" />
+      </svg>
+    ),
+  },
 ];
 
 export function Layout({ children }) {
   const location = useLocation();
 
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100vh',
-      background: 'var(--bg-dark)',
-      color: 'var(--text-normal)',
-    }}>
-      {/* Header */}
-      <header style={{
-        background: 'var(--bg-panel)',
-        borderBottom: '1px solid var(--border-dim)',
-        padding: '12px 20px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        position: 'relative',
-      }}>
-        {/* Glow line */}
-        <div style={{
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: '1px',
-          background: 'linear-gradient(90deg, transparent, var(--neon-cyan), var(--neon-green), var(--neon-cyan), transparent)',
-          boxShadow: '0 0 10px var(--neon-cyan)',
-        }} />
+    <>
+      <div className="bg-canvas">
+        <div className="blob blob-1" />
+        <div className="blob blob-2" />
+        <div className="blob blob-3" />
+      </div>
+      <div className="noise" />
 
-        <h1 style={{
-          margin: 0,
-          fontSize: '16px',
-          fontWeight: 'bold',
-          color: 'var(--neon-cyan)',
-          letterSpacing: '2px',
-          textShadow: '0 0 15px var(--neon-cyan)',
-        }}>
-          911 FIESTA CONTROL ROOM
-        </h1>
-        <span style={{
-          color: 'var(--text-dim)',
-          fontSize: '10px',
-          padding: '4px 8px',
-          background: 'var(--bg-dark)',
-          borderRadius: '4px',
-          border: '1px solid var(--border-dim)',
-        }}>
-          V7
-        </span>
-      </header>
-
-      {/* Main */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Sidebar */}
-        <aside style={{
-          width: '180px',
-          background: 'var(--bg-panel)',
-          borderRight: '1px solid var(--border-dim)',
-          padding: '16px 8px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '4px',
-        }}>
-          {navItems.map(({ path, label }) => {
-            const isActive = location.pathname === path;
-            return (
-              <Link
-                key={path}
-                to={path}
-                style={{
-                  display: 'block',
-                  padding: '12px 16px',
-                  borderRadius: '6px',
-                  textDecoration: 'none',
-                  fontSize: '11px',
-                  fontWeight: 'bold',
-                  letterSpacing: '1px',
-                  background: isActive ? 'var(--neon-green)' : 'transparent',
-                  color: isActive ? 'var(--bg-dark)' : 'var(--text-dim)',
-                  border: isActive ? 'none' : '1px solid transparent',
-                  boxShadow: isActive ? '0 0 15px rgba(0, 255, 136, 0.4)' : 'none',
-                  transition: 'all 0.2s ease',
-                }}
-                onMouseEnter={(e) => {
-                  if (!isActive) {
-                    e.target.style.background = 'var(--bg-hover)';
-                    e.target.style.color = 'var(--neon-cyan)';
-                    e.target.style.borderColor = 'var(--border-dim)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) {
-                    e.target.style.background = 'transparent';
-                    e.target.style.color = 'var(--text-dim)';
-                    e.target.style.borderColor = 'transparent';
-                  }
-                }}
-              >
-                {label}
-              </Link>
-            );
-          })}
+      <div className="app">
+        <aside className="side">
+          <Link to="/" className="s-logo">
+            <span>911</span>
+          </Link>
+          {navItems.map(({ path, icon }) => (
+            <Link
+              key={path}
+              to={path}
+              className={`s-btn${location.pathname === path ? ' on' : ''}`}
+            >
+              {icon}
+            </Link>
+          ))}
         </aside>
 
-        {/* Content */}
-        <main style={{
-          flex: 1,
-          overflow: 'auto',
-          background: 'var(--bg-dark)',
-        }}>
+        <main className="main">
           {children}
         </main>
       </div>
-
-      {/* Mobile Bottom Nav (hidden on desktop) */}
-      <style>{`
-        @media (max-width: 768px) {
-          aside { display: none !important; }
-        }
-      `}</style>
-    </div>
+    </>
   );
 }
