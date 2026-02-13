@@ -1,32 +1,15 @@
 /**
- * Home V7 - Control Room Dashboard (NEON UI)
+ * Home — Control Room + Status Dashboard (merged)
  *
- * SOLO muestra:
- * - Audio: silence / clipping
- * - Avolites: connected
- * - Cámaras: haze / people / tracking (OK/FAIL)
- * - Sistema: CPU / RAM / energía
- * - Calendario: día, hora BIOS, modo actual, timeline, próximo
+ * Matches UI contract:
+ * - docs/ui-contract/control_room_glass.html
+ * - docs/ui-contract/status_dashboard.html
  *
- * Estilo: NEON (glow + cards con bordes iluminados)
+ * Uses glass design system exclusively (control-room.css)
+ * SSE/polling hook preserved for live data
  */
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { getApiBase } from '../lib/apiBase';
-
-// Colores por modo
-const MODE_COLORS = {
-  clima_1: '#1abc9c', clima_2: '#16a085', clima_3: '#2ecc71', clima_4: '#27ae60',
-  teatro: '#3498db', artista: '#9b59b6',
-  boliche_inicio: '#f39c12', boliche_desarrollo: '#e67e22', boliche_fin: '#e74c3c',
-  apagado: '#7f8c8d',
-};
-
-const DAY_NAMES = {
-  monday: 'LUNES', tuesday: 'MARTES', wednesday: 'MIÉRCOLES',
-  thursday: 'JUEVES', friday: 'VIERNES', saturday: 'SÁBADO', sunday: 'DOMINGO',
-  lunes: 'LUNES', martes: 'MARTES', miércoles: 'MIÉRCOLES',
-  jueves: 'JUEVES', viernes: 'VIERNES', sábado: 'SÁBADO', domingo: 'DOMINGO'
-};
 
 // Hook para SSE con fallback a polling y reconexión
 function useUnifiedStatus() {
@@ -77,7 +60,6 @@ function useUnifiedStatus() {
 
     try {
       const apiBase = getApiBase();
-      // Construir URL absoluta para SSE
       const sseUrl = apiBase.startsWith('/')
         ? `${window.location.origin}${apiBase}/stream`
         : `${apiBase}/stream`;
@@ -87,7 +69,7 @@ function useUnifiedStatus() {
       es.onopen = () => {
         setConnectionType('sse');
         setError(null);
-        retryDelayRef.current = 1000; // Reset retry delay
+        retryDelayRef.current = 1000;
       };
 
       es.onmessage = (event) => {
@@ -102,12 +84,10 @@ function useUnifiedStatus() {
 
       es.onerror = () => {
         es.close();
-        // Retry con backoff exponencial
         const delay = retryDelayRef.current;
         retryDelayRef.current = Math.min(delay * 2, 10000);
 
         setTimeout(() => {
-          // Intentar SSE de nuevo, si falla mucho pasar a polling
           if (retryDelayRef.current >= 10000) {
             startPolling();
           } else {
@@ -130,443 +110,336 @@ function useUnifiedStatus() {
   return { status, connectionType, error };
 }
 
-// Formatea segundos
-function formatTime(s) {
+// Safe value or placeholder
+function val(v, fallback = '---') {
+  return v != null && v !== '' ? v : fallback;
+}
+
+// Format uptime seconds
+function formatUptime(s) {
   if (s == null || s < 0) return '---';
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m`;
-  return `${Math.floor(m / 60)}h ${m % 60}m`;
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
 }
 
-// Panel Neon
-function NeonPanel({ title, status, statusType, children }) {
-  return (
-    <div className="neon-panel">
-      <div className="neon-panel-header">
-        <span className="neon-panel-title">{title}</span>
-        {status && (
-          <span className={`neon-badge neon-badge-${statusType || 'info'}`}>
-            {status}
-          </span>
-        )}
-      </div>
-      <div className="neon-panel-content">
-        {children}
-      </div>
-    </div>
-  );
+// LED component matching contract (.led, .led.yellow, .led.red, .led.off)
+function LED({ color }) {
+  const cls = color === 'off' ? 'led off'
+    : color === 'yellow' ? 'led yellow'
+    : color === 'red' ? 'led red'
+    : 'led';
+  return <div className={cls} />;
 }
 
-// Indicador
-function Indicator({ label, value, type }) {
-  return (
-    <div className="neon-indicator">
-      <span className="neon-indicator-label">{label}</span>
-      <span className={`neon-indicator-value ${type || ''}`}>{value}</span>
-    </div>
-  );
+// LED state from boolean
+function ledColor(online) {
+  if (online === true) return 'green';
+  if (online === false) return 'red';
+  return 'off';
 }
 
-// Colores por estado del core
-const STATE_COLORS = {
-  BAJADA: 'var(--neon-cyan)',
-  BASE_GOLPE: 'var(--neon-green)',
-  ATAQUE: 'var(--neon-orange)',
-  BRAKE: 'var(--neon-red)',
-};
-
-const ENERGY_COLORS = {
-  BAJA: 'var(--neon-cyan)',
-  MEDIA: 'var(--neon-orange)',
-  ALTA: 'var(--neon-red)',
-};
-
-// Panel STATE + ENERGY (el más importante)
-function StatePanel({ state, energy, coreOnline, lastError }) {
-  const stateColor = STATE_COLORS[state] || 'var(--text-dim)';
-  const energyColor = ENERGY_COLORS[energy] || 'var(--text-dim)';
-  // Usar core.online del snapshot, no inferir de state
-  const isOnline = coreOnline === true;
-
-  return (
-    <div className="neon-panel" style={{ gridColumn: 'span 2' }}>
-      <div className="neon-panel-header">
-        <span className="neon-panel-title">CORE STATUS</span>
-        <span className={`neon-badge ${isOnline ? 'neon-badge-ok' : 'neon-badge-error'}`}>
-          {isOnline ? 'LIVE' : 'OFFLINE'}
-        </span>
-      </div>
-      <div className="neon-panel-content">
-        {!isOnline ? (
-          <div style={{
-            textAlign: 'center',
-            padding: '20px',
-            color: 'var(--neon-red)',
-          }}>
-            <div style={{ marginBottom: '8px' }}>Core no disponible</div>
-            {lastError && (
-              <div style={{ fontSize: '10px', color: 'var(--text-dim)' }}>
-                Error: {lastError}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-around',
-            alignItems: 'center',
-            gap: '24px',
-          }}>
-            {/* STATE */}
-            <div style={{
-              textAlign: 'center',
-              flex: 1,
-              padding: '16px',
-              background: 'var(--bg-dark)',
-              borderRadius: '8px',
-              border: `1px solid ${stateColor}40`,
-            }}>
-              <div style={{
-                color: 'var(--text-dim)',
-                fontSize: '10px',
-                textTransform: 'uppercase',
-                marginBottom: '8px',
-                letterSpacing: '1px',
-              }}>
-                STATE
-              </div>
-              <div style={{
-                color: stateColor,
-                fontSize: '28px',
-                fontWeight: 'bold',
-                textShadow: `0 0 20px ${stateColor}`,
-                fontFamily: 'monospace',
-              }}>
-                {state}
-              </div>
-            </div>
-            {/* ENERGY */}
-            <div style={{
-              textAlign: 'center',
-              flex: 1,
-              padding: '16px',
-              background: 'var(--bg-dark)',
-              borderRadius: '8px',
-              border: `1px solid ${energyColor}40`,
-            }}>
-              <div style={{
-                color: 'var(--text-dim)',
-                fontSize: '10px',
-                textTransform: 'uppercase',
-                marginBottom: '8px',
-                letterSpacing: '1px',
-              }}>
-                ENERGY
-              </div>
-              <div style={{
-                color: energyColor,
-                fontSize: '28px',
-                fontWeight: 'bold',
-                textShadow: `0 0 20px ${energyColor}`,
-                fontFamily: 'monospace',
-              }}>
-                {energy}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// Panel Audio
-function AudioPanel({ audio }) {
-  if (!audio) return null;
-  const isOk = !audio.silence && !audio.clipping;
-  const statusText = audio.silence ? 'SILENCE' : audio.clipping ? 'CLIPPING' : 'OK';
-
-  return (
-    <NeonPanel title="AUDIO" status={statusText} statusType={isOk ? 'ok' : 'error'}>
-      <Indicator label="Silence" value={audio.silence ? 'YES' : 'NO'} type={!audio.silence ? 'ok' : 'error'} />
-      <Indicator label="Clipping" value={audio.clipping ? 'YES' : 'NO'} type={!audio.clipping ? 'ok' : 'error'} />
-      <Indicator label="Device" value={audio.device || '---'} />
-    </NeonPanel>
-  );
-}
-
-// Panel Avolites
-function AvolitesPanel({ avolites }) {
-  if (!avolites) return null;
-
-  return (
-    <NeonPanel
-      title="AVOLITES"
-      status={avolites.connected ? 'CONNECTED' : 'OFFLINE'}
-      statusType={avolites.connected ? 'ok' : 'error'}
-    >
-      <Indicator label="Status" value={avolites.connected ? 'Online' : 'Offline'} type={avolites.connected ? 'ok' : 'error'} />
-      <Indicator label="Console" value={avolites.console_ip || '---'} />
-      <Indicator label="Port" value={avolites.port || '---'} />
-      {avolites.latency_ms != null && (
-        <Indicator label="Latency" value={`${avolites.latency_ms}ms`} type={avolites.latency_ms < 50 ? 'ok' : 'warn'} />
-      )}
-    </NeonPanel>
-  );
-}
-
-// Panel Cámaras
-function CamerasPanel({ cameras }) {
-  const camTypes = ['haze', 'people', 'tracking'];
-  const camMap = {};
-  (cameras || []).forEach(c => { camMap[c.name] = c; });
-  const allOk = camTypes.every(t => camMap[t]?.online);
-
-  return (
-    <NeonPanel
-      title="CÁMARAS"
-      status={allOk ? 'ALL OK' : 'FAIL'}
-      statusType={allOk ? 'ok' : 'error'}
-    >
-      {camTypes.map(type => {
-        const cam = camMap[type];
-        const online = cam?.online;
-        return (
-          <Indicator
-            key={type}
-            label={type.toUpperCase()}
-            value={online ? `OK (${cam.fps} fps)` : 'OFFLINE'}
-            type={online ? 'ok' : 'error'}
-          />
-        );
-      })}
-    </NeonPanel>
-  );
-}
-
-// Panel Sistema
-function SystemPanel({ system }) {
-  if (!system) return null;
-  const cpuHigh = system.cpu > 80;
-  const ramHigh = system.ram > 80;
-
-  return (
-    <NeonPanel title="SISTEMA">
-      <div style={{ marginBottom: '12px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-          <span className="neon-indicator-label">CPU</span>
-          <span className={`neon-indicator-value ${cpuHigh ? 'error' : 'ok'}`}>{system.cpu}%</span>
-        </div>
-        <div className="neon-progress">
-          <div
-            className={`neon-progress-bar ${cpuHigh ? 'red' : 'cyan'}`}
-            style={{ width: `${Math.min(100, system.cpu)}%` }}
-          />
-        </div>
-      </div>
-      <div style={{ marginBottom: '12px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-          <span className="neon-indicator-label">RAM</span>
-          <span className={`neon-indicator-value ${ramHigh ? 'error' : 'ok'}`}>{system.ram}%</span>
-        </div>
-        <div className="neon-progress">
-          <div
-            className={`neon-progress-bar ${ramHigh ? 'orange' : 'green'}`}
-            style={{ width: `${Math.min(100, system.ram)}%` }}
-          />
-        </div>
-      </div>
-    </NeonPanel>
-  );
-}
-
-// Panel Calendario (principal)
-function CalendarPanel({ calendar }) {
-  if (!calendar) return null;
-
-  const modeColor = MODE_COLORS[calendar.current_mode] || '#7f8c8d';
-  const dayName = DAY_NAMES[calendar.day?.toLowerCase()] || calendar.day?.toUpperCase() || '---';
-
-  return (
-    <div className="neon-panel" style={{ gridColumn: 'span 2' }}>
-      <div className="neon-panel-header">
-        <span className="neon-panel-title">CALENDARIO</span>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          {calendar.override_active && (
-            <span className="neon-badge neon-badge-warn">OVERRIDE</span>
-          )}
-          <span className={`neon-badge ${calendar.auto ? 'neon-badge-ok' : 'neon-badge-warn'}`}>
-            {calendar.auto ? 'AUTO' : 'MANUAL'}
-          </span>
-        </div>
-      </div>
-      <div className="neon-panel-content">
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <span style={{ color: 'var(--text-normal)', fontSize: '14px', fontWeight: '600' }}>
-            {dayName}
-          </span>
-          <span style={{
-            color: 'var(--neon-cyan)',
-            fontSize: '28px',
-            fontWeight: 'bold',
-            fontFamily: 'monospace',
-            textShadow: '0 0 10px var(--neon-cyan)',
-          }}>
-            {calendar.time || '--:--:--'}
-          </span>
-        </div>
-
-        {/* Modo actual */}
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '16px',
-          padding: '12px',
-          background: 'var(--bg-dark)',
-          borderRadius: '6px',
-          border: `1px solid ${modeColor}40`,
-        }}>
-          <span style={{ color: 'var(--text-dim)', fontSize: '10px', textTransform: 'uppercase' }}>Modo</span>
-          <span style={{
-            color: modeColor,
-            fontSize: '18px',
-            fontWeight: 'bold',
-            textShadow: `0 0 15px ${modeColor}`,
-          }}>
-            {calendar.current_mode}
-          </span>
-        </div>
-
-        {/* Timeline */}
-        <div className="neon-timeline">
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span className="neon-indicator-label">Timeline</span>
-            <span className="neon-indicator-value ok">ACTIVO</span>
-          </div>
-          <div className="neon-progress" style={{ height: '12px', marginBottom: '8px' }}>
-            <div
-              className="neon-progress-bar"
-              style={{
-                width: calendar.time_remaining_s > 0
-                  ? `${Math.max(5, 100 - (calendar.time_remaining_s / 36))}%`
-                  : '0%',
-                background: modeColor,
-              }}
-            />
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px' }}>
-            <span style={{ color: 'var(--text-dim)' }}>
-              Restante: {formatTime(calendar.time_remaining_s)}
-            </span>
-            {calendar.next_mode && (
-              <span style={{ color: 'var(--text-dim)' }}>
-                Próximo: <strong style={{ color: 'var(--neon-green)' }}>{calendar.next_mode}</strong>
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Página principal
 export function Home() {
   const { status, connectionType, error } = useUnifiedStatus();
+
+  const s = status || {};
+  const sys = s.system || {};
+  const avo = s.avolites || {};
+  const audio = s.audio || {};
+  const cal = s.calendar || {};
+
+  const isConnected = connectionType === 'sse' || connectionType === 'polling';
 
   // Loading state
   if (!status && connectionType === 'connecting') {
     return (
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100%',
-        gap: '16px',
-      }}>
-        <div style={{
-          width: '50px',
-          height: '50px',
-          border: '3px solid var(--border-dim)',
-          borderTopColor: 'var(--neon-cyan)',
-          borderRadius: '50%',
-          animation: 'spin 1s linear infinite',
-        }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        <p style={{ color: 'var(--neon-cyan)', fontSize: '12px' }}>Conectando al sistema...</p>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '16px' }}>
+        <div className="led" />
+        <p className="t3 text-sm">Conectando al sistema...</p>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: '16px' }}>
-      {/* Header */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '20px',
-      }}>
-        <h2 style={{
-          color: 'var(--neon-cyan)',
-          fontSize: '18px',
-          fontWeight: 'bold',
-          margin: 0,
-          textShadow: '0 0 10px var(--neon-cyan)',
-          letterSpacing: '2px',
-        }}>
-          CONTROL ROOM
-        </h2>
-        <div className="neon-connection">
-          <span
-            className={`neon-connection-dot ${connectionType === 'sse' || connectionType === 'polling' ? 'online' : 'offline'}`}
-          />
-          <span style={{ color: connectionType === 'sse' ? 'var(--neon-green)' : 'var(--neon-orange)' }}>
-            {connectionType === 'sse' ? 'SSE' : connectionType === 'polling' ? 'POLLING' : 'OFFLINE'}
-          </span>
+    <>
+      {/* ═══ HEADER ═══ */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 28px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <h1 style={{ fontFamily: 'var(--font-title)', fontSize: '24px', fontWeight: 700 }}>Control Room</h1>
+          <div className="b gray">v8.0</div>
+        </div>
+        <div className="b">
+          <div className={`led-dot${isConnected ? '' : ' off'}`} />
+          {connectionType === 'sse' ? 'SSE' : connectionType === 'polling' ? 'POLL' : 'OFF'}
         </div>
       </div>
 
-      {/* Error banner */}
+      {/* ═══ ERROR BANNER ═══ */}
       {error && (
-        <div style={{
-          background: 'rgba(255, 68, 68, 0.1)',
-          border: '1px solid var(--neon-red)',
-          borderRadius: '6px',
-          padding: '12px',
-          marginBottom: '16px',
-          textAlign: 'center',
-        }}>
-          <span style={{ color: 'var(--neon-red)', fontSize: '12px', fontWeight: 'bold' }}>
-            ⚠ API OFFLINE - {error}
-          </span>
+        <div className="flex items-center justify-between p-3" style={{ background: 'rgba(255,82,82,0.1)', borderBottom: '1px solid var(--red)' }}>
+          <span className="red font-bold text-sm">API OFFLINE — {error}</span>
         </div>
       )}
 
-      {/* Grid */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-        gap: '12px',
-      }}>
-        {/* STATE + ENERGY - Panel principal del core */}
-        <StatePanel
-          state={status?.state}
-          energy={status?.energy}
-          coreOnline={status?.core?.online}
-          lastError={status?.core?.last_error}
-        />
+      <div style={{ flex: 1, padding: '0 28px 28px', overflowY: 'auto' }}>
 
-        <AudioPanel audio={status?.audio} />
-        <AvolitesPanel avolites={status?.avolites} />
-        {/* CamerasPanel ocultado por ahora - sin dependencia de vision */}
-        <SystemPanel system={status?.system} />
-        <CalendarPanel calendar={status?.calendar} />
+        {/* ═══ METRICS BAR (control_room_glass.html) ═══ */}
+        <div className="g" style={{ marginBottom: '24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
+            <div className="inset">
+              <div className="t3 text-sm">CPU</div>
+              <div className="green text-xl font-bold mono">{val(sys.cpu, '0')}%</div>
+              <div className="gauge mt-2">
+                <div className={`gauge-fill${sys.cpu > 80 ? ' warning' : ''}`} style={{ width: `${Math.min(100, sys.cpu || 0)}%` }} />
+              </div>
+            </div>
+            <div className="inset">
+              <div className="t3 text-sm">RAM</div>
+              <div className="cyan text-xl font-bold mono">{val(sys.ram, '0')}%</div>
+              <div className="gauge mt-2">
+                <div className={`gauge-fill${sys.ram > 80 ? ' warning' : ''}`} style={{ width: `${Math.min(100, sys.ram || 0)}%` }} />
+              </div>
+            </div>
+            <div className="inset">
+              <div className="t3 text-sm">BPM</div>
+              <div className="green text-xl font-bold mono">{val(s.bpm, '---')}</div>
+            </div>
+            <div className="inset">
+              <div className="t3 text-sm">Uptime</div>
+              <div className="t1 text-xl font-bold mono">{formatUptime(sys.uptime_s)}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* ═══ CARDS GRID (merged control_room + status_dashboard) ═══ */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+
+          {/* — Consola Avolites — */}
+          <div className="g">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold">Consola Avolites</h3>
+              <LED color={ledColor(avo.connected)} />
+            </div>
+            <div className="inset mb-2">
+              <div className="flex justify-between mb-2">
+                <span className="t3 text-sm">IP Consola</span>
+                <span className="mono text-sm">{val(avo.console_ip)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="t3 text-sm">Estado</span>
+                <span className={`text-sm ${avo.connected ? 'green' : 'red'}`}>
+                  {avo.connected ? 'Conectado' : 'Offline'}
+                </span>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginTop: '20px' }}>
+              <div className="inset" style={{ textAlign: 'center' }}>
+                <div className="t4 text-sm">Latencia</div>
+                <div className="green mono font-bold">{val(avo.latency_ms, '---')}ms</div>
+              </div>
+              <div className="inset" style={{ textAlign: 'center' }}>
+                <div className="t4 text-sm">Uptime</div>
+                <div className="green mono font-bold">{val(avo.uptime_pct, '---')}%</div>
+              </div>
+              <div className="inset" style={{ textAlign: 'center' }}>
+                <div className="t4 text-sm">Errores</div>
+                <div className="green mono font-bold">{val(avo.errors, '0')}</div>
+              </div>
+            </div>
+            <button className="key w-full mt-3">Reconectar</button>
+          </div>
+
+          {/* — Audio Input + Placa de Sonido (merged) — */}
+          <div className="g">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold">Placa de Sonido</h3>
+              <LED color={audio.device ? (audio.clipping ? 'red' : audio.silence ? 'yellow' : 'green') : 'off'} />
+            </div>
+            <div className="inset mb-2">
+              <div className="flex justify-between mb-2">
+                <span className="t3 text-sm">Dispositivo</span>
+                <span className="mono text-sm">{val(audio.device)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="t3 text-sm">Estado</span>
+                <span className={`text-sm ${audio.clipping ? 'red' : audio.silence ? 'yellow' : 'green'}`}>
+                  {audio.clipping ? 'CLIPPING' : audio.silence ? 'SILENCE' : 'OK'}
+                </span>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginTop: '20px' }}>
+              <div className="inset" style={{ textAlign: 'center' }}>
+                <div className="t4 text-sm">Nivel</div>
+                <div className="green mono font-bold">{val(audio.level, '---')}dB</div>
+              </div>
+              <div className="inset" style={{ textAlign: 'center' }}>
+                <div className="t4 text-sm">Buffer</div>
+                <div className="green mono font-bold">{val(audio.buffer, '---')}</div>
+              </div>
+              <div className="inset" style={{ textAlign: 'center' }}>
+                <div className="t4 text-sm">Latencia</div>
+                <div className="green mono font-bold">{val(audio.latency_ms, '---')}ms</div>
+              </div>
+            </div>
+            <div className="gauge mt-3">
+              <div className={`gauge-fill${audio.clipping ? ' error' : ''}`} style={{ width: `${Math.min(100, Math.max(0, (audio.level_pct || 0)))}%` }} />
+            </div>
+          </div>
+
+          {/* — Red Local (from status_dashboard) — */}
+          <div className="g">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold">Red Local</h3>
+              <LED color="green" />
+            </div>
+            <div className="inset mb-2">
+              <div className="flex justify-between">
+                <span className="t3 text-sm">IP Local</span>
+                <span className="mono text-sm">{val(s.network?.ip)}</span>
+              </div>
+            </div>
+            <div className="inset mb-2">
+              <div className="flex justify-between">
+                <span className="t3 text-sm">Interfaz</span>
+                <span className="mono text-sm">{val(s.network?.interface)}</span>
+              </div>
+            </div>
+            <div className="inset">
+              <div className="flex justify-between">
+                <span className="t3 text-sm">MAC</span>
+                <span className="mono text-sm">{val(s.network?.mac)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* — Clip de Audio (from status_dashboard) — */}
+          <div className="g">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold">Clip de Audio</h3>
+              <LED color={audio.clipping ? 'red' : 'green'} />
+            </div>
+            <div className="inset mb-2">
+              <div className="flex justify-between">
+                <span className="t3 text-sm">Estado</span>
+                <span className={`text-sm ${audio.clipping ? 'red' : 'green'}`}>
+                  {audio.clipping ? 'CLIPPING' : 'Normal'}
+                </span>
+              </div>
+            </div>
+            <div className="inset mb-2">
+              <div className="flex justify-between">
+                <span className="t3 text-sm">Pico Actual</span>
+                <span className="mono text-sm">{val(audio.peak, '---')} dB</span>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginTop: '20px' }}>
+              <div className="inset" style={{ textAlign: 'center' }}>
+                <div className="t4 text-sm">Canal L</div>
+                <div className="green mono font-bold">{val(audio.clip_l, '---')}dB</div>
+              </div>
+              <div className="inset" style={{ textAlign: 'center' }}>
+                <div className="t4 text-sm">Canal R</div>
+                <div className="green mono font-bold">{val(audio.clip_r, '---')}dB</div>
+              </div>
+              <div className="inset" style={{ textAlign: 'center' }}>
+                <div className="t4 text-sm">Headroom</div>
+                <div className="green mono font-bold">{val(audio.headroom, '---')}dB</div>
+              </div>
+            </div>
+          </div>
+
+          {/* — Transport — */}
+          <div className="g">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold">Transport</h3>
+              <div className="b">{val(s.transport?.protocol, 'HTTP')}</div>
+            </div>
+            <div className="inset mb-3">
+              <div className="flex justify-between mb-2">
+                <span className="t3 text-sm">Mode</span>
+                <span className="mono text-sm">{val(s.transport?.mode)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="t3 text-sm">Timeout</span>
+                <span className="mono text-sm">{val(s.transport?.timeout, '---')}ms</span>
+              </div>
+            </div>
+          </div>
+
+          {/* — Next Block — */}
+          <div className="g">
+            <h3 className="font-bold mb-3">Next Block</h3>
+            <div className="inset mb-3">
+              <div className="cyan text-xl font-bold mono mb-2">
+                {val(cal.next_time, cal.time_remaining_s != null ? formatUptime(cal.time_remaining_s) : '---')}
+              </div>
+              <div className="t3 text-sm">{val(cal.next_mode)}</div>
+            </div>
+            <div className="gauge">
+              <div className="gauge-fill" style={{ width: `${Math.min(100, Math.max(0, (cal.progress || 0) * 100))}%` }} />
+            </div>
+          </div>
+
+          {/* — Modules — */}
+          <div className="g">
+            <h3 className="font-bold mb-3">Modules</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {[
+                { key: 'bajada', label: 'Bajada' },
+                { key: 'base_golpe', label: 'Base Golpe' },
+                { key: 'ataque', label: 'Ataque' },
+                { key: 'brake', label: 'Brake' },
+              ].map(mod => {
+                const active = s.state === mod.key.toUpperCase() || (s.permissions || {})[mod.key];
+                return (
+                  <div key={mod.key} className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={`led-dot${active ? '' : ' off'}`} />
+                      <span className={`text-sm${active ? '' : ' opacity-50'}`}>{mod.label}</span>
+                    </div>
+                    <span className={`b${active ? '' : ' gray'}`}>{active ? 'ON' : 'OFF'}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* — Vision Pro — Cámaras (full width, from status_dashboard) — */}
+          <div className="g" style={{ gridColumn: '1 / -1' }}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold">Vision Pro - Cámaras</h3>
+              <LED color={ledColor(s.vision?.online)} />
+            </div>
+            <div className="inset mb-3">
+              <div className="flex justify-between">
+                <span className="t3 text-sm">Cámaras Activas</span>
+                <span className="green mono">{val(s.vision?.cameras_active, '0')} / 3</span>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+              {['HAZE', 'DJ', 'ARTIST'].map(cam => {
+                const camData = (s.vision?.cameras || []).find(c => c.name?.toUpperCase() === cam) || {};
+                return (
+                  <div key={cam} className="inset">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="font-bold">{cam}</div>
+                      <div className={`b${camData.online ? '' : ' gray'}`}>
+                        {camData.online ? 'OK' : 'OFF'}
+                      </div>
+                    </div>
+                    <div className="t3 mono text-sm">
+                      {camData.online ? `${camData.fps || '---'} fps` : 'No disponible'}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <button className="key w-full mt-3">Restart</button>
+          </div>
+
+        </div>
       </div>
-    </div>
+    </>
   );
 }

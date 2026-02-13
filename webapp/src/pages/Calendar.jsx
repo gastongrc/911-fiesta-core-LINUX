@@ -1,12 +1,13 @@
 /**
- * Calendar V7 - Control Room Calendar (Glass UI)
+ * Calendar — Calendar Panel (Glass UI)
  *
- * 3 Tabs:
- * - ESTADO: Clock + mode + modules + day-strip grid
- * - HORARIOS: Editor semanal (7 columnas, cards por día)
- * - CONTROL: GO / +5/+10/+15 / override
+ * Matches UI contract: docs/ui-contract/calendar_glass.html
  *
- * SAVE: Green badge if changes, gray if synced
+ * Sub-tabs:
+ * - Estado: Clock + mode + modules + day-strip grid
+ * - Semana: Editor semanal (7 columnas, cards por día)
+ * - Control: GO / +5/+10/+15 / override
+ *
  * Style: Glass morphism via control-room.css
  */
 import { useEffect, useState } from 'react';

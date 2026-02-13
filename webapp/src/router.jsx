@@ -1,26 +1,16 @@
 /**
- * Router V7 - Control Room Navigation
+ * Router — 3 Panel Navigation
  *
- * Páginas:
- * - Home (dashboard con 5 bloques de estado)
- * - Calendar (control del calendario inteligente)
- * - Vision (visualización de cámaras - solo referencia)
- * - Network (configuración de red)
- * - Config (configuración del sistema)
- * - Presets (gestión de presets)
- *
- * ELIMINADAS:
- * - Cues (peligroso en show)
- * - Analyze (innecesario en Control Room)
+ * Panels (matching UI contract):
+ * - Home: Control Room + Status Dashboard (merged)
+ * - Calendar: Calendar scheduling + control
+ * - Config: Config PRO panel
  */
 import { createBrowserRouter } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
 import { Calendar } from './pages/Calendar';
-import { Vision } from './pages/Vision';
-import { Network } from './pages/Network';
-import { Presets } from './pages/Presets';
-import { Config } from './pages/Config';
+import { ConfigPro } from './pages/ConfigPro';
 
 export const router = createBrowserRouter([
   {
@@ -32,19 +22,7 @@ export const router = createBrowserRouter([
     element: <Layout><Calendar /></Layout>,
   },
   {
-    path: '/vision',
-    element: <Layout><Vision /></Layout>,
-  },
-  {
-    path: '/network',
-    element: <Layout><Network /></Layout>,
-  },
-  {
-    path: '/presets',
-    element: <Layout><Presets /></Layout>,
-  },
-  {
     path: '/config',
-    element: <Layout><Config /></Layout>,
+    element: <Layout><ConfigPro /></Layout>,
   },
 ]);
