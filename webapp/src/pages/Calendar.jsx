@@ -640,7 +640,7 @@ export function Calendar() {
 
       {/* Page Header */}
       <div style={{ padding: '20px 28px' }}>
-        <h1 style={{ fontSize: '24px' }}>Calendar</h1>
+        <h1 style={{ fontFamily: 'var(--font-title)', fontSize: '24px', fontWeight: 700 }}>Calendar</h1>
       </div>
 
       {/* Sub Navigation (matches mock sub-nav) */}
