@@ -1,13 +1,13 @@
 /**
- * Calendar V7 - Control Room Calendar (NEON UI)
+ * Calendar V7 - Control Room Calendar (Glass UI)
  *
  * 3 Tabs:
- * - ESTADO: Timeline + acciones activas + permisos
+ * - ESTADO: Clock + mode + modules + day-strip grid
  * - HORARIOS: Editor semanal (7 columnas, cards por día)
  * - CONTROL: GO / +5/+10/+15 / override
  *
- * SAVE: Verde si hay cambios, Gris si sincronizado
- * Estilo: NEON (glow + cards con bordes iluminados)
+ * SAVE: Green badge if changes, gray if synced
+ * Style: Glass morphism via control-room.css
  */
 import { useEffect, useState } from 'react';
 import { getApiBase, apiPost } from '../lib/apiBase';
@@ -44,111 +44,141 @@ function formatTime(s) {
 }
 
 // ==================== TAB ESTADO ====================
-function TabEstado({ status, apiOffline, onAuto }) {
+function TabEstado({ status, schedule, apiOffline, onAuto }) {
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const tick = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(tick);
+  }, []);
+
   if (apiOffline) {
     return (
-      <div style={{ padding: '20px', textAlign: 'center' }}>
-        <span className="neon-badge neon-badge-error">CORE OFFLINE</span>
-        <p style={{ color: 'var(--text-dim)', marginTop: '12px', fontSize: '12px' }}>
-          No se puede conectar al CORE
-        </p>
+      <div className="p-4" style={{ textAlign: 'center' }}>
+        <span className="b red">CORE OFFLINE</span>
+        <p className="t3 text-sm mt-3">No se puede conectar al CORE</p>
       </div>
     );
   }
 
-  if (!status) return <div style={{ padding: '20px', color: 'var(--text-dim)' }}>Cargando...</div>;
+  if (!status) return <div className="p-4 t3">Cargando...</div>;
 
-  const modeColor = MODE_COLORS[status.current_mode] || '#7f8c8d';
   const isAuto = status.auto !== false;
+  const week = schedule?.week || {};
+
+  // Compute current week dates (Monday=0)
+  const todayIdx = (now.getDay() + 6) % 7;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - todayIdx);
 
   return (
-    <div style={{ padding: '16px' }}>
-      {/* Modo actual */}
-      <div className="neon-panel" style={{ marginBottom: '16px' }}>
-        <div className="neon-panel-header">
-          <span className="neon-panel-title">MODO ACTUAL</span>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            {status.override_active && <span className="neon-badge neon-badge-warn">OVERRIDE</span>}
-            <button
-              onClick={() => onAuto(!isAuto)}
-              className={`neon-btn ${isAuto ? 'neon-btn-primary' : 'neon-btn-warning'}`}
-              style={{ padding: '4px 10px', fontSize: '10px' }}
-            >
-              {isAuto ? 'AUTO' : 'MANUAL'}
-            </button>
+    <div style={{ flex: 1, padding: '0 28px 28px' }}>
+      {/* Top row: Clock + Mode/Next + Modules */}
+      <div style={{ display: 'flex', gap: '14px', marginBottom: '20px' }}>
+        {/* Clock */}
+        <div className="g" style={{ flex: '0 0 280px' }}>
+          <div className="green" style={{ fontFamily: 'var(--font-title)', fontSize: '48px', fontWeight: 800 }}>
+            {now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </div>
+          <div className="t2 text-sm mt-2">
+            {now.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}
           </div>
         </div>
-        <div className="neon-panel-content">
-          <div style={{
-            textAlign: 'center',
-            padding: '20px',
-            background: 'var(--bg-dark)',
-            borderRadius: '6px',
-            border: `1px solid ${modeColor}40`,
-          }}>
-            <span style={{
-              color: modeColor,
-              fontSize: '28px',
-              fontWeight: 'bold',
-              textShadow: `0 0 20px ${modeColor}`,
-            }}>
-              {status.current_mode}
-            </span>
-          </div>
-        </div>
-      </div>
 
-      {/* Timeline */}
-      <div className="neon-panel" style={{ marginBottom: '16px' }}>
-        <div className="neon-panel-header">
-          <span className="neon-panel-title">TIMELINE</span>
-          <span className="neon-badge neon-badge-ok">ACTIVO</span>
-        </div>
-        <div className="neon-panel-content">
-          <div className="neon-progress" style={{ height: '16px', marginBottom: '12px' }}>
-            <div
-              className="neon-progress-bar"
-              style={{
-                width: `${Math.min(100, Math.max(5, (status.progress || 0) * 100))}%`,
-                background: modeColor,
-              }}
-            />
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
-            <span style={{ color: 'var(--text-dim)' }}>
-              Progreso: {Math.round((status.progress || 0) * 100)}%
-            </span>
-            {status.next_mode && (
-              <span style={{ color: 'var(--text-dim)' }}>
-                Próximo: <strong style={{ color: 'var(--neon-green)' }}>{status.next_mode}</strong>
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Módulos */}
-      <div className="neon-panel">
-        <div className="neon-panel-header">
-          <span className="neon-panel-title">MÓDULOS</span>
-        </div>
-        <div className="neon-panel-content">
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-            {['audio_engine', 'vision_haze', 'vision_dj', 'cues_clima'].map(mod => {
-              const active = status.permissions?.[mod] || false;
-              return (
-                <div key={mod} className={`neon-card ${active ? 'active' : ''}`} style={{ padding: '8px 12px' }}>
-                  <div style={{ fontSize: '9px', fontWeight: 'bold', color: active ? 'var(--neon-green)' : 'var(--text-dim)' }}>
-                    {mod.toUpperCase().replace('_', ' ')}
+        {/* Mode + Next Block */}
+        <div className="g" style={{ flex: 1 }}>
+          <div style={{ display: 'flex', gap: '20px' }}>
+            <div style={{ flex: 1 }}>
+              <div className="t4 text-sm mb-2">MODE</div>
+              <div className="cyan" style={{ fontSize: '22px', fontWeight: 700 }}>
+                {status.current_mode || '---'}
+              </div>
+              <div className="flex items-center gap-2 mt-3">
+                <button
+                  onClick={() => onAuto(!isAuto)}
+                  className={isAuto ? 'key' : 'key-danger'}
+                  style={{ padding: '6px 14px', fontSize: '11px' }}
+                >
+                  {isAuto ? 'AUTO' : 'MANUAL'}
+                </button>
+                {status.override_active && <span className="b yellow">OVERRIDE</span>}
+              </div>
+            </div>
+            <div style={{ width: '1px', background: 'rgba(255,255,255,0.06)' }} />
+            <div style={{ flex: 1 }}>
+              <div className="t4 text-sm mb-2">NEXT BLOCK</div>
+              <div className="green" style={{ fontSize: '22px', fontWeight: 700 }}>
+                {status.next_mode || '---'}
+              </div>
+              {status.progress != null && (
+                <div className="mt-3">
+                  <div className="gauge">
+                    <div
+                      className="gauge-fill"
+                      style={{ width: `${Math.min(100, Math.max(5, (status.progress || 0) * 100))}%` }}
+                    />
                   </div>
-                  <div style={{ fontSize: '8px', color: active ? 'var(--neon-green)' : 'var(--text-muted)' }}>
-                    {active ? 'ON' : 'OFF'}
+                  <div className="t3 text-sm mt-2">
+                    {Math.round((status.progress || 0) * 100)}%
                   </div>
                 </div>
-              );
-            })}
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Modules */}
+        <div className="gp" style={{ flex: '0 0 200px' }}>
+          <div className="t3 text-sm mb-3">MODULES</div>
+          {['audio_engine', 'vision_haze', 'vision_dj', 'cues_clima'].map(mod => {
+            const active = status.permissions?.[mod] || false;
+            return (
+              <div key={mod} className="flex items-center gap-2" style={{ padding: '5px 0' }}>
+                <div className={`led-dot${active ? '' : ' off'}`} />
+                <span className={`text-sm t2${active ? '' : ' opacity-50'}`}>
+                  {mod.replace(/_/g, ' ')}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Day strip grid */}
+      <div style={{ display: 'flex', gap: 0, height: '600px' }}>
+        {DAY_ORDER.map((day, i) => {
+          const date = new Date(monday);
+          date.setDate(monday.getDate() + i);
+          const isToday = i === todayIdx;
+          const blockCount = (week[day] || []).length;
+
+          return (
+            <div
+              key={day}
+              className={`day-strip${isToday ? ' today' : ''}`}
+              style={i === DAY_ORDER.length - 1 ? { borderRight: 'none' } : undefined}
+            >
+              <div style={{ padding: '16px', textAlign: 'center', position: 'relative', zIndex: 1 }}>
+                <div
+                  className={isToday ? 'green' : 't3'}
+                  style={{ fontFamily: 'var(--font-title)', fontSize: '13px', fontWeight: 700 }}
+                >
+                  {DAY_NAMES[day]}
+                </div>
+                <div
+                  className={isToday ? 'green' : 't4'}
+                  style={{ fontFamily: 'var(--font-title)', fontSize: '28px', fontWeight: 800, marginTop: '4px' }}
+                >
+                  {date.getDate()}
+                </div>
+                <div className={`b${blockCount === 0 ? ' gray' : ''}`} style={{ marginTop: '6px', fontSize: '9px' }}>
+                  {blockCount}
+                </div>
+                {isToday && <div className="led-dot" style={{ margin: '8px auto 0' }} />}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -197,21 +227,17 @@ function TabHorarios({ schedule, setSchedule, hasChanges, setHasChanges, onSave,
   };
 
   return (
-    <div style={{ padding: '16px' }}>
+    <div style={{ padding: '16px 28px' }}>
       {/* Header + Save */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <span style={{ color: 'var(--neon-cyan)', fontSize: '14px', fontWeight: 'bold' }}>
-          EDITOR DE HORARIOS
-        </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {hasChanges && (
-            <span className="neon-badge neon-badge-warn">CAMBIOS SIN GUARDAR</span>
-          )}
+      <div className="flex justify-between items-center mb-4">
+        <span className="cyan font-bold text-base">EDITOR DE HORARIOS</span>
+        <div className="flex items-center gap-3">
+          {hasChanges && <span className="b yellow">CAMBIOS SIN GUARDAR</span>}
           <button
             onClick={onSave}
             disabled={!hasChanges || apiOffline}
-            className={`neon-btn ${hasChanges && !apiOffline ? 'neon-btn-primary' : ''}`}
-            style={{ opacity: hasChanges && !apiOffline ? 1 : 0.5 }}
+            className={hasChanges && !apiOffline ? 'key' : 'key-2'}
+            style={{ padding: '8px 20px', fontSize: '12px' }}
           >
             GUARDAR
           </button>
@@ -220,56 +246,43 @@ function TabHorarios({ schedule, setSchedule, hasChanges, setHasChanges, onSave,
 
       {/* API Offline warning */}
       {apiOffline && (
-        <div style={{
-          background: 'rgba(255, 68, 68, 0.1)',
-          border: '1px solid var(--neon-red)',
-          borderRadius: '6px',
-          padding: '10px',
-          marginBottom: '16px',
-          textAlign: 'center',
-        }}>
-          <span style={{ color: 'var(--neon-red)', fontSize: '11px' }}>API OFFLINE - Edición deshabilitada</span>
+        <div className="gp mb-4" style={{ textAlign: 'center', borderColor: 'rgba(255,82,82,0.3)' }}>
+          <span className="red text-sm">API OFFLINE - Edición deshabilitada</span>
         </div>
       )}
 
       {/* Grid 7 días */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(7, 1fr)',
-        gap: '8px',
-        overflowX: 'auto',
-      }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px', overflowX: 'auto' }}>
         {DAY_ORDER.map(day => (
-          <div key={`${day}-${gridRev}`} className="neon-panel" style={{ minWidth: '140px' }}>
-            <div className="neon-panel-header" style={{ justifyContent: 'center' }}>
-              <span className="neon-panel-title">{DAY_NAMES[day]}</span>
+          <div key={`${day}-${gridRev}`} className="gp" style={{ minWidth: '140px' }}>
+            <div className="t3 font-bold text-sm mb-3" style={{ textAlign: 'center', letterSpacing: '1px' }}>
+              {DAY_NAMES[day]}
             </div>
-            <div style={{ padding: '8px', maxHeight: '400px', overflowY: 'auto' }}>
+            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
               {(week[day] || []).map((block, idx) => (
-                <div key={idx} className="neon-card" style={{
-                  marginBottom: '8px',
-                  borderColor: `${MODE_COLORS[block.mode] || '#7f8c8d'}60`,
-                }}>
+                <div
+                  key={idx}
+                  className="inset mb-2"
+                  style={{ borderColor: `${MODE_COLORS[block.mode] || '#7f8c8d'}60` }}
+                >
                   {/* Tiempos */}
-                  <div style={{ display: 'flex', gap: '4px', marginBottom: '6px', alignItems: 'center' }}>
+                  <div className="flex items-center gap-2 mb-2">
                     <input
                       type="time"
                       value={block.from}
                       onChange={(e) => updateBlock(day, idx, 'from', e.target.value)}
-                      className="neon-input"
                       style={{ width: '55px', padding: '4px', fontSize: '10px' }}
                     />
-                    <span style={{ color: 'var(--text-dim)', fontSize: '10px' }}>-</span>
+                    <span className="t3 text-sm">-</span>
                     <input
                       type="time"
                       value={block.to}
                       onChange={(e) => updateBlock(day, idx, 'to', e.target.value)}
-                      className="neon-input"
                       style={{ width: '55px', padding: '4px', fontSize: '10px' }}
                     />
                     <button
                       onClick={() => deleteBlock(day, idx)}
-                      className="neon-btn neon-btn-danger"
+                      className="key-danger"
                       style={{ padding: '2px 6px', fontSize: '9px', marginLeft: 'auto' }}
                     >✕</button>
                   </div>
@@ -278,28 +291,21 @@ function TabHorarios({ schedule, setSchedule, hasChanges, setHasChanges, onSave,
                   <select
                     value={block.mode}
                     onChange={(e) => updateBlock(day, idx, 'mode', e.target.value)}
-                    className="neon-select"
                     style={{ width: '100%', padding: '4px', fontSize: '9px', marginBottom: '6px' }}
                   >
                     {CANONICAL_MODES.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
 
                   {/* Extras */}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                  <div className="flex" style={{ flexWrap: 'wrap', gap: '4px' }}>
                     {EXTRA_ACTIONS.map(action => {
                       const active = (block.actions || []).includes(action);
                       return (
                         <button
                           key={action}
                           onClick={() => toggleAction(day, idx, action)}
-                          className={`neon-btn ${active ? '' : ''}`}
-                          style={{
-                            padding: '2px 6px',
-                            fontSize: '8px',
-                            background: active ? 'var(--neon-blue)' : 'transparent',
-                            borderColor: active ? 'var(--neon-blue)' : 'var(--border-dim)',
-                            color: active ? 'var(--bg-dark)' : 'var(--text-dim)',
-                          }}
+                          className={active ? 'key' : 'key-2'}
+                          style={{ padding: '2px 6px', fontSize: '8px' }}
                         >
                           {EXTRA_DISPLAY[action]}
                         </button>
@@ -312,8 +318,8 @@ function TabHorarios({ schedule, setSchedule, hasChanges, setHasChanges, onSave,
               {/* Agregar */}
               <button
                 onClick={() => addBlock(day)}
-                className="neon-btn neon-btn-primary"
-                style={{ width: '100%', fontSize: '10px' }}
+                className="key w-full"
+                style={{ fontSize: '10px', padding: '8px' }}
               >
                 + Agregar
               </button>
@@ -331,126 +337,89 @@ function TabControl({ status, onGo, onExtend, onOverride, onClearOverride, apiOf
   const [overrideDuration, setOverrideDuration] = useState(30);
 
   return (
-    <div style={{ padding: '16px' }}>
+    <div style={{ padding: '16px 28px' }}>
       {/* API Offline */}
       {apiOffline && (
-        <div style={{
-          background: 'rgba(255, 68, 68, 0.1)',
-          border: '1px solid var(--neon-red)',
-          borderRadius: '6px',
-          padding: '10px',
-          marginBottom: '16px',
-          textAlign: 'center',
-        }}>
-          <span style={{ color: 'var(--neon-red)', fontSize: '11px' }}>API OFFLINE - Controles deshabilitados</span>
+        <div className="gp mb-4" style={{ textAlign: 'center', borderColor: 'rgba(255,82,82,0.3)' }}>
+          <span className="red text-sm">API OFFLINE - Controles deshabilitados</span>
         </div>
       )}
 
       {/* GO */}
-      <div className="neon-panel" style={{ marginBottom: '16px' }}>
-        <div className="neon-panel-header">
-          <span className="neon-panel-title">GO - CAMBIAR MODO</span>
-        </div>
-        <div className="neon-panel-content">
-          <select
-            value={selectedMode}
-            onChange={(e) => setSelectedMode(e.target.value)}
-            className="neon-select"
-            style={{ width: '100%', marginBottom: '12px' }}
-          >
-            {CANONICAL_MODES.map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
+      <div className="g mb-4">
+        <div className="t3 font-bold text-sm mb-3" style={{ letterSpacing: '1px' }}>GO — CAMBIAR MODO</div>
+        <select
+          value={selectedMode}
+          onChange={(e) => setSelectedMode(e.target.value)}
+          style={{ width: '100%', marginBottom: '12px' }}
+        >
+          {CANONICAL_MODES.map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
 
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => onGo(selectedMode, 0)}
-              disabled={apiOffline}
-              className="neon-btn neon-btn-primary"
-            >GO AHORA</button>
-            <button onClick={() => onGo(selectedMode, 5)} disabled={apiOffline} className="neon-btn">+5 min</button>
-            <button onClick={() => onGo(selectedMode, 10)} disabled={apiOffline} className="neon-btn">+10 min</button>
-            <button onClick={() => onGo(selectedMode, 15)} disabled={apiOffline} className="neon-btn">+15 min</button>
+        <div className="flex gap-2" style={{ flexWrap: 'wrap' }}>
+          <button onClick={() => onGo(selectedMode, 0)} disabled={apiOffline} className="key">GO AHORA</button>
+          <button onClick={() => onGo(selectedMode, 5)} disabled={apiOffline} className="key-2">+5 min</button>
+          <button onClick={() => onGo(selectedMode, 10)} disabled={apiOffline} className="key-2">+10 min</button>
+          <button onClick={() => onGo(selectedMode, 15)} disabled={apiOffline} className="key-2">+15 min</button>
+        </div>
+
+        {status?.pending_go && (
+          <div className="inset mt-3">
+            <span className="cyan text-sm font-bold">
+              GO PENDIENTE: {status.pending_go.mode} en {formatTime(status.pending_go.seconds_until)}
+            </span>
           </div>
-
-          {status?.pending_go && (
-            <div style={{
-              marginTop: '12px',
-              padding: '8px',
-              background: 'rgba(0, 255, 255, 0.1)',
-              border: '1px solid var(--neon-cyan)',
-              borderRadius: '4px',
-            }}>
-              <span style={{ color: 'var(--neon-cyan)', fontSize: '10px', fontWeight: 'bold' }}>
-                GO PENDIENTE: {status.pending_go.mode} en {formatTime(status.pending_go.seconds_until)}
-              </span>
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
       {/* Extend */}
-      <div className="neon-panel" style={{ marginBottom: '16px' }}>
-        <div className="neon-panel-header">
-          <span className="neon-panel-title">EXTENDER BLOQUE</span>
-        </div>
-        <div className="neon-panel-content">
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button onClick={() => onExtend(5)} disabled={apiOffline} className="neon-btn">+5 min</button>
-            <button onClick={() => onExtend(10)} disabled={apiOffline} className="neon-btn">+10 min</button>
-            <button onClick={() => onExtend(15)} disabled={apiOffline} className="neon-btn">+15 min</button>
-          </div>
+      <div className="g mb-4">
+        <div className="t3 font-bold text-sm mb-3" style={{ letterSpacing: '1px' }}>EXTENDER BLOQUE</div>
+        <div className="flex gap-2">
+          <button onClick={() => onExtend(5)} disabled={apiOffline} className="key-2">+5 min</button>
+          <button onClick={() => onExtend(10)} disabled={apiOffline} className="key-2">+10 min</button>
+          <button onClick={() => onExtend(15)} disabled={apiOffline} className="key-2">+15 min</button>
         </div>
       </div>
 
       {/* Override */}
-      <div className="neon-panel" style={{ borderColor: 'var(--neon-orange)' }}>
-        <div className="neon-panel-header">
-          <span className="neon-panel-title" style={{ color: 'var(--neon-orange)' }}>OVERRIDE TEMPORAL</span>
+      <div className="g" style={{ borderColor: 'rgba(255,152,0,0.3)' }}>
+        <div className="yellow font-bold text-sm mb-3" style={{ letterSpacing: '1px' }}>OVERRIDE TEMPORAL</div>
+        <div className="flex items-center gap-2 mb-3">
+          <span className="t3 text-sm">Duración:</span>
+          <input
+            type="number"
+            min="5"
+            max="120"
+            value={overrideDuration}
+            onChange={(e) => setOverrideDuration(parseInt(e.target.value) || 30)}
+            style={{ width: '60px' }}
+          />
+          <span className="t3 text-sm">min</span>
         </div>
-        <div className="neon-panel-content">
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '12px' }}>
-            <span style={{ color: 'var(--text-dim)', fontSize: '10px' }}>Duración:</span>
-            <input
-              type="number"
-              min="5"
-              max="120"
-              value={overrideDuration}
-              onChange={(e) => setOverrideDuration(parseInt(e.target.value) || 30)}
-              className="neon-input"
-              style={{ width: '60px' }}
-            />
-            <span style={{ color: 'var(--text-dim)', fontSize: '10px' }}>min</span>
-          </div>
 
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              onClick={() => onOverride(selectedMode, overrideDuration)}
-              disabled={apiOffline}
-              className="neon-btn neon-btn-warning"
-            >ACTIVAR OVERRIDE</button>
-            {status?.override?.active && (
-              <button
-                onClick={onClearOverride}
-                disabled={apiOffline}
-                className="neon-btn neon-btn-danger"
-              >LIMPIAR</button>
-            )}
-          </div>
-
+        <div className="flex gap-2">
+          <button
+            onClick={() => onOverride(selectedMode, overrideDuration)}
+            disabled={apiOffline}
+            className="key-danger"
+          >ACTIVAR OVERRIDE</button>
           {status?.override?.active && (
-            <div style={{
-              marginTop: '12px',
-              padding: '8px',
-              background: 'rgba(255, 136, 0, 0.1)',
-              border: '1px solid var(--neon-orange)',
-              borderRadius: '4px',
-            }}>
-              <span style={{ color: 'var(--neon-orange)', fontSize: '10px', fontWeight: 'bold' }}>
-                OVERRIDE: {status.override.mode} ({formatTime(status.override.remaining_seconds)} restantes)
-              </span>
-            </div>
+            <button
+              onClick={onClearOverride}
+              disabled={apiOffline}
+              className="key-danger"
+            >LIMPIAR</button>
           )}
         </div>
+
+        {status?.override?.active && (
+          <div className="inset mt-3" style={{ borderColor: 'rgba(255,152,0,0.3)' }}>
+            <span className="yellow text-sm font-bold">
+              OVERRIDE: {status.override.mode} ({formatTime(status.override.remaining_seconds)} restantes)
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -634,82 +603,73 @@ export function Calendar() {
   };
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div className="calendar-contract" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Error Banner */}
       {lastError && (
-        <div style={{
-          background: 'rgba(255, 68, 68, 0.15)',
-          borderBottom: '1px solid var(--neon-red)',
-          padding: '8px 16px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}>
-          <span style={{ color: 'var(--neon-red)', fontSize: '11px', fontWeight: 'bold' }}>
-            ERROR: {lastError}
-          </span>
+        <div className="flex items-center justify-between p-3" style={{ background: 'rgba(255,82,82,0.1)', borderBottom: '1px solid var(--red)' }}>
+          <span className="red font-bold text-sm">ERROR: {lastError}</span>
           <button
             onClick={() => setLastError(null)}
-            style={{ background: 'none', border: 'none', color: 'var(--neon-red)', cursor: 'pointer' }}
+            className="key-2"
+            style={{ padding: '4px 10px', fontSize: '11px' }}
           >✕</button>
         </div>
       )}
 
       {/* Success Banner */}
       {saveSuccess && (
-        <div style={{
-          background: 'rgba(0, 255, 136, 0.15)',
-          borderBottom: '1px solid var(--neon-green)',
-          padding: '8px 16px',
-        }}>
-          <span style={{ color: 'var(--neon-green)', fontSize: '11px', fontWeight: 'bold' }}>
-            ✓ Guardado OK
-          </span>
+        <div className="p-3" style={{ background: 'rgba(0,230,118,0.1)', borderBottom: '1px solid var(--green)' }}>
+          <span className="green font-bold text-sm">Guardado OK</span>
         </div>
       )}
 
       {/* Warnings Banner */}
       {warnings.length > 0 && (
-        <div style={{
-          background: 'rgba(255, 200, 0, 0.15)',
-          borderBottom: '1px solid var(--neon-orange)',
-          padding: '8px 16px',
-        }}>
-          <div style={{ color: 'var(--neon-orange)', fontSize: '11px', fontWeight: 'bold', marginBottom: '4px' }}>
-            ⚠ SOLAPAMIENTOS DETECTADOS:
-          </div>
+        <div className="p-3" style={{ background: 'rgba(255,152,0,0.1)', borderBottom: '1px solid var(--orange)' }}>
+          <div className="yellow font-bold text-sm mb-2">SOLAPAMIENTOS DETECTADOS:</div>
           {warnings.map((w, i) => (
-            <div key={i} style={{ color: 'var(--neon-orange)', fontSize: '10px', marginLeft: '12px' }}>
-              • {w}
-            </div>
+            <div key={i} className="yellow text-sm opacity-70" style={{ marginLeft: '12px' }}>• {w}</div>
           ))}
           <button
             onClick={() => setWarnings([])}
-            style={{ background: 'none', border: 'none', color: 'var(--neon-orange)', cursor: 'pointer', marginTop: '4px', fontSize: '10px' }}
+            className="key-2 mt-2"
+            style={{ padding: '4px 10px', fontSize: '10px' }}
           >Cerrar</button>
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="neon-tabs">
+      {/* Page Header */}
+      <div style={{ padding: '20px 28px' }}>
+        <h1 style={{ fontSize: '24px' }}>Calendar</h1>
+      </div>
+
+      {/* Sub Navigation (matches mock sub-nav) */}
+      <div className="sub-nav">
         {[
-          { key: 'estado', label: 'ESTADO' },
-          { key: 'horarios', label: 'HORARIOS' },
-          { key: 'control', label: 'CONTROL' },
+          { key: 'estado', label: 'Estado' },
+          { key: 'horarios', label: 'Semana' },
+          { key: 'control', label: 'Control' },
         ].map(tab => (
-          <button
+          <div
             key={tab.key}
+            className={`sub-tab${activeTab === tab.key ? ' on' : ''}`}
             onClick={() => setActiveTab(tab.key)}
-            className={`neon-tab ${activeTab === tab.key ? 'active' : ''}`}
           >
             {tab.label}
-          </button>
+          </div>
         ))}
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflow: 'auto', background: 'var(--bg-dark)' }}>
-        {activeTab === 'estado' && <TabEstado status={status} apiOffline={apiOffline} onAuto={handleAuto} />}
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        {activeTab === 'estado' && (
+          <TabEstado
+            status={status}
+            schedule={schedule}
+            apiOffline={apiOffline}
+            onAuto={handleAuto}
+          />
+        )}
         {activeTab === 'horarios' && (
           <TabHorarios
             schedule={schedule}
