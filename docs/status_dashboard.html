@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>911 Fiesta — Status Dashboard</title>
+    <link rel="stylesheet" href="control-room.css">
+</head>
+<body>
+    <div class="bg-canvas">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
+    <div class="noise"></div>
+
+    <div style="position: relative; z-index: 1; max-width: 1800px; margin: 0 auto; padding: 40px;">
+        <div style="text-align: center; margin-bottom: 40px;">
+            <h1 style="font-family: var(--font-title); font-size: 48px; font-weight: 800; background: linear-gradient(135deg, var(--green), var(--cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">911 FIESTA</h1>
+            <p class="t3" style="margin-top: 8px;">Dashboard de Estado del Sistema</p>
+            <div class="b" style="margin-top: 8px;">Actualizado: <span class="green">hace {{LAST_UPDATE}}s</span></div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px;">
+            <div class="g">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold">Consola Avolites</h3>
+                    <div class="led"></div>
+                </div>
+                <div class="inset mb-2">
+                    <div class="flex justify-between">
+                        <span class="t3 text-sm">IP Consola</span>
+                        <span class="mono text-sm">{{CONSOLE_IP}}</span>
+                    </div>
+                </div>
+                <div class="inset mb-2">
+                    <div class="flex justify-between">
+                        <span class="t3 text-sm">Estado</span>
+                        <span class="green text-sm">{{CONSOLE_STATE}}</span>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 20px;">
+                    <div class="inset text-center">
+                        <div class="t4 text-sm">Latencia</div>
+                        <div class="green mono font-bold">{{LATENCY}}ms</div>
+                    </div>
+                    <div class="inset text-center">
+                        <div class="t4 text-sm">Uptime</div>
+                        <div class="green mono font-bold">{{UPTIME}}%</div>
+                    </div>
+                    <div class="inset text-center">
+                        <div class="t4 text-sm">Errores</div>
+                        <div class="green mono font-bold">{{ERRORS}}</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="g">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold">Red Local</h3>
+                    <div class="led"></div>
+                </div>
+                <div class="inset mb-2">
+                    <div class="flex justify-between">
+                        <span class="t3 text-sm">IP Local</span>
+                        <span class="mono text-sm">{{NETWORK_IP}}</span>
+                    </div>
+                </div>
+                <div class="inset mb-2">
+                    <div class="flex justify-between">
+                        <span class="t3 text-sm">Interfaz</span>
+                        <span class="mono text-sm">{{NETWORK_INTERFACE}}</span>
+                    </div>
+                </div>
+                <div class="inset">
+                    <div class="flex justify-between">
+                        <span class="t3 text-sm">MAC</span>
+                        <span class="mono text-sm">{{NETWORK_MAC}}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="g">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold">Placa de Sonido</h3>
+                    <div class="led"></div>
+                </div>
+                <div class="inset mb-2">
+                    <div class="flex justify-between">
+                        <span class="t3 text-sm">Dispositivo</span>
+                        <span class="mono text-sm">{{AUDIO_DEVICE}}</span>
+                    </div>
+                </div>
+                <div class="inset mb-2">
+                    <div class="flex justify-between">
+                        <span class="t3 text-sm">Estado</span>
+                        <span class="green text-sm">{{AUDIO_STATE}}</span>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 20px;">
+                    <div class="inset text-center">
+                        <div class="t4 text-sm">Nivel</div>
+                        <div class="green mono font-bold">{{AUDIO_LEVEL}}dB</div>
+                    </div>
+                    <div class="inset text-center">
+                        <div class="t4 text-sm">Buffer</div>
+                        <div class="green mono font-bold">{{AUDIO_BUFFER}}</div>
+                    </div>
+                    <div class="inset text-center">
+                        <div class="t4 text-sm">Latencia</div>
+                        <div class="green mono font-bold">{{AUDIO_LATENCY}}ms</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="g">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold">Clip de Audio</h3>
+                    <div class="led"></div>
+                </div>
+                <div class="inset mb-2">
+                    <div class="flex justify-between">
+                        <span class="t3 text-sm">Estado</span>
+                        <span class="green text-sm">{{CLIP_STATE}}</span>
+                    </div>
+                </div>
+                <div class="inset mb-2">
+                    <div class="flex justify-between">
+                        <span class="t3 text-sm">Pico Actual</span>
+                        <span class="mono text-sm">{{CLIP_PEAK}} dB</span>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 20px;">
+                    <div class="inset text-center">
+                        <div class="t4 text-sm">Canal L</div>
+                        <div class="green mono font-bold">{{CLIP_L}}dB</div>
+                    </div>
+                    <div class="inset text-center">
+                        <div class="t4 text-sm">Canal R</div>
+                        <div class="green mono font-bold">{{CLIP_R}}dB</div>
+                    </div>
+                    <div class="inset text-center">
+                        <div class="t4 text-sm">Headroom</div>
+                        <div class="green mono font-bold">{{CLIP_HEADROOM}}dB</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="g" style="grid-column: 1 / -1;">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold">Vision Pro - Cámaras</h3>
+                    <div class="led"></div>
+                </div>
+                <div class="inset mb-3">
+                    <div class="flex justify-between">
+                        <span class="t3 text-sm">Cámaras Activas</span>
+                        <span class="green mono">{{CAMERAS_ACTIVE}} / 3</span>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                    <div class="inset">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="font-bold">HAZE</div>
+                            <div class="b">{{STATUS_HAZE}}</div>
+                        </div>
+                        <div class="t3 mono text-sm">{{DETAILS_HAZE}}</div>
+                    </div>
+                    <div class="inset">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="font-bold">DJ</div>
+                            <div class="b">{{STATUS_DJ}}</div>
+                        </div>
+                        <div class="t3 mono text-sm">{{DETAILS_DJ}}</div>
+                    </div>
+                    <div class="inset">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="font-bold">ARTIST</div>
+                            <div class="b">{{STATUS_ARTIST}}</div>
+                        </div>
+                        <div class="t3 mono text-sm">{{DETAILS_ARTIST}}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,2164 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>911 Fiesta - Config PRO</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --green: #00e676;
+            --green-g: rgba(0,230,118,0.35);
+            --green-20: rgba(0,230,118,0.20);
+            --green-10: rgba(0,230,118,0.10);
+            --green-05: rgba(0,230,118,0.05);
+            --cyan: #4dd0e1;
+            --blue: #42a5f5;
+            --yellow: #ffd740;
+            --orange: #ff9800;
+            --red: #ff5252;
+            --t1: #f0f0f0;
+            --t2: rgba(240,240,240,0.65);
+            --t3: rgba(240,240,240,0.38);
+            --t4: rgba(240,240,240,0.20);
+            --glass: rgba(40,40,40,0.45);
+            --glass-b: rgba(255,255,255,0.08);
+            --glass-bh: rgba(255,255,255,0.14);
+            --inset: rgba(0,0,0,0.22);
+        }
+
+        body {
+            background: #0a0a0a;
+            color: var(--t1);
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ═══════ BACKGROUND ═══════ */
+        .bg-canvas {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            overflow: hidden;
+        }
+
+        .bg-canvas::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background:
+                radial-gradient(ellipse 60% 50% at 70% 20%, rgba(0, 230, 118, 0.15) 0%, transparent 50%),
+                radial-gradient(ellipse 50% 45% at 30% 70%, rgba(77, 208, 225, 0.12) 0%, transparent 50%),
+                radial-gradient(ellipse 55% 60% at 50% 50%, rgba(66, 165, 245, 0.08) 0%, transparent 50%),
+                linear-gradient(155deg, #0a0a0a 0%, #121212 25%, #1a1a1a 40%, #151515 60%, #0d0d0d 100%);
+        }
+
+        .blob {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(120px);
+            animation: blobFloat 22s ease-in-out infinite;
+        }
+
+        .blob-1 {
+            width: 650px;
+            height: 520px;
+            background: radial-gradient(circle, rgba(0, 230, 118, 0.25), rgba(0, 200, 100, 0.08) 40%, transparent 70%);
+            top: -15%;
+            right: -5%;
+            animation-duration: 28s;
+        }
+
+        .blob-2 {
+            width: 550px;
+            height: 480px;
+            background: radial-gradient(circle, rgba(77, 208, 225, 0.18), rgba(60, 180, 200, 0.06) 40%, transparent 70%);
+            bottom: -10%;
+            left: -8%;
+            animation-duration: 25s;
+            animation-delay: -10s;
+        }
+
+        .blob-3 {
+            width: 480px;
+            height: 420px;
+            background: radial-gradient(circle, rgba(66, 165, 245, 0.14), rgba(50, 140, 200, 0.05) 40%, transparent 70%);
+            top: 40%;
+            right: 15%;
+            animation-duration: 30s;
+            animation-delay: -15s;
+        }
+
+        @keyframes blobFloat {
+            0%, 100% { transform: translate(0,0) scale(1); }
+            25% { transform: translate(30px,-25px) scale(1.05); }
+            50% { transform: translate(-20px,30px) scale(0.95); }
+            75% { transform: translate(25px,15px) scale(1.03); }
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 28px;
+        }
+
+        /* ═══════ UNSAVED INDICATOR ═══════ */
+            display: none;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            background: rgba(255,152,0,0.15);
+            border: 1px solid rgba(255,152,0,0.2);
+            border-radius: 8px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        /* ═══════ UNSAVED INDICATOR ═══════ */
+        .unsaved-indicator {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            background: rgba(255, 152, 0, 0.15);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 152, 0, 0.3);
+            border-radius: 10px;
+            animation: pulse 2s ease-in-out infinite;
+            box-shadow: 
+                inset 0 1px 0 rgba(255, 255, 255, 0.1),
+                0 2px 8px rgba(255, 152, 0, 0.25);
+        }
+
+        .unsaved-indicator.visible {
+            display: flex;
+        }
+
+        .unsaved-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--orange);
+            box-shadow: 0 0 8px rgba(255,152,0,0.4);
+        }
+
+        .unsaved-text {
+            font-size: 12px;
+            color: var(--orange);
+            font-weight: 600;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        /* ═══════ TABS ═══════ */
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            overflow-x: auto;
+            padding: 4px;
+            scrollbar-width: thin;
+            animation: slideUp 0.5s cubic-bezier(0.25,0.46,0.45,0.94);
+        }
+
+        .tab {
+            position: relative;
+            padding: 11px 18px;
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.3s cubic-bezier(0.25,0.46,0.45,0.94);
+            font-family: 'Inter', sans-serif;
+            font-weight: 500;
+            font-size: 13px;
+            color: var(--t3);
+            box-shadow: 
+                inset 0 1px 0 rgba(255, 255, 255, 0.05),
+                0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .tab:hover {
+            background: rgba(255,255,255,0.06);
+            border-color: rgba(255, 255, 255, 0.12);
+            color: var(--t2);
+        }
+
+        .tab.active {
+            background: rgba(0, 230, 118, 0.1);
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            border-color: rgba(0, 230, 118, 0.3);
+            color: var(--green);
+            box-shadow: 
+                inset 0 1px 0 rgba(255, 255, 255, 0.1),
+                0 4px 16px rgba(0, 230, 118, 0.25),
+                0 0 0 1px rgba(0, 230, 118, 0.1);
+        }
+
+        .tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -4px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60%;
+            height: 3px;
+            background: var(--green);
+            border-radius: 2px 2px 0 0;
+            box-shadow: 0 0 12px var(--green-g);
+        }
+
+        /* ═══════ CARDS ═══════ */
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+            gap: 18px;
+            margin-bottom: 18px;
+        }
+
+        .card {
+            position: relative;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(40px) saturate(180%);
+            -webkit-backdrop-filter: blur(40px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 20px;
+            padding: 22px;
+            transition: all 0.35s cubic-bezier(0.25,0.46,0.45,0.94);
+            animation: slideUp 0.5s cubic-bezier(0.25,0.46,0.45,0.94) backwards;
+            box-shadow: 
+                0 8px 32px 0 rgba(0, 0, 0, 0.37),
+                inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, 
+                transparent, 
+                rgba(255, 255, 255, 0.3) 50%, 
+                transparent
+            );
+        }
+
+        .card::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(
+                135deg,
+                rgba(255, 255, 255, 0.08) 0%,
+                rgba(255, 255, 255, 0.02) 50%,
+                rgba(0, 0, 0, 0.05) 100%
+            );
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .card > * {
+            position: relative;
+            z-index: 1;
+        }
+
+        .card:nth-child(1) { animation-delay: 0.15s; }
+        .card:nth-child(2) { animation-delay: 0.2s; }
+        .card:nth-child(3) { animation-delay: 0.25s; }
+        .card:nth-child(4) { animation-delay: 0.3s; }
+
+        .card:hover {
+            border-color: rgba(255,255,255,0.3);
+            background: rgba(255, 255, 255, 0.08);
+            transform: translateY(-2px);
+            box-shadow: 
+                0 16px 48px 0 rgba(0, 0, 0, 0.5),
+                inset 0 1px 0 0 rgba(255, 255, 255, 0.15),
+                0 0 0 1px rgba(255, 255, 255, 0.1);
+        }
+
+        .card.modified {
+            border-color: rgba(255,152,0,0.4);
+            background: rgba(255, 152, 0, 0.05);
+            box-shadow: 
+                0 8px 32px 0 rgba(255, 152, 0, 0.2),
+                inset 0 1px 0 0 rgba(255, 255, 255, 0.1),
+                0 0 0 1px rgba(255,152,0,0.2);
+        }
+
+        .card-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--t3);
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            margin-bottom: 18px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-full {
+            grid-column: 1 / -1;
+        }
+
+        /* ═══════ FORM ELEMENTS ═══════ */
+        .form-row {
+            display: flex;
+            gap: 14px;
+            align-items: flex-start;
+            margin-bottom: 14px;
+            position: relative;
+        }
+
+        .form-row label {
+            min-width: 130px;
+            color: var(--t2);
+            font-size: 13px;
+            font-weight: 500;
+            padding-top: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .tooltip-trigger {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.1);
+            color: var(--t3);
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: help;
+            transition: all 0.2s;
+        }
+
+        .tooltip-trigger:hover {
+            background: rgba(255,255,255,0.2);
+            color: var(--t1);
+        }
+
+        .tooltip {
+            position: absolute;
+            left: 160px;
+            top: 38px;
+            background: rgba(20, 20, 20, 0.95);
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 12px;
+            padding: 10px 14px;
+            font-size: 12px;
+            color: var(--t2);
+            line-height: 1.5;
+            max-width: 280px;
+            z-index: 1000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+            box-shadow: 
+                0 8px 24px rgba(0,0,0,0.5),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+
+        .tooltip.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .form-row input[type="text"],
+        .form-row input[type="number"],
+        .form-row input[type="password"],
+        .form-row select {
+            flex: 1;
+            padding: 10px 13px;
+            background: rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            color: var(--t1);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            transition: all 0.25s;
+            box-shadow: 
+                inset 0 2px 4px rgba(0, 0, 0, 0.3),
+                0 1px 2px rgba(255, 255, 255, 0.05);
+        }
+
+        .form-row input:focus,
+        .form-row select:focus {
+            outline: none;
+            border-color: rgba(0, 230, 118, 0.4);
+            background: rgba(0, 0, 0, 0.25);
+            box-shadow: 
+                0 0 0 3px rgba(0, 230, 118, 0.1),
+                inset 0 2px 4px rgba(0, 0, 0, 0.3),
+                0 4px 12px rgba(0, 230, 118, 0.2);
+        }
+
+        .form-row input.error {
+            border-color: rgba(255,82,82,0.4);
+            box-shadow: 
+                0 0 0 3px rgba(255,82,82,0.1),
+                inset 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .form-row input.success {
+            border-color: rgba(0, 230, 118, 0.3);
+        }
+
+        .form-row input.modified {
+            background: rgba(255,152,0,0.08);
+            border-color: rgba(255,152,0,0.3);
+        }
+
+        .error-message {
+            position: absolute;
+            left: 160px;
+            top: 38px;
+            font-size: 11px;
+            color: var(--red);
+            font-weight: 500;
+            display: none;
+        }
+
+        .error-message.visible {
+            display: block;
+        }
+
+        .dynamic-fields {
+            display: none;
+        }
+
+        .dynamic-fields.visible {
+            display: block;
+        }
+
+        /* ═══════ BUTTONS ═══════ */
+        button {
+            padding: 11px 20px;
+            border: none;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.25,0.46,0.45,0.94);
+            position: relative;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, rgba(0, 230, 118, 0.25), rgba(0, 200, 100, 0.2));
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            color: var(--green);
+            border: 1px solid rgba(0, 230, 118, 0.3);
+            box-shadow: 
+                0 3px 0 0 rgba(0,50,25,0.5), 
+                0 4px 12px rgba(0, 230, 118, 0.25),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: linear-gradient(135deg, rgba(0, 230, 118, 0.35), rgba(0, 200, 100, 0.3));
+            transform: translateY(-1px);
+            box-shadow: 
+                0 4px 0 0 rgba(0,50,25,0.5), 
+                0 6px 16px rgba(0, 230, 118, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.15);
+        }
+
+        .btn-primary:active:not(:disabled) {
+            transform: translateY(2px);
+            box-shadow: 
+                0 1px 0 0 rgba(0,50,25,0.5), 
+                0 2px 8px rgba(0, 230, 118, 0.2),
+                inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        }
+
+        .btn-primary.loading::after {
+            content: '';
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 14px;
+            height: 14px;
+            border: 2px solid var(--green);
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: translateY(-50%) rotate(360deg); }
+        }
+
+        .btn-secondary {
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            color: var(--t2);
+            border: 1px solid rgba(255,255,255,0.12);
+            box-shadow: 
+                inset 0 1px 0 rgba(255, 255, 255, 0.08),
+                0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.2);
+            color: var(--t1);
+            box-shadow: 
+                inset 0 1px 0 rgba(255, 255, 255, 0.12),
+                0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, rgba(0, 230, 118, 0.4), rgba(0, 200, 100, 0.35));
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            color: #000;
+            border: 1px solid var(--green);
+            font-weight: 700;
+            box-shadow: 
+                0 4px 12px rgba(0, 230, 118, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, rgba(255, 82, 82, 0.25), rgba(200, 50, 50, 0.2));
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            color: var(--red);
+            border: 1px solid rgba(255, 82, 82, 0.3);
+            box-shadow: 
+                inset 0 1px 0 rgba(255, 255, 255, 0.08),
+                0 2px 8px rgba(255, 82, 82, 0.2);
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+
+        /* ═══════ PROGRESS BAR ═══════ */
+        .progress-container {
+            display: none;
+            margin-top: 12px;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px;
+            box-shadow: 
+                inset 0 1px 0 rgba(255, 255, 255, 0.05),
+                0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .progress-container.visible {
+            display: block;
+        }
+
+        .progress-label {
+            font-size: 11px;
+            color: var(--t3);
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .progress-bar {
+            height: 6px;
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 4px;
+            overflow: hidden;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--green), var(--cyan));
+            border-radius: 3px;
+            width: 0%;
+            transition: width 0.3s ease;
+            box-shadow: 
+                0 0 10px var(--green-g),
+                0 0 20px rgba(0, 230, 118, 0.3);
+        }
+
+        /* ═══════ INFO BOX ═══════ */
+        .info-box {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 12px;
+            padding: 14px 16px;
+            margin-top: 16px;
+            box-shadow: 
+                inset 0 1px 0 rgba(255, 255, 255, 0.05),
+                0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 12px;
+            align-items: center;
+        }
+
+        .info-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .info-label {
+            color: var(--t3);
+            font-family: 'Inter', sans-serif;
+        }
+
+        .info-value {
+            color: var(--green);
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .info-value.warning {
+            color: var(--orange);
+        }
+
+        .info-value.error {
+            color: var(--red);
+        }
+
+        .info-led {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--green);
+            box-shadow: 0 0 8px var(--green-g);
+            animation: breathe 2s ease-in-out infinite;
+        }
+
+        .info-led.warning {
+            background: var(--orange);
+            box-shadow: 0 0 8px rgba(255,152,0,0.4);
+        }
+
+        .info-led.error {
+            background: var(--red);
+            box-shadow: 0 0 8px rgba(255,82,82,0.4);
+        }
+
+        /* ═══════ HEALTH MONITOR ═══════ */
+        .health-monitor {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .health-metric {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px;
+            padding: 10px 12px;
+            text-align: center;
+            box-shadow: 
+                inset 0 1px 0 rgba(255, 255, 255, 0.05),
+                0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .health-metric-label {
+            font-size: 10px;
+            color: var(--t4);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        .health-metric-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--green);
+        }
+
+        .health-metric-value.warning {
+            color: var(--orange);
+        }
+
+        .health-metric-value.error {
+            color: var(--red);
+        }
+
+        /* ═══════ CAMERA TEMPLATES ═══════ */
+        .template-selector {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.04);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            margin-bottom: 16px;
+            box-shadow: 
+                inset 0 1px 0 rgba(255, 255, 255, 0.06),
+                0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .template-selector label {
+            font-size: 12px;
+            color: var(--t3);
+            min-width: auto;
+        }
+
+        .template-selector select {
+            flex: 1;
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.25);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 8px;
+            color: var(--t1);
+            font-size: 12px;
+            box-shadow: 
+                inset 0 2px 4px rgba(0, 0, 0, 0.3),
+                0 1px 2px rgba(255, 255, 255, 0.05);
+        }
+
+        /* ═══════ ANIMATIONS ═══════ */
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(18px) scale(0.98);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        @keyframes breathe {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        /* ═══════ CAMERA SECTION ═══════ */
+        .camera-section {
+            margin-bottom: 18px;
+            padding: 18px;
+            background: rgba(255, 255, 255, 0.04);
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 14px;
+            transition: all 0.3s;
+            box-shadow: 
+                inset 0 1px 0 rgba(255, 255, 255, 0.06),
+                0 4px 12px rgba(0, 0, 0, 0.25);
+        }
+
+        .camera-section:hover {
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(255,255,255,0.15);
+            box-shadow: 
+                inset 0 1px 0 rgba(255, 255, 255, 0.08),
+                0 6px 16px rgba(0, 0, 0, 0.3);
+        }
+
+        .camera-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .camera-header input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            accent-color: var(--green);
+        }
+
+        .camera-header label {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--t1);
+        }
+
+        .camera-status {
+            margin-left: auto;
+            padding: 5px 12px;
+            background: rgba(255, 210, 64, 0.15);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            color: var(--yellow);
+            border: 1px solid rgba(255, 210, 64, 0.3);
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+            box-shadow: 
+                inset 0 1px 0 rgba(255, 255, 255, 0.1),
+                0 2px 8px rgba(255, 210, 64, 0.2);
+        }
+
+        .camera-status.connected {
+            background: rgba(0, 230, 118, 0.15);
+            border-color: rgba(0, 230, 118, 0.3);
+            color: var(--green);
+            box-shadow: 
+                inset 0 1px 0 rgba(255, 255, 255, 0.1),
+                0 2px 8px rgba(0, 230, 118, 0.2);
+        }
+
+        .test-btn {
+            padding: 6px 14px;
+            font-size: 11px;
+            margin-left: auto;
+        }
+
+        /* ═══════ STATUS OVERVIEW ═══════ */
+        .status-overview {
+            position: relative;
+            background: rgba(255, 255, 255, 0.06);
+            backdrop-filter: blur(40px) saturate(180%);
+            -webkit-backdrop-filter: blur(40px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 
+                0 8px 32px 0 rgba(0, 0, 0, 0.37),
+                inset 0 1px 0 0 rgba(255, 255, 255, 0.12);
+        }
+
+        .status-overview::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, 
+                transparent, 
+                rgba(0, 230, 118, 0.4) 30%,
+                rgba(77, 208, 225, 0.4) 70%,
+                transparent
+            );
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 16px;
+            background: rgba(255, 255, 255, 0.04);
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            transition: all 0.3s;
+            box-shadow: 
+                inset 0 1px 0 rgba(255, 255, 255, 0.06),
+                0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .status-item:hover {
+            background: rgba(255, 255, 255, 0.07);
+            border-color: rgba(255,255,255,0.15);
+            transform: translateY(-2px);
+            box-shadow: 
+                inset 0 1px 0 rgba(255, 255, 255, 0.08),
+                0 6px 16px rgba(0, 0, 0, 0.3);
+        }
+
+        .status-led-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            background: rgba(0, 0, 0, 0.25);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-radius: 50%;
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 
+                inset 0 2px 4px rgba(0, 0, 0, 0.4),
+                inset 0 -2px 4px rgba(255, 255, 255, 0.05),
+                0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .status-led-big {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--green);
+            box-shadow: 
+                0 0 12px var(--green-g),
+                0 0 6px var(--green),
+                inset 0 1px 2px rgba(255,255,255,0.3);
+            animation: breathe 2.5s ease-in-out infinite;
+        }
+
+        .status-led-big.warning {
+            background: var(--yellow);
+            box-shadow: 
+                0 0 12px rgba(255,215,64,0.4),
+                0 0 6px var(--yellow),
+                inset 0 1px 2px rgba(255,255,255,0.3);
+        }
+
+        .status-led-big.error {
+            background: var(--red);
+            box-shadow: 
+                0 0 12px rgba(255,82,82,0.4),
+                0 0 6px var(--red),
+                inset 0 1px 2px rgba(255,255,255,0.3);
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        .status-led-big.off {
+            background: #444;
+            box-shadow: 
+                inset 0 2px 4px rgba(0,0,0,0.5);
+            animation: none;
+        }
+
+        .status-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .status-name {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--t1);
+            margin-bottom: 4px;
+        }
+
+        .status-detail {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--t3);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .status-detail .saved {
+            color: var(--green);
+        }
+
+        .status-detail .unsaved {
+            color: var(--red);
+        }
+
+        .status-detail .connecting {
+            color: var(--yellow);
+        }
+
+        /* ═══════ RESPONSIVE ═══════ */
+        @media (max-width: 1024px) {
+            .card-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-canvas">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
+
+    <div class="container">
+        <!-- TABS -->
+        <div class="tabs">
+            <div class="tab">Bajada</div>
+            <div class="tab">Base Golpe</div>
+            <div class="tab">Ataque</div>
+            <div class="tab">Brake</div>
+            <div class="tab active">Red / Consola</div>
+            <div class="tab">Health</div>
+            <div class="tab">📅 Calendario</div>
+        </div>
+
+        <!-- ESTADO GENERAL -->
+        <div class="card card-full status-overview" style="animation-delay: 0.1s; margin-bottom: 18px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
+                <div class="card-title" style="margin: 0; padding: 0; border: none;">📊 Estado General del Sistema</div>
+                <div class="unsaved-indicator" id="unsavedIndicator">
+                    <div class="unsaved-dot"></div>
+                    <span class="unsaved-text">Cambios sin guardar</span>
+                </div>
+            </div>
+            
+            <div class="status-grid">
+                <!-- Consola Avolites -->
+                <div class="status-item" id="statusItemConsole">
+                    <div class="status-led-container">
+                        <div class="status-led-big" id="ledConsole"></div>
+                    </div>
+                    <div class="status-info">
+                        <div class="status-name">Consola Avolites</div>
+                        <div class="status-detail" id="detailConsole">Conectado • Guardado</div>
+                    </div>
+                </div>
+
+                <!-- Red Local -->
+                <div class="status-item" id="statusItemNetwork">
+                    <div class="status-led-container">
+                        <div class="status-led-big" id="ledNetwork"></div>
+                    </div>
+                    <div class="status-info">
+                        <div class="status-name">Red Local</div>
+                        <div class="status-detail" id="detailNetwork">10.0.70.18 • Guardado</div>
+                    </div>
+                </div>
+
+                <!-- Transporte -->
+                <div class="status-item" id="statusItemTransport">
+                    <div class="status-led-container">
+                        <div class="status-led-big" id="ledTransport"></div>
+                    </div>
+                    <div class="status-info">
+                        <div class="status-name">Transporte</div>
+                        <div class="status-detail" id="detailTransport">HTTP • Guardado</div>
+                    </div>
+                </div>
+
+                <!-- Offset -->
+                <div class="status-item" id="statusItemOffset">
+                    <div class="status-led-container">
+                        <div class="status-led-big" id="ledOffset"></div>
+                    </div>
+                    <div class="status-info">
+                        <div class="status-name">Offset de Cues</div>
+                        <div class="status-detail" id="detailOffset">+169 • Guardado</div>
+                    </div>
+                </div>
+
+                <!-- Cámara HAZE -->
+                <div class="status-item" id="statusItemHaze">
+                    <div class="status-led-container">
+                        <div class="status-led-big" id="ledHaze"></div>
+                    </div>
+                    <div class="status-info">
+                        <div class="status-name">Cámara HAZE</div>
+                        <div class="status-detail" id="detailHaze">Conectando • Sin guardar</div>
+                    </div>
+                </div>
+
+                <!-- Cámara DJ -->
+                <div class="status-item" id="statusItemDj">
+                    <div class="status-led-container">
+                        <div class="status-led-big" id="ledDj"></div>
+                    </div>
+                    <div class="status-info">
+                        <div class="status-name">Cámara DJ</div>
+                        <div class="status-detail" id="detailDj">Conectando • Sin guardar</div>
+                    </div>
+                </div>
+
+                <!-- Cámara ARTIST -->
+                <div class="status-item" id="statusItemArtist">
+                    <div class="status-led-container">
+                        <div class="status-led-big" id="ledArtist"></div>
+                    </div>
+                    <div class="status-info">
+                        <div class="status-name">Cámara ARTIST</div>
+                        <div class="status-detail" id="detailArtist">Conectando • Sin guardar</div>
+                    </div>
+                </div>
+
+                <!-- Vision Pro Sistema -->
+                <div class="status-item" id="statusItemVisionSys">
+                    <div class="status-led-container">
+                        <div class="status-led-big" id="ledVisionSys"></div>
+                    </div>
+                    <div class="status-info">
+                        <div class="status-name">Sistema Vision Pro</div>
+                        <div class="status-detail" id="detailVisionSys">Corriendo</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CARDS -->
+        <div class="card-grid">
+            <!-- CARD 1: CONSOLA -->
+            <div class="card" id="cardAvolites">
+                <div class="card-title">🎛️ Consola Avolites</div>
+                
+                <div class="form-row">
+                    <label>
+                        IP Consola:
+                        <span class="tooltip-trigger" data-tooltip="ip-consola">?</span>
+                    </label>
+                    <div style="flex: 1; position: relative;">
+                        <input type="text" id="consoleIp" value="10.0.0.1" placeholder="192.168.1.20" oninput="validateIP(this); markAsModified('cardAvolites')">
+                        <span class="error-message" id="error-consoleIp"></span>
+                        <div class="tooltip" id="tooltip-ip-consola">
+                            Dirección IP de la consola Avolites en la red local. Debe ser una IP válida (ej: 192.168.x.x o 10.0.x.x)
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <label>
+                        Puerto:
+                        <span class="tooltip-trigger" data-tooltip="puerto-consola">?</span>
+                    </label>
+                    <div style="flex: 1; position: relative;">
+                        <input type="number" id="consolePort" value="4430" placeholder="4430" min="1" max="65535" oninput="validatePort(this); markAsModified('cardAvolites')">
+                        <span class="error-message" id="error-consolePort"></span>
+                        <div class="tooltip" id="tooltip-puerto-consola">
+                            Puerto WebAPI de Avolites (por defecto 4430). Rango válido: 1-65535
+                        </div>
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn-primary" id="btnSaveConsole" onclick="saveAndReconnect()">Guardar y Reconectar</button>
+                    <button class="btn-secondary" onclick="testConnection()">Test Conexión</button>
+                </div>
+
+                <div class="progress-container" id="progressConsole">
+                    <div class="progress-label">
+                        <span id="progressLabel">Probando conexión...</span>
+                        <span id="progressPercent">0%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                </div>
+
+                <div class="info-box">
+                    <div class="info-row">
+                        <span class="info-label">Estado:</span>
+                        <span class="info-value" id="consoleStatus">
+                            <span class="info-led"></span>
+                            CONECTADO
+                        </span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Última respuesta:</span>
+                        <span class="info-value" id="lastResponse">hace 2s</span>
+                    </div>
+                </div>
+
+                <div class="health-monitor">
+                    <div class="health-metric">
+                        <div class="health-metric-label">Latencia</div>
+                        <div class="health-metric-value" id="latency">45ms</div>
+                    </div>
+                    <div class="health-metric">
+                        <div class="health-metric-label">Paquetes OK</div>
+                        <div class="health-metric-value" id="packetsOk">100%</div>
+                    </div>
+                    <div class="health-metric">
+                        <div class="health-metric-label">Errores</div>
+                        <div class="health-metric-value" id="errors">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CARD 2: RED LOCAL -->
+            <div class="card" id="cardNetwork">
+                <div class="card-title">🌐 Red Local (PC)</div>
+                
+                <div class="form-row">
+                    <label>
+                        Interfaz de red:
+                        <span class="tooltip-trigger" data-tooltip="nic">?</span>
+                    </label>
+                    <div style="flex: 1; position: relative;">
+                        <select id="nic" onchange="markAsModified('cardNetwork')">
+                            <option selected>Auto. 1 (10.0.70.18) [00:00:00:00:00:00]</option>
+                            <option>Ethernet 2 (192.168.1.100)</option>
+                            <option>Wi-Fi (192.168.0.50)</option>
+                        </select>
+                        <div class="tooltip" id="tooltip-nic">
+                            Interfaz de red que usará el sistema para comunicarse con la consola. "Auto" selecciona la mejor disponible.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn-primary" onclick="applyNIC()">Aplicar NIC</button>
+                    <button class="btn-secondary" onclick="detectInterfaces()">Detectar Interfaces</button>
+                </div>
+
+                <div class="info-box">
+                    <div class="info-row">
+                        <span class="info-label">IP Local efectiva:</span>
+                        <span class="info-value">10.0.70.18</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">MAC:</span>
+                        <span class="info-value">00:00:00:00:00:00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CARD 3: TRANSPORTE -->
+            <div class="card" id="cardTransport">
+                <div class="card-title">📡 Protocolo de Transporte</div>
+                
+                <div class="form-row">
+                    <label>
+                        Protocolo:
+                        <span class="tooltip-trigger" data-tooltip="protocolo">?</span>
+                    </label>
+                    <div style="flex: 1; position: relative;">
+                        <select id="transport" onchange="toggleTransportFields(); markAsModified('cardTransport')">
+                            <option value="http" selected>HTTP (WebAPI)</option>
+                            <option value="artnet">Art-Net</option>
+                            <option value="sacn">sACN</option>
+                        </select>
+                        <div class="tooltip" id="tooltip-protocolo">
+                            HTTP: WebAPI de Avolites (recomendado). Art-Net/sACN: control DMX directo (requiere configuración adicional)
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <label>Timeout (ms):</label>
+                    <input type="number" id="timeout" value="1500" min="100" max="10000" oninput="markAsModified('cardTransport')">
+                </div>
+
+                <!-- Campos dinámicos para sACN -->
+                <div id="sacnFields" class="dynamic-fields">
+                    <div class="form-row">
+                        <label>
+                            Universe:
+                            <span class="tooltip-trigger" data-tooltip="universe">?</span>
+                        </label>
+                        <div style="flex: 1; position: relative;">
+                            <input type="number" id="universe" value="1" min="1" max="63999" oninput="markAsModified('cardTransport')">
+                            <div class="tooltip" id="tooltip-universe">
+                                Universo sACN (1-63999). Debe coincidir con la configuración de la consola
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <label>Priority:</label>
+                        <input type="number" id="priority" value="100" min="0" max="200" oninput="markAsModified('cardTransport')">
+                    </div>
+                </div>
+
+                <!-- Campos dinámicos para Art-Net -->
+                <div id="artnetFields" class="dynamic-fields">
+                    <div class="form-row">
+                        <label>Net:</label>
+                        <input type="number" id="artnetNet" value="0" min="0" max="127" oninput="markAsModified('cardTransport')">
+                    </div>
+                    <div class="form-row">
+                        <label>Subnet:</label>
+                        <input type="number" id="artnetSubnet" value="0" min="0" max="15" oninput="markAsModified('cardTransport')">
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn-primary" onclick="applyTransport()">Aplicar Transporte</button>
+                </div>
+
+                <div class="info-box">
+                    <div class="info-row">
+                        <span class="info-label">Protocolo activo:</span>
+                        <span class="info-value" id="activeProtocol">HTTP</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Latencia promedio:</span>
+                        <span class="info-value" id="avgLatency">45ms</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CARD 4: OFFSET DE CUES -->
+            <div class="card" id="cardOffset">
+                <div class="card-title">🎯 Offset de Cues</div>
+                
+                <div class="form-row">
+                    <label>
+                        Offset (lógico → real):
+                        <span class="tooltip-trigger" data-tooltip="offset">?</span>
+                    </label>
+                    <div style="flex: 1; position: relative;">
+                        <input type="number" id="cueOffset" value="169" placeholder="0" oninput="markAsModified('cardOffset')">
+                        <div class="tooltip" id="tooltip-offset">
+                            Offset que se suma a los números de cue lógicos para obtener los números reales en la consola. Ejemplo: Cue 1 + offset 169 = Cue 170
+                        </div>
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn-primary" onclick="saveOffset()">Guardar Offset</button>
+                </div>
+
+                <div class="info-box">
+                    <div class="info-row">
+                        <span class="info-label">Ejemplo:</span>
+                        <span class="info-value" id="offsetExample">Cue 1 → Cue 170</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Offset activo:</span>
+                        <span class="info-value" id="activeOffset">+169</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- VISION PRO - FULL WIDTH -->
+        <div class="card card-full" id="cardVision" style="animation-delay: 0.35s;">
+            <div class="card-title">📹 Vision Pro — Cámaras IP (MJPEG + RTSP)</div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <div style="display: flex; gap: 15px; align-items: center;">
+                    <span style="color: var(--t3); font-size: 13px;">Sistema:</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div class="info-led" id="visionLed"></div>
+                        <span style="color: var(--green); font-weight: 700; font-family: 'Space Grotesk', sans-serif;" id="visionStatus">CORRIENDO</span>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn-success" onclick="startVision()">Iniciar</button>
+                    <button class="btn-danger" onclick="stopVision()">Detener</button>
+                </div>
+            </div>
+
+            <!-- CAMERA: HAZE -->
+            <div class="camera-section" id="cameraHaze">
+                <div class="camera-header">
+                    <input type="checkbox" id="cam-haze" checked>
+                    <label for="cam-haze">HAZE</label>
+                    <span class="camera-status" id="statusHaze">Conectando...</span>
+                </div>
+
+                <div class="template-selector">
+                    <label>Template:</label>
+                    <select id="hazeTemplate" onchange="applyTemplate('haze', this.value)">
+                        <option value="">-- Seleccionar marca --</option>
+                        <option value="axis">Axis (MJPEG estándar)</option>
+                        <option value="hikvision">Hikvision (RTSP)</option>
+                        <option value="dahua">Dahua (RTSP)</option>
+                        <option value="custom" selected>Personalizado</option>
+                    </select>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                    <div class="form-row">
+                        <label>Protocolo:</label>
+                        <select id="hazeProto" onchange="markAsModified('cardVision')">
+                            <option value="mjpeg" selected>MJPEG (HTTP)</option>
+                            <option value="rtsp">RTSP (H.264)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row">
+                        <label>Host:</label>
+                        <input type="text" id="hazeHost" value="192.168.1.110" oninput="validateIP(this); markAsModified('cardVision')">
+                    </div>
+
+                    <div class="form-row" style="grid-column: 1 / -1;">
+                        <label>Path:</label>
+                        <input type="text" id="hazePath" value="/axis-cgi/mjpg/video.cgi?fps=10" oninput="markAsModified('cardVision')">
+                    </div>
+
+                    <div class="form-row">
+                        <label>User:</label>
+                        <input type="text" id="hazeUser" value="root" oninput="markAsModified('cardVision')">
+                    </div>
+
+                    <div class="form-row">
+                        <label>Pass:</label>
+                        <input type="password" id="hazePass" value="••••" oninput="markAsModified('cardVision')">
+                    </div>
+
+                    <div class="form-row">
+                        <label>FPS:</label>
+                        <input type="number" id="hazeFps" value="11" min="1" max="60" oninput="markAsModified('cardVision')">
+                        <button class="btn-primary test-btn" onclick="testCamera('haze')">Test</button>
+                    </div>
+
+                    <div class="form-row">
+                        <label>Timeout:</label>
+                        <input type="text" id="hazeTimeout" value="5.00s" oninput="markAsModified('cardVision')">
+                    </div>
+                </div>
+
+                <div class="progress-container" id="progressHaze">
+                    <div class="progress-label">
+                        <span>Probando cámara HAZE...</span>
+                        <span id="progressPercentHaze">0%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFillHaze"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CAMERA: DJ -->
+            <div class="camera-section" id="cameraDj">
+                <div class="camera-header">
+                    <input type="checkbox" id="cam-dj" checked>
+                    <label for="cam-dj">DJ</label>
+                    <span class="camera-status" id="statusDj">Conectando...</span>
+                </div>
+
+                <div class="template-selector">
+                    <label>Template:</label>
+                    <select id="djTemplate" onchange="applyTemplate('dj', this.value)">
+                        <option value="">-- Seleccionar marca --</option>
+                        <option value="axis">Axis (MJPEG estándar)</option>
+                        <option value="hikvision" selected>Hikvision (RTSP)</option>
+                        <option value="dahua">Dahua (RTSP)</option>
+                        <option value="custom">Personalizado</option>
+                    </select>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                    <div class="form-row">
+                        <label>Protocolo:</label>
+                        <select id="djProto" onchange="markAsModified('cardVision')">
+                            <option value="mjpeg">MJPEG (HTTP)</option>
+                            <option value="rtsp" selected>RTSP (H.264)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row" style="grid-column: 1 / -1;">
+                        <label>URL Main:</label>
+                        <input type="text" id="djUrlMain" value="rtsp://admin:12345@192.168.1.64:554/Streaming/Channels/101" oninput="markAsModified('cardVision')">
+                    </div>
+
+                    <div class="form-row" style="grid-column: 1 / -1;">
+                        <label>URL Sub:</label>
+                        <input type="text" id="djUrlSub" value="rtsp://admin:12345@192.168.1.64:554/Streaming/Channels/102" oninput="markAsModified('cardVision')">
+                    </div>
+
+                    <div class="form-row">
+                        <label>Preferido:</label>
+                        <select id="djStream" onchange="markAsModified('cardVision')">
+                            <option selected>Mainstream (Full)</option>
+                            <option>Substream</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row">
+                        <label>Transport:</label>
+                        <select id="djTransport" onchange="markAsModified('cardVision')">
+                            <option selected>TCP (más estable)</option>
+                            <option>UDP</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row" style="grid-column: 1 / -1;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <input type="checkbox" id="djLowLatency" checked onchange="markAsModified('cardVision')">
+                            <label for="djLowLatency" style="min-width: auto; margin: 0;">Low Latency Mode</label>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <label>FPS:</label>
+                        <input type="number" id="djFps" value="10" min="1" max="60" oninput="markAsModified('cardVision')">
+                        <button class="btn-primary test-btn" onclick="testCamera('dj')">Test</button>
+                    </div>
+
+                    <div class="form-row">
+                        <label>Timeout:</label>
+                        <input type="text" id="djTimeout" value="5.00s" oninput="markAsModified('cardVision')">
+                    </div>
+                </div>
+
+                <div class="progress-container" id="progressDj">
+                    <div class="progress-label">
+                        <span>Probando cámara DJ...</span>
+                        <span id="progressPercentDj">0%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFillDj"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CAMERA: ARTIST -->
+            <div class="camera-section" id="cameraArtist">
+                <div class="camera-header">
+                    <input type="checkbox" id="cam-artist" checked>
+                    <label for="cam-artist">ARTIST</label>
+                    <span class="camera-status" id="statusArtist">Conectando...</span>
+                </div>
+
+                <div class="template-selector">
+                    <label>Template:</label>
+                    <select id="artistTemplate" onchange="applyTemplate('artist', this.value)">
+                        <option value="">-- Seleccionar marca --</option>
+                        <option value="axis" selected>Axis (MJPEG estándar)</option>
+                        <option value="hikvision">Hikvision (RTSP)</option>
+                        <option value="dahua">Dahua (RTSP)</option>
+                        <option value="custom">Personalizado</option>
+                    </select>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                    <div class="form-row">
+                        <label>Protocolo:</label>
+                        <select id="artistProto" onchange="markAsModified('cardVision')">
+                            <option value="mjpeg" selected>MJPEG (HTTP)</option>
+                            <option value="rtsp">RTSP (H.264)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row">
+                        <label>Host:</label>
+                        <input type="text" id="artistHost" value="192.168.1.110" oninput="validateIP(this); markAsModified('cardVision')">
+                    </div>
+
+                    <div class="form-row" style="grid-column: 1 / -1;">
+                        <label>Path:</label>
+                        <input type="text" id="artistPath" value="/axis-cgi/mjpg/video.cgi?fps=10" oninput="markAsModified('cardVision')">
+                    </div>
+
+                    <div class="form-row">
+                        <label>User:</label>
+                        <input type="text" id="artistUser" value="root" oninput="markAsModified('cardVision')">
+                    </div>
+
+                    <div class="form-row">
+                        <label>Pass:</label>
+                        <input type="password" id="artistPass" value="••••" oninput="markAsModified('cardVision')">
+                    </div>
+
+                    <div class="form-row">
+                        <label>FPS:</label>
+                        <input type="number" id="artistFps" value="10" min="1" max="60" oninput="markAsModified('cardVision')">
+                        <button class="btn-primary test-btn" onclick="testCamera('artist')">Test</button>
+                    </div>
+
+                    <div class="form-row">
+                        <label>Timeout:</label>
+                        <input type="text" id="artistTimeout" value="5.00s" oninput="markAsModified('cardVision')">
+                    </div>
+                </div>
+
+                <div class="progress-container" id="progressArtist">
+                    <div class="progress-label">
+                        <span>Probando cámara ARTIST...</span>
+                        <span id="progressPercentArtist">0%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFillArtist"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="btn-group" style="justify-content: flex-start; margin-top: 20px;">
+                <button class="btn-primary" onclick="saveAllCameras()">Guardar Todo</button>
+                <button class="btn-secondary" onclick="testAllCameras()">Test Todas</button>
+            </div>
+        </div>
+
+        <!-- PRESET MANAGEMENT -->
+        <div class="card" style="margin-top: 18px; background: linear-gradient(135deg, rgba(0,230,118,0.03), rgba(0,200,100,0.02)); border-color: var(--green-10); animation-delay: 0.4s;">
+            <div class="card-title" style="color: var(--green);">💾 Gestión de Presets</div>
+            <p style="color: var(--t2); margin-bottom: 16px; font-size: 13px; line-height: 1.6;">
+                Toda esta configuración se guarda/carga como un preset. Puedes crear múltiples configuraciones para diferentes escenarios (club, testing, offline, etc).
+            </p>
+            <div class="btn-group">
+                <button class="btn-primary" onclick="savePreset()">💾 Guardar Preset Actual</button>
+                <button class="btn-secondary" onclick="loadPreset()">📂 Cargar Preset...</button>
+                <button class="btn-secondary" onclick="newPreset()">➕ Nuevo Preset Vacío</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ═══════════════════════════════════════════════════════════════
+        // ESTADO GLOBAL
+        // ═══════════════════════════════════════════════════════════════
+        let originalConfig = {};
+        let currentConfig = {};
+        let hasUnsavedChanges = false;
+
+        // Guardar config original al cargar
+        window.addEventListener('DOMContentLoaded', () => {
+            saveCurrentConfig();
+            originalConfig = {...currentConfig};
+            startHealthMonitoring();
+            setupTooltips();
+            updateStatusLEDs(); // Inicializar LEDs
+        });
+
+        // ═══════════════════════════════════════════════════════════════
+        // TOOLTIPS
+        // ═══════════════════════════════════════════════════════════════
+        function setupTooltips() {
+            document.querySelectorAll('.tooltip-trigger').forEach(trigger => {
+                trigger.addEventListener('mouseenter', (e) => {
+                    const tooltipId = 'tooltip-' + e.target.dataset.tooltip;
+                    const tooltip = document.getElementById(tooltipId);
+                    if (tooltip) {
+                        tooltip.classList.add('visible');
+                    }
+                });
+
+                trigger.addEventListener('mouseleave', (e) => {
+                    const tooltipId = 'tooltip-' + e.target.dataset.tooltip;
+                    const tooltip = document.getElementById(tooltipId);
+                    if (tooltip) {
+                        tooltip.classList.remove('visible');
+                    }
+                });
+            });
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // VALIDACIÓN EN TIEMPO REAL
+        // ═══════════════════════════════════════════════════════════════
+        function validateIP(input) {
+            const value = input.value;
+            const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
+            const errorSpan = document.getElementById('error-' + input.id);
+            
+            if (!value) {
+                input.classList.remove('error', 'success');
+                if (errorSpan) errorSpan.classList.remove('visible');
+                return false;
+            }
+
+            if (!ipRegex.test(value)) {
+                input.classList.add('error');
+                input.classList.remove('success');
+                if (errorSpan) {
+                    errorSpan.textContent = 'Formato inválido (ej: 192.168.1.1)';
+                    errorSpan.classList.add('visible');
+                }
+                return false;
+            }
+
+            const parts = value.split('.').map(Number);
+            const valid = parts.every(part => part >= 0 && part <= 255);
+
+            if (!valid) {
+                input.classList.add('error');
+                input.classList.remove('success');
+                if (errorSpan) {
+                    errorSpan.textContent = 'Cada octeto debe estar entre 0-255';
+                    errorSpan.classList.add('visible');
+                }
+                return false;
+            }
+
+            input.classList.remove('error');
+            input.classList.add('success');
+            if (errorSpan) errorSpan.classList.remove('visible');
+            return true;
+        }
+
+        function validatePort(input) {
+            const value = parseInt(input.value);
+            const errorSpan = document.getElementById('error-' + input.id);
+
+            if (!input.value) {
+                input.classList.remove('error', 'success');
+                if (errorSpan) errorSpan.classList.remove('visible');
+                return false;
+            }
+
+            if (value < 1 || value > 65535) {
+                input.classList.add('error');
+                input.classList.remove('success');
+                if (errorSpan) {
+                    errorSpan.textContent = 'Puerto debe estar entre 1-65535';
+                    errorSpan.classList.add('visible');
+                }
+                return false;
+            }
+
+            input.classList.remove('error');
+            input.classList.add('success');
+            if (errorSpan) errorSpan.classList.remove('visible');
+            return true;
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // CAMPOS DINÁMICOS
+        // ═══════════════════════════════════════════════════════════════
+        function toggleTransportFields() {
+            const transport = document.getElementById('transport').value;
+            const sacnFields = document.getElementById('sacnFields');
+            const artnetFields = document.getElementById('artnetFields');
+
+            sacnFields.classList.remove('visible');
+            artnetFields.classList.remove('visible');
+
+            if (transport === 'sacn') {
+                sacnFields.classList.add('visible');
+            } else if (transport === 'artnet') {
+                artnetFields.classList.add('visible');
+            }
+
+            document.getElementById('activeProtocol').textContent = transport.toUpperCase();
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // DETECCIÓN DE CAMBIOS
+        // ═══════════════════════════════════════════════════════════════
+        function markAsModified(cardId) {
+            const card = document.getElementById(cardId);
+            if (card) card.classList.add('modified');
+
+            saveCurrentConfig();
+            checkForChanges();
+            updateStatusLEDs();
+        }
+
+        function saveCurrentConfig() {
+            currentConfig = {
+                consoleIp: document.getElementById('consoleIp')?.value,
+                consolePort: document.getElementById('consolePort')?.value,
+                transport: document.getElementById('transport')?.value,
+                timeout: document.getElementById('timeout')?.value,
+                cueOffset: document.getElementById('cueOffset')?.value,
+                nic: document.getElementById('nic')?.value,
+                // Cameras
+                hazeHost: document.getElementById('hazeHost')?.value,
+                hazeProto: document.getElementById('hazeProto')?.value,
+                djUrlMain: document.getElementById('djUrlMain')?.value,
+                artistHost: document.getElementById('artistHost')?.value,
+            };
+        }
+
+        function checkForChanges() {
+            hasUnsavedChanges = JSON.stringify(originalConfig) !== JSON.stringify(currentConfig);
+            
+            const indicator = document.getElementById('unsavedIndicator');
+            if (hasUnsavedChanges) {
+                indicator.classList.add('visible');
+            } else {
+                indicator.classList.remove('visible');
+                document.querySelectorAll('.card.modified').forEach(card => {
+                    card.classList.remove('modified');
+                });
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // ACTUALIZACIÓN DE LEDs DE ESTADO
+        // ═══════════════════════════════════════════════════════════════
+        const statusStates = {
+            console: { saved: true, connected: true },
+            network: { saved: true, connected: true },
+            transport: { saved: true, connected: true },
+            offset: { saved: true },
+            haze: { saved: false, connected: false },
+            dj: { saved: false, connected: false },
+            artist: { saved: false, connected: false },
+            visionSys: { running: true }
+        };
+
+        function updateStatusLED(component, state, detail) {
+            const led = document.getElementById('led' + component.charAt(0).toUpperCase() + component.slice(1));
+            const detailEl = document.getElementById('detail' + component.charAt(0).toUpperCase() + component.slice(1));
+            
+            if (!led) return;
+
+            // Determinar color del LED
+            led.classList.remove('error', 'warning', 'off');
+            
+            if (state === 'saved') {
+                // Verde si está guardado
+                led.classList.remove('error', 'warning', 'off');
+            } else if (state === 'unsaved') {
+                // Rojo si no está guardado
+                led.classList.add('error');
+            } else if (state === 'warning') {
+                // Amarillo para connecting, etc
+                led.classList.add('warning');
+            } else if (state === 'disconnected') {
+                // Gris oscuro si está desconectado
+                led.classList.add('off');
+            }
+
+            // Actualizar texto
+            if (detailEl && detail) {
+                detailEl.innerHTML = detail;
+            }
+        }
+
+        function updateAllStatusLEDs() {
+            // Consola
+            const consoleSaved = !document.getElementById('cardAvolites').classList.contains('modified');
+            updateStatusLED('console', consoleSaved ? 'saved' : 'unsaved', 
+                `10.0.0.1:4430 • ${consoleSaved ? '<span class="saved">Guardado</span>' : '<span class="unsaved">Sin guardar</span>'}`);
+
+            // Network
+            const networkSaved = !document.getElementById('cardNetwork').classList.contains('modified');
+            updateStatusLED('network', networkSaved ? 'saved' : 'unsaved',
+                `10.0.70.18 • ${networkSaved ? '<span class="saved">Guardado</span>' : '<span class="unsaved">Sin guardar</span>'}`);
+
+            // Transport
+            const transportSaved = !document.getElementById('cardTransport').classList.contains('modified');
+            const protocol = document.getElementById('transport').value.toUpperCase();
+            updateStatusLED('transport', transportSaved ? 'saved' : 'unsaved',
+                `${protocol} • ${transportSaved ? '<span class="saved">Guardado</span>' : '<span class="unsaved">Sin guardar</span>'}`);
+
+            // Offset
+            const offsetSaved = !document.getElementById('cardOffset').classList.contains('modified');
+            const offset = document.getElementById('cueOffset')?.value || '169';
+            updateStatusLED('offset', offsetSaved ? 'saved' : 'unsaved',
+                `+${offset} • ${offsetSaved ? '<span class="saved">Guardado</span>' : '<span class="unsaved">Sin guardar</span>'}`);
+
+            // Cameras
+            const visionSaved = !document.getElementById('cardVision').classList.contains('modified');
+            
+            updateStatusLED('haze', visionSaved ? 'saved' : 'unsaved',
+                `${statusStates.haze.connected ? 'Conectado' : 'Desconectado'} • ${visionSaved ? '<span class="saved">Guardado</span>' : '<span class="unsaved">Sin guardar</span>'}`);
+            
+            updateStatusLED('dj', visionSaved ? 'saved' : 'unsaved',
+                `${statusStates.dj.connected ? 'Conectado' : 'Desconectado'} • ${visionSaved ? '<span class="saved">Guardado</span>' : '<span class="unsaved">Sin guardar</span>'}`);
+            
+            updateStatusLED('artist', visionSaved ? 'saved' : 'unsaved',
+                `${statusStates.artist.connected ? 'Conectado' : 'Desconectado'} • ${visionSaved ? '<span class="saved">Guardado</span>' : '<span class="unsaved">Sin guardar</span>'}`);
+
+            // Vision System
+            updateStatusLED('visionSys', statusStates.visionSys.running ? 'saved' : 'off',
+                statusStates.visionSys.running ? 'Corriendo' : 'Detenido');
+        }
+
+        function updateStatusLEDs() {
+            updateAllStatusLEDs();
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // PROGRESS BAR
+        // ═══════════════════════════════════════════════════════════════
+        function showProgress(containerId, label, fillId, percentId) {
+            const container = document.getElementById(containerId);
+            const progressLabel = container.querySelector('.progress-label span:first-child');
+            const progressPercent = percentId ? document.getElementById(percentId) : container.querySelector('.progress-label span:last-child');
+            const progressFill = fillId ? document.getElementById(fillId) : container.querySelector('.progress-fill');
+
+            container.classList.add('visible');
+            if (progressLabel) progressLabel.textContent = label;
+            
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += Math.random() * 30;
+                if (progress > 100) progress = 100;
+                
+                progressFill.style.width = progress + '%';
+                progressPercent.textContent = Math.round(progress) + '%';
+
+                if (progress >= 100) {
+                    clearInterval(interval);
+                    setTimeout(() => {
+                        container.classList.remove('visible');
+                        progressFill.style.width = '0%';
+                    }, 500);
+                }
+            }, 200);
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // HEALTH MONITORING
+        // ═══════════════════════════════════════════════════════════════
+        function startHealthMonitoring() {
+            setInterval(() => {
+                // Simular latencia variable
+                const latency = Math.round(40 + Math.random() * 20);
+                const latencyEl = document.getElementById('latency');
+                latencyEl.textContent = latency + 'ms';
+                
+                if (latency > 80) {
+                    latencyEl.classList.add('warning');
+                    latencyEl.classList.remove('error');
+                } else if (latency > 100) {
+                    latencyEl.classList.add('error');
+                    latencyEl.classList.remove('warning');
+                } else {
+                    latencyEl.classList.remove('warning', 'error');
+                }
+
+                // Simular paquetes OK
+                const packetsOk = 95 + Math.random() * 5;
+                document.getElementById('packetsOk').textContent = packetsOk.toFixed(1) + '%';
+
+                // Actualizar última respuesta
+                const lastResp = Math.floor(Math.random() * 10);
+                document.getElementById('lastResponse').textContent = 'hace ' + lastResp + 's';
+            }, 2000);
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // TEMPLATES DE CÁMARAS
+        // ═══════════════════════════════════════════════════════════════
+        const cameraTemplates = {
+            axis: {
+                proto: 'mjpeg',
+                path: '/axis-cgi/mjpg/video.cgi?fps=10',
+                user: 'root',
+                pass: ''
+            },
+            hikvision: {
+                proto: 'rtsp',
+                pathMain: 'rtsp://[IP]:554/Streaming/Channels/101',
+                pathSub: 'rtsp://[IP]:554/Streaming/Channels/102',
+                user: 'admin',
+                pass: ''
+            },
+            dahua: {
+                proto: 'rtsp',
+                pathMain: 'rtsp://[IP]:554/cam/realmonitor?channel=1&subtype=0',
+                pathSub: 'rtsp://[IP]:554/cam/realmonitor?channel=1&subtype=1',
+                user: 'admin',
+                pass: ''
+            }
+        };
+
+        function applyTemplate(camera, template) {
+            if (!template || template === 'custom') return;
+
+            const config = cameraTemplates[template];
+            const prefix = camera; // 'haze', 'dj', 'artist'
+
+            document.getElementById(prefix + 'Proto').value = config.proto;
+            
+            if (config.proto === 'mjpeg') {
+                document.getElementById(prefix + 'Path').value = config.path;
+            } else if (config.proto === 'rtsp') {
+                if (document.getElementById(prefix + 'UrlMain')) {
+                    const ip = document.getElementById(prefix + 'Host')?.value || '192.168.1.1';
+                    document.getElementById(prefix + 'UrlMain').value = config.pathMain.replace('[IP]', ip);
+                    document.getElementById(prefix + 'UrlSub').value = config.pathSub.replace('[IP]', ip);
+                }
+            }
+
+            document.getElementById(prefix + 'User').value = config.user;
+            if (document.getElementById(prefix + 'Pass')) {
+                document.getElementById(prefix + 'Pass').value = config.pass;
+            }
+
+            markAsModified('cardVision');
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // ACCIONES
+        // ═══════════════════════════════════════════════════════════════
+        function testConnection() {
+            if (!validateIP(document.getElementById('consoleIp'))) {
+                alert('Por favor corrige la IP antes de probar la conexión');
+                return;
+            }
+            if (!validatePort(document.getElementById('consolePort'))) {
+                alert('Por favor corrige el puerto antes de probar la conexión');
+                return;
+            }
+
+            showProgress('progressConsole', 'Probando conexión...', 'progressFill', 'progressPercent');
+            
+            setTimeout(() => {
+                document.getElementById('consoleStatus').innerHTML = `
+                    <span class="info-led"></span>
+                    CONECTADO
+                `;
+            }, 2000);
+        }
+
+        function saveAndReconnect() {
+            const btn = document.getElementById('btnSaveConsole');
+            btn.classList.add('loading');
+            btn.disabled = true;
+
+            setTimeout(() => {
+                btn.classList.remove('loading');
+                btn.disabled = false;
+                
+                // Marcar como guardado
+                document.getElementById('cardAvolites').classList.remove('modified');
+                originalConfig = {...currentConfig};
+                checkForChanges();
+                updateStatusLEDs();
+                
+                alert('Configuración guardada exitosamente');
+            }, 1500);
+        }
+
+        function applyNIC() {
+            showProgress('progressConsole', 'Aplicando NIC...', 'progressFill', 'progressPercent');
+            setTimeout(() => {
+                document.getElementById('cardNetwork').classList.remove('modified');
+                updateStatusLEDs();
+            }, 2000);
+        }
+
+        function detectInterfaces() {
+            alert('Detectando interfaces de red...');
+        }
+
+        function applyTransport() {
+            showProgress('progressConsole', 'Aplicando transporte...', 'progressFill', 'progressPercent');
+            setTimeout(() => {
+                document.getElementById('cardTransport').classList.remove('modified');
+                updateStatusLEDs();
+            }, 2000);
+        }
+
+        function saveOffset() {
+            const offset = document.getElementById('cueOffset').value;
+            document.getElementById('offsetExample').textContent = `Cue 1 → Cue ${1 + parseInt(offset)}`;
+            document.getElementById('activeOffset').textContent = `+${offset}`;
+            document.getElementById('cardOffset').classList.remove('modified');
+            updateStatusLEDs();
+            alert('Offset guardado');
+        }
+
+        function testCamera(camera) {
+            const progressId = 'progress' + camera.charAt(0).toUpperCase() + camera.slice(1);
+            const fillId = 'progressFill' + camera.charAt(0).toUpperCase() + camera.slice(1);
+            const percentId = 'progressPercent' + camera.charAt(0).toUpperCase() + camera.slice(1);
+            
+            showProgress(progressId, 'Probando cámara ' + camera.toUpperCase() + '...', fillId, percentId);
+            
+            setTimeout(() => {
+                const statusId = 'status' + camera.charAt(0).toUpperCase() + camera.slice(1);
+                document.getElementById(statusId).textContent = 'Conectado';
+                document.getElementById(statusId).classList.add('connected');
+                
+                // Actualizar estado de conexión
+                statusStates[camera].connected = true;
+                updateStatusLEDs();
+            }, 2000);
+        }
+
+        function saveAllCameras() {
+            document.getElementById('cardVision').classList.remove('modified');
+            updateStatusLEDs();
+            alert('Todas las cámaras guardadas exitosamente');
+        }
+
+        function testAllCameras() {
+            testCamera('haze');
+            setTimeout(() => testCamera('dj'), 500);
+            setTimeout(() => testCamera('artist'), 1000);
+        }
+
+        function startVision() {
+            document.getElementById('visionLed').classList.remove('warning', 'error');
+            document.getElementById('visionStatus').textContent = 'CORRIENDO';
+            document.getElementById('visionStatus').style.color = 'var(--green)';
+            
+            statusStates.visionSys.running = true;
+            updateStatusLEDs();
+        }
+
+        function stopVision() {
+            document.getElementById('visionLed').classList.add('error');
+            document.getElementById('visionStatus').textContent = 'DETENIDO';
+            document.getElementById('visionStatus').style.color = 'var(--red)';
+            
+            statusStates.visionSys.running = false;
+            updateStatusLEDs();
+        }
+
+        function reconnect() {
+            showProgress('progressConsole', 'Reconectando...', 'progressFill', 'progressPercent');
+            setTimeout(() => {
+                statusStates.console.connected = true;
+                updateStatusLEDs();
+            }, 2000);
+        }
+
+        function savePreset() {
+            if (!hasUnsavedChanges) {
+                alert('No hay cambios para guardar');
+                return;
+            }
+            
+            const presetName = prompt('Nombre del preset:', 'Preset ' + new Date().toLocaleString());
+            if (presetName) {
+                // Marcar todas las cards como guardadas
+                document.querySelectorAll('.card.modified').forEach(card => {
+                    card.classList.remove('modified');
+                });
+                
+                originalConfig = {...currentConfig};
+                checkForChanges();
+                updateStatusLEDs();
+                
+                alert('Preset "' + presetName + '" guardado exitosamente');
+            }
+        }
+
+        function loadPreset() {
+            alert('Función de carga de preset - aquí irá selector de archivos');
+        }
+
+        function newPreset() {
+            if (hasUnsavedChanges) {
+                if (!confirm('Tienes cambios sin guardar. ¿Continuar?')) return;
+            }
+            alert('Nuevo preset creado - todos los campos reseteados a defaults');
+        }
+    </script>
+</body>
+</html>

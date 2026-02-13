@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>911 Fiesta — Configuration</title>
+    <link rel="stylesheet" href="control-room.css">
+</head>
+<body>
+    <div class="bg-canvas">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
+    <div class="noise"></div>
+
+    <div style="position: relative; z-index: 1; max-width: 1600px; margin: 0 auto; padding: 40px;">
+        <div style="text-align: center; margin-bottom: 40px;">
+            <h1 style="font-family: var(--font-title); font-size: 48px; font-weight: 800; background: linear-gradient(135deg, var(--green), var(--cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">911 FIESTA</h1>
+            <p class="t3" style="margin-top: 8px;">Panel de Configuración</p>
+        </div>
+
+        <div class="tabs" style="margin-bottom: 24px;">
+            <div class="tab on">Bajada</div>
+            <div class="tab">Base Golpe</div>
+            <div class="tab">Ataque</div>
+            <div class="tab">Brake</div>
+            <div class="tab">Red/Consola</div>
+            <div class="tab">Calendario</div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 24px;">
+            <div class="g">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold">Consola Avolites</h3>
+                    <div class="led"></div>
+                </div>
+                
+                <div style="margin-bottom: 16px;">
+                    <label class="t3 text-sm mb-2" style="display: block;">IP Consola</label>
+                    <input type="text" placeholder="{{CONSOLE_IP}}" value="{{CONSOLE_IP}}">
+                </div>
+                
+                <div style="margin-bottom: 16px;">
+                    <label class="t3 text-sm mb-2" style="display: block;">Puerto</label>
+                    <input type="number" placeholder="{{CONSOLE_PORT}}" value="{{CONSOLE_PORT}}">
+                </div>
+                
+                <div class="inset mb-3">
+                    <div class="flex justify-between">
+                        <span class="t3 text-sm">Latencia</span>
+                        <span class="green mono text-sm">{{LATENCY}}ms</span>
+                    </div>
+                </div>
+                
+                <button class="key w-full">Guardar y Reconectar</button>
+            </div>
+
+            <div class="g">
+                <h3 class="font-bold mb-4">Red Local</h3>
+                
+                <div style="margin-bottom: 16px;">
+                    <label class="t3 text-sm mb-2" style="display: block;">Interfaz de Red</label>
+                    <select>
+                        <option>{{NIC_OPTION_1}}</option>
+                        <option>{{NIC_OPTION_2}}</option>
+                        <option>Auto</option>
+                    </select>
+                </div>
+                
+                <div class="inset mb-3">
+                    <div class="flex justify-between mb-2">
+                        <span class="t3 text-sm">IP Efectiva</span>
+                        <span class="mono text-sm">{{IP_EFFECTIVE}}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="t3 text-sm">MAC</span>
+                        <span class="mono text-sm">{{MAC_ADDRESS}}</span>
+                    </div>
+                </div>
+                
+                <button class="key w-full">Aplicar NIC</button>
+            </div>
+
+            <div class="g">
+                <h3 class="font-bold mb-4">Transporte</h3>
+                
+                <div style="margin-bottom: 16px;">
+                    <label class="t3 text-sm mb-2" style="display: block;">Protocolo</label>
+                    <select>
+                        <option>HTTP</option>
+                        <option>sACN</option>
+                        <option>Art-Net</option>
+                        <option>DMX</option>
+                    </select>
+                </div>
+                
+                <div style="margin-bottom: 16px;">
+                    <label class="t3 text-sm mb-2" style="display: block;">Timeout (ms)</label>
+                    <input type="number" placeholder="{{TIMEOUT}}" value="{{TIMEOUT}}">
+                </div>
+                
+                <button class="key w-full">Guardar</button>
+            </div>
+
+            <div class="g">
+                <h3 class="font-bold mb-4">Offset de Cues</h3>
+                
+                <div style="margin-bottom: 16px;">
+                    <label class="t3 text-sm mb-2" style="display: block;">Offset</label>
+                    <input type="number" placeholder="{{OFFSET}}" value="{{OFFSET}}">
+                </div>
+                
+                <div class="inset mb-3">
+                    <div class="t3 text-sm mb-1">Ejemplo</div>
+                    <div class="mono text-sm">Cue 1 → Cue {{CUE_EXAMPLE}}</div>
+                </div>
+                
+                <button class="key w-full">Aplicar Offset</button>
+            </div>
+
+            <div class="g" style="grid-column: 1 / -1;">
+                <h3 class="font-bold mb-4">Vision Pro - Cámaras</h3>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                    <div class="inset">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="font-semibold">HAZE Camera</div>
+                            <input type="checkbox" checked>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <label class="t3 text-sm mb-1" style="display: block;">Template</label>
+                            <select style="width: 100%;">
+                                <option>Axis</option>
+                                <option>Hikvision</option>
+                                <option>Dahua</option>
+                                <option>Custom</option>
+                            </select>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <label class="t3 text-sm mb-1" style="display: block;">Host</label>
+                            <input type="text" placeholder="{{HAZE_HOST}}" value="{{HAZE_HOST}}">
+                        </div>
+                        <button class="key-2 w-full">Test</button>
+                    </div>
+
+                    <div class="inset">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="font-semibold">DJ Camera</div>
+                            <input type="checkbox" checked>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <label class="t3 text-sm mb-1" style="display: block;">Template</label>
+                            <select style="width: 100%;">
+                                <option>Axis</option>
+                                <option>Hikvision</option>
+                                <option>Dahua</option>
+                                <option>Custom</option>
+                            </select>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <label class="t3 text-sm mb-1" style="display: block;">Host</label>
+                            <input type="text" placeholder="{{DJ_HOST}}" value="{{DJ_HOST}}">
+                        </div>
+                        <button class="key-2 w-full">Test</button>
+                    </div>
+
+                    <div class="inset">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="font-semibold">ARTIST Camera</div>
+                            <input type="checkbox" checked>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <label class="t3 text-sm mb-1" style="display: block;">Template</label>
+                            <select style="width: 100%;">
+                                <option>Axis</option>
+                                <option>Hikvision</option>
+                                <option>Dahua</option>
+                                <option>Custom</option>
+                            </select>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <label class="t3 text-sm mb-1" style="display: block;">Host</label>
+                            <input type="text" placeholder="{{ARTIST_HOST}}" value="{{ARTIST_HOST}}">
+                        </div>
+                        <button class="key-2 w-full">Test</button>
+                    </div>
+                </div>
+
+                <div class="flex gap-3" style="margin-top: 20px;">
+                    <button class="key w-full">Guardar Todo</button>
+                    <button class="key-2 w-full">Test Todas</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
