@@ -5,8 +5,8 @@
  *
  * Sub-tabs:
  * - Estado: Live header + accordion day-strip grid (1 expanded at a time)
- * - Semana: Accordion editor (1 expanded at a time, sliding door)
- * - Mes: GO / Extend / Override (softened glass, 3 horizontal cards)
+ * - Horarios: Accordion editor (1 expanded at a time, sliding door)
+ * - Control: GO / Extend / Override (softened glass, 3 horizontal cards)
  *
  * Accordion rule: only ONE day can be expanded. Clicking a day closes
  * the previous and opens the new one with a CSS flex transition.
@@ -44,6 +44,10 @@ const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'satu
 const DAY_NAMES = {
   monday: 'LUN', tuesday: 'MAR', wednesday: 'MIÉ',
   thursday: 'JUE', friday: 'VIE', saturday: 'SÁB', sunday: 'DOM'
+};
+const DAY_NAMES_FULL = {
+  monday: 'LUNES', tuesday: 'MARTES', wednesday: 'MIÉRCOLES',
+  thursday: 'JUEVES', friday: 'VIERNES', saturday: 'SÁBADO', sunday: 'DOMINGO'
 };
 
 const MODULE_LABELS = {
@@ -216,7 +220,7 @@ function TabEstado({ status, schedule, apiOffline, onAuto }) {
       </div>
 
       {/* ─── DAY STRIP ACCORDION ─── */}
-      <div style={{ display: 'flex', gap: 0, height: '600px' }}>
+      <div style={{ display: 'flex', gap: 0, height: '600px', borderRadius: 'var(--r-xl)', overflow: 'hidden' }}>
         {DAY_ORDER.map((day, i) => {
           const date = new Date(monday);
           date.setDate(monday.getDate() + i);
@@ -225,14 +229,12 @@ function TabEstado({ status, schedule, apiOffline, onAuto }) {
           const blockCount = (week[day] || []).length;
           const blocks = week[day] || [];
 
-          // Build class string
           const cls = [
             'day-strip',
             isToday ? 'today' : '',
             isActive ? 'expanded' : 'collapsed',
           ].filter(Boolean).join(' ');
 
-          // Today glow (always present, stronger when expanded)
           const todayStyle = isToday
             ? (isActive ? TODAY_EXPANDED_GLOW : TODAY_COLLAPSED_GLOW)
             : {};
@@ -247,37 +249,66 @@ function TabEstado({ status, schedule, apiOffline, onAuto }) {
                 ...(i === DAY_ORDER.length - 1 ? { borderRight: 'none' } : {}),
               }}
             >
-              {/* Day header — always visible */}
-              <div style={{ padding: '16px', textAlign: 'center', position: 'relative', zIndex: 1, flexShrink: 0 }}>
-                <div
-                  className={isToday ? 'green' : 't3'}
-                  style={{
-                    fontFamily: 'var(--font-title)',
-                    fontSize: '13px',
-                    fontWeight: 700,
-                  }}
-                >
-                  {DAY_NAMES[day]}
+              {/* ── Expanded header ── */}
+              {isActive && (
+                <div style={{ padding: '16px', textAlign: 'center', position: 'relative', zIndex: 1, flexShrink: 0 }}>
+                  <div
+                    className={isToday ? 'green' : 't3'}
+                    style={{ fontFamily: 'var(--font-title)', fontSize: '13px', fontWeight: 700 }}
+                  >
+                    {DAY_NAMES[day]}
+                  </div>
+                  <div
+                    className={isToday ? 'green' : 't4'}
+                    style={{ fontFamily: 'var(--font-title)', fontSize: '28px', fontWeight: 800, marginTop: '4px' }}
+                  >
+                    {date.getDate()}
+                  </div>
+                  <div className={`b${blockCount === 0 ? ' gray' : ''}`} style={{ marginTop: '6px', fontSize: '9px' }}>
+                    {blockCount}
+                  </div>
+                  {isToday && <div className="led-dot" style={{ margin: '8px auto 0' }} />}
                 </div>
-                <div
-                  className={isToday ? 'green' : 't4'}
-                  style={{
-                    fontFamily: 'var(--font-title)',
-                    fontSize: '28px',
-                    fontWeight: 800,
-                    marginTop: '4px',
-                  }}
-                >
-                  {date.getDate()}
+              )}
+
+              {/* ── Collapsed header: big number + vertical day name ── */}
+              {!isActive && (
+                <div style={{
+                  padding: '14px 0',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  height: '100%',
+                  position: 'relative',
+                  zIndex: 1,
+                }}>
+                  <div
+                    className={isToday ? 'green' : 't4'}
+                    style={{ fontFamily: 'var(--font-title)', fontSize: '28px', fontWeight: 800 }}
+                  >
+                    {date.getDate()}
+                  </div>
+                  <div
+                    className={isToday ? 'green' : 't3'}
+                    style={{
+                      writingMode: 'vertical-rl',
+                      transform: 'rotate(180deg)',
+                      fontFamily: 'var(--font-title)',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      letterSpacing: '2px',
+                      marginTop: '12px',
+                      flex: 1,
+                    }}
+                  >
+                    {DAY_NAMES_FULL[day]}
+                  </div>
+                  <div className={`b${blockCount === 0 ? ' gray' : ''}`} style={{ fontSize: '9px', marginTop: '8px' }}>
+                    {blockCount}
+                  </div>
+                  {isToday && <div className="led-dot" style={{ marginTop: '8px' }} />}
                 </div>
-                <div
-                  className={`b${blockCount === 0 ? ' gray' : ''}`}
-                  style={{ marginTop: '6px', fontSize: '9px' }}
-                >
-                  {blockCount}
-                </div>
-                {isToday && <div className="led-dot" style={{ margin: '8px auto 0' }} />}
-              </div>
+              )}
 
               {/* Block timeline — rendered always, animated with opacity */}
               <div style={{
@@ -418,7 +449,7 @@ function TabHorarios({ schedule, setSchedule, hasChanges, setHasChanges, onSave,
       )}
 
       {/* Day strip accordion editor */}
-      <div style={{ display: 'flex', gap: 0, flex: 1, minHeight: 0 }}>
+      <div style={{ display: 'flex', gap: 0, flex: 1, minHeight: 0, borderRadius: 'var(--r-xl)', overflow: 'hidden' }}>
         {DAY_ORDER.map((day, i) => {
           const isToday = i === todayIdx;
           const isActive = i === activeDay;
@@ -444,26 +475,57 @@ function TabHorarios({ schedule, setSchedule, hasChanges, setHasChanges, onSave,
                 ...(i === DAY_ORDER.length - 1 ? { borderRight: 'none' } : {}),
               }}
             >
-              {/* Day header — always visible */}
-              <div style={{ padding: '16px', textAlign: 'center', position: 'relative', zIndex: 1, flexShrink: 0 }}>
-                <div
-                  className={isToday ? 'green' : 't3'}
-                  style={{
-                    fontFamily: 'var(--font-title)',
-                    fontSize: '13px',
-                    fontWeight: 700,
-                  }}
-                >
-                  {DAY_NAMES[day]}
+              {/* ── Expanded header ── */}
+              {isActive && (
+                <div style={{ padding: '16px', textAlign: 'center', position: 'relative', zIndex: 1, flexShrink: 0 }}>
+                  <div
+                    className={isToday ? 'green' : 't3'}
+                    style={{ fontFamily: 'var(--font-title)', fontSize: '13px', fontWeight: 700 }}
+                  >
+                    {DAY_NAMES[day]}
+                  </div>
+                  <div className={`b${blocks.length === 0 ? ' gray' : ''}`} style={{ marginTop: '6px', fontSize: '9px' }}>
+                    {blocks.length}
+                  </div>
+                  {isToday && <div className="led-dot" style={{ margin: '8px auto 0' }} />}
                 </div>
-                <div
-                  className={`b${blocks.length === 0 ? ' gray' : ''}`}
-                  style={{ marginTop: '6px', fontSize: '9px' }}
-                >
-                  {blocks.length}
+              )}
+
+              {/* ── Collapsed header: big number + vertical day name ── */}
+              {!isActive && (
+                <div style={{
+                  padding: '14px 0',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  height: '100%',
+                  position: 'relative',
+                  zIndex: 1,
+                }}>
+                  <div
+                    className={isToday ? 'green' : 't4'}
+                    style={{ fontFamily: 'var(--font-title)', fontSize: '28px', fontWeight: 800 }}
+                  >
+                    {blocks.length}
+                  </div>
+                  <div
+                    className={isToday ? 'green' : 't3'}
+                    style={{
+                      writingMode: 'vertical-rl',
+                      transform: 'rotate(180deg)',
+                      fontFamily: 'var(--font-title)',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      letterSpacing: '2px',
+                      marginTop: '12px',
+                      flex: 1,
+                    }}
+                  >
+                    {DAY_NAMES_FULL[day]}
+                  </div>
+                  {isToday && <div className="led-dot" style={{ marginTop: '8px' }} />}
                 </div>
-                {isToday && <div className="led-dot" style={{ margin: '8px auto 0' }} />}
-              </div>
+              )}
 
               {/* Block editor — always rendered, opacity animated */}
               <div style={{
@@ -889,15 +951,16 @@ export function Calendar() {
 
       <div className="sub-nav">
         {[
-          { key: 'estado', label: 'Estado' },
-          { key: 'horarios', label: 'Semana' },
-          { key: 'control', label: 'Mes' },
+          { key: 'estado', label: 'Estado', icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> },
+          { key: 'horarios', label: 'Horarios', icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
+          { key: 'control', label: 'Control', icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/></svg> },
         ].map(tab => (
           <div
             key={tab.key}
             className={`sub-tab${activeTab === tab.key ? ' on' : ''}`}
             onClick={() => setActiveTab(tab.key)}
           >
+            {tab.icon}
             {tab.label}
           </div>
         ))}

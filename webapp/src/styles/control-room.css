@@ -837,6 +837,14 @@ h1, h2, h3, h4, h5, h6 {
   flex: 0.55;
 }
 
+.day-strip:first-child {
+  border-radius: var(--r-xl) 0 0 var(--r-xl);
+}
+
+.day-strip:last-child {
+  border-radius: 0 var(--r-xl) var(--r-xl) 0;
+}
+
 /* ═══════ CONTROL CARD (specific for control panels) ═══════ */
 .ctrl-card {
   background: var(--glass);
