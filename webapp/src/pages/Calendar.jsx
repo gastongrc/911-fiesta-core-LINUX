@@ -6,7 +6,7 @@
  * Sub-tabs:
  * - Estado: Live header + accordion day-strip grid (1 expanded at a time)
  * - Semana: Accordion editor (1 expanded at a time, sliding door)
- * - Control: GO / Extend / Override (softened glass)
+ * - Mes: GO / Extend / Override (softened glass, 3 horizontal cards)
  *
  * Accordion rule: only ONE day can be expanded. Clicking a day closes
  * the previous and opens the new one with a CSS flex transition.
@@ -139,17 +139,17 @@ function TabEstado({ status, schedule, apiOffline, onAuto }) {
     <div style={{ flex: 1, padding: '0 28px 28px' }}>
 
       {/* ─── HERO HEADER ─── */}
-      <div style={{ display: 'flex', gap: '14px', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', gap: '14px', marginBottom: '20px' }}>
 
         {/* Clock */}
-        <div className="g" style={{ flex: '0 0 300px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-          <div className="green" style={{ fontFamily: 'var(--font-title)', fontSize: '52px', fontWeight: 800, lineHeight: 1 }}>
+        <div className="g" style={{ flex: '0 0 280px' }}>
+          <div className="green" style={{ fontFamily: 'var(--font-title)', fontSize: '48px', fontWeight: 800 }}>
             {now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </div>
-          <div className="t2 text-sm mt-3" style={{ textTransform: 'capitalize' }}>
+          <div className="t2 text-sm mt-2">
             {now.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}
           </div>
-          <div className="flex items-center gap-2 mt-3">
+          <div className="flex items-center gap-2 mt-2">
             <button
               onClick={() => onAuto(!isAuto)}
               className={isAuto ? 'key' : 'key-danger'}
@@ -162,18 +162,18 @@ function TabEstado({ status, schedule, apiOffline, onAuto }) {
         </div>
 
         {/* Mode + Next Block */}
-        <div className="g" style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        <div className="g" style={{ flex: 1 }}>
           <div style={{ display: 'flex', gap: '20px' }}>
             <div style={{ flex: 1 }}>
-              <div className="t4 text-sm mb-2" style={{ letterSpacing: '1.5px' }}>MODE</div>
-              <div style={{ fontSize: '24px', fontWeight: 700, color: modeColor }}>
+              <div className="t4 text-sm mb-2">MODE</div>
+              <div style={{ fontSize: '22px', fontWeight: 700, color: modeColor }}>
                 {status.current_mode || '---'}
               </div>
             </div>
-            <div style={{ width: '1px', background: 'rgba(255,255,255,0.06)', alignSelf: 'stretch' }} />
+            <div style={{ width: '1px', background: 'rgba(255,255,255,0.06)' }} />
             <div style={{ flex: 1 }}>
-              <div className="t4 text-sm mb-2" style={{ letterSpacing: '1.5px' }}>NEXT BLOCK</div>
-              <div className="green" style={{ fontSize: '24px', fontWeight: 700 }}>
+              <div className="t4 text-sm mb-2">NEXT BLOCK</div>
+              <div className="green" style={{ fontSize: '22px', fontWeight: 700 }}>
                 {status.next_mode || '---'}
               </div>
               {status.time_remaining_s != null && (
@@ -200,11 +200,11 @@ function TabEstado({ status, schedule, apiOffline, onAuto }) {
 
         {/* Modules */}
         <div className="gp" style={{ flex: '0 0 200px' }}>
-          <div className="t3 text-sm mb-3" style={{ letterSpacing: '1.5px' }}>MODULES</div>
+          <div className="t3 text-sm mb-3">MODULES</div>
           {['audio_engine', 'vision_haze', 'vision_dj', 'cues_clima'].map(mod => {
             const active = status.permissions?.[mod] || false;
             return (
-              <div key={mod} className="flex items-center gap-2" style={{ padding: '5px 0' }}>
+              <div key={mod} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 0' }}>
                 <div className={`led-dot${active ? '' : ' off'}`} />
                 <span className={`text-sm t2${active ? '' : ' opacity-50'}`}>
                   {MODULE_LABELS[mod] || mod}
@@ -216,7 +216,7 @@ function TabEstado({ status, schedule, apiOffline, onAuto }) {
       </div>
 
       {/* ─── DAY STRIP ACCORDION ─── */}
-      <div style={{ display: 'flex', gap: 0, minHeight: '520px', borderRadius: 'var(--r-lg)', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', gap: 0, height: '600px' }}>
         {DAY_ORDER.map((day, i) => {
           const date = new Date(monday);
           date.setDate(monday.getDate() + i);
@@ -248,26 +248,24 @@ function TabEstado({ status, schedule, apiOffline, onAuto }) {
               }}
             >
               {/* Day header — always visible */}
-              <div style={{ padding: isActive ? '16px 12px' : '16px 6px', textAlign: 'center', position: 'relative', zIndex: 1, flexShrink: 0 }}>
+              <div style={{ padding: '16px', textAlign: 'center', position: 'relative', zIndex: 1, flexShrink: 0 }}>
                 <div
                   className={isToday ? 'green' : 't3'}
                   style={{
                     fontFamily: 'var(--font-title)',
-                    fontSize: isActive ? '13px' : '11px',
+                    fontSize: '13px',
                     fontWeight: 700,
-                    transition: 'font-size 0.3s ease',
                   }}
                 >
-                  {isActive ? DAY_NAMES[day] : DAY_NAMES[day].charAt(0)}
+                  {DAY_NAMES[day]}
                 </div>
                 <div
                   className={isToday ? 'green' : 't4'}
                   style={{
                     fontFamily: 'var(--font-title)',
-                    fontSize: isActive ? '28px' : '18px',
+                    fontSize: '28px',
                     fontWeight: 800,
                     marginTop: '4px',
-                    transition: 'font-size 0.3s ease',
                   }}
                 >
                   {date.getDate()}
@@ -420,7 +418,7 @@ function TabHorarios({ schedule, setSchedule, hasChanges, setHasChanges, onSave,
       )}
 
       {/* Day strip accordion editor */}
-      <div style={{ display: 'flex', gap: 0, flex: 1, minHeight: 0, borderRadius: 'var(--r-lg)', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', gap: 0, flex: 1, minHeight: 0 }}>
         {DAY_ORDER.map((day, i) => {
           const isToday = i === todayIdx;
           const isActive = i === activeDay;
@@ -447,24 +445,24 @@ function TabHorarios({ schedule, setSchedule, hasChanges, setHasChanges, onSave,
               }}
             >
               {/* Day header — always visible */}
-              <div style={{ padding: isActive ? '16px 10px' : '16px 6px', textAlign: 'center', position: 'relative', zIndex: 1, flexShrink: 0 }}>
+              <div style={{ padding: '16px', textAlign: 'center', position: 'relative', zIndex: 1, flexShrink: 0 }}>
                 <div
                   className={isToday ? 'green' : 't3'}
                   style={{
                     fontFamily: 'var(--font-title)',
-                    fontSize: isActive ? '13px' : '11px',
+                    fontSize: '13px',
                     fontWeight: 700,
-                    transition: 'font-size 0.3s ease',
                   }}
                 >
-                  {isActive ? DAY_NAMES[day] : DAY_NAMES[day].charAt(0)}
+                  {DAY_NAMES[day]}
                 </div>
-                {isActive && (
-                  <div className={`b${blocks.length === 0 ? ' gray' : ''}`} style={{ marginTop: '6px', fontSize: '9px' }}>
-                    {blocks.length}
-                  </div>
-                )}
-                {isToday && <div className="led-dot" style={{ margin: '6px auto 0' }} />}
+                <div
+                  className={`b${blocks.length === 0 ? ' gray' : ''}`}
+                  style={{ marginTop: '6px', fontSize: '9px' }}
+                >
+                  {blocks.length}
+                </div>
+                {isToday && <div className="led-dot" style={{ margin: '8px auto 0' }} />}
               </div>
 
               {/* Block editor — always rendered, opacity animated */}
@@ -562,7 +560,7 @@ function TabControl({ status, onGo, onExtend, onOverride, onClearOverride, apiOf
   const [overrideDuration, setOverrideDuration] = useState(30);
 
   return (
-    <div style={{ padding: '16px 28px', maxWidth: '720px' }}>
+    <div style={{ padding: '16px 28px' }}>
       {/* API Offline */}
       {apiOffline && (
         <div className="gp mb-4" style={{ textAlign: 'center', borderColor: 'rgba(255,82,82,0.3)' }}>
@@ -571,114 +569,116 @@ function TabControl({ status, onGo, onExtend, onOverride, onClearOverride, apiOf
         </div>
       )}
 
-      {/* GO */}
-      <div className="ctrl-card mb-4">
-        <div style={{ fontFamily: 'var(--font-title)', fontSize: '14px', fontWeight: 700, letterSpacing: '1.5px', marginBottom: '16px' }}>
-          GO — Cambiar Modo
-        </div>
-        <select
-          value={selectedMode}
-          onChange={(e) => setSelectedMode(e.target.value)}
-          style={{ width: '100%', marginBottom: '16px' }}
-        >
-          {CANONICAL_MODES.map(m => <option key={m} value={m}>{MODE_LABELS[m] || m}</option>)}
-        </select>
-
-        <div className="flex gap-3" style={{ flexWrap: 'wrap' }}>
-          <button onClick={() => onGo(selectedMode, 0)} disabled={apiOffline} className="key" style={{ padding: '10px 20px' }}>
-            GO AHORA
-          </button>
-          <button onClick={() => onGo(selectedMode, 5)} disabled={apiOffline} className="key-2" style={{ padding: '10px 16px' }}>
-            +5 min
-          </button>
-          <button onClick={() => onGo(selectedMode, 10)} disabled={apiOffline} className="key-2" style={{ padding: '10px 16px' }}>
-            +10 min
-          </button>
-          <button onClick={() => onGo(selectedMode, 15)} disabled={apiOffline} className="key-2" style={{ padding: '10px 16px' }}>
-            +15 min
-          </button>
-        </div>
-
-        {status?.pending_go && (
-          <div className="inset mt-3">
-            <span className="cyan text-sm font-bold">
-              GO PENDIENTE: {MODE_LABELS[status.pending_go.mode] || status.pending_go.mode} en {formatTime(status.pending_go.seconds_until)}
-            </span>
+      <div style={{ display: 'flex', gap: '14px' }}>
+        {/* GO */}
+        <div className="ctrl-card" style={{ flex: 1 }}>
+          <div style={{ fontFamily: 'var(--font-title)', fontSize: '14px', fontWeight: 700, letterSpacing: '1.5px', marginBottom: '16px' }}>
+            GO — Cambiar Modo
           </div>
-        )}
-      </div>
-
-      {/* Extend */}
-      <div className="ctrl-card mb-4">
-        <div style={{ fontFamily: 'var(--font-title)', fontSize: '14px', fontWeight: 700, letterSpacing: '1.5px', marginBottom: '16px' }}>
-          Extender Bloque
-        </div>
-        <div className="flex gap-3">
-          <button onClick={() => onExtend(5)} disabled={apiOffline} className="key-2" style={{ padding: '10px 16px' }}>
-            +5 min
-          </button>
-          <button onClick={() => onExtend(10)} disabled={apiOffline} className="key-2" style={{ padding: '10px 16px' }}>
-            +10 min
-          </button>
-          <button onClick={() => onExtend(15)} disabled={apiOffline} className="key-2" style={{ padding: '10px 16px' }}>
-            +15 min
-          </button>
-        </div>
-      </div>
-
-      {/* Override */}
-      <div className="ctrl-card" style={{ borderColor: 'rgba(255,152,0,0.15)' }}>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="led yellow" />
-          <div style={{ fontFamily: 'var(--font-title)', fontSize: '14px', fontWeight: 700, letterSpacing: '1.5px' }}>
-            Override Temporal
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3 mb-4">
-          <span className="t3 text-sm">Duración</span>
-          <input
-            type="number"
-            min="5"
-            max="120"
-            value={overrideDuration}
-            onChange={(e) => setOverrideDuration(parseInt(e.target.value) || 30)}
-            style={{ width: '60px' }}
-          />
-          <span className="t3 text-sm">min</span>
-        </div>
-
-        <div className="flex gap-3">
-          <button
-            onClick={() => onOverride(selectedMode, overrideDuration)}
-            disabled={apiOffline}
-            className="key-danger"
-            style={{ padding: '10px 20px' }}
+          <select
+            value={selectedMode}
+            onChange={(e) => setSelectedMode(e.target.value)}
+            style={{ width: '100%', marginBottom: '16px' }}
           >
-            Activar Override
-          </button>
-          {status?.override?.active && (
-            <button
-              onClick={onClearOverride}
-              disabled={apiOffline}
-              className="key-2"
-              style={{ padding: '10px 20px' }}
-            >
-              Limpiar
+            {CANONICAL_MODES.map(m => <option key={m} value={m}>{MODE_LABELS[m] || m}</option>)}
+          </select>
+
+          <div className="flex gap-3" style={{ flexWrap: 'wrap' }}>
+            <button onClick={() => onGo(selectedMode, 0)} disabled={apiOffline} className="key" style={{ padding: '10px 20px' }}>
+              GO AHORA
             </button>
+            <button onClick={() => onGo(selectedMode, 5)} disabled={apiOffline} className="key-2" style={{ padding: '10px 16px' }}>
+              +5 min
+            </button>
+            <button onClick={() => onGo(selectedMode, 10)} disabled={apiOffline} className="key-2" style={{ padding: '10px 16px' }}>
+              +10 min
+            </button>
+            <button onClick={() => onGo(selectedMode, 15)} disabled={apiOffline} className="key-2" style={{ padding: '10px 16px' }}>
+              +15 min
+            </button>
+          </div>
+
+          {status?.pending_go && (
+            <div className="inset mt-3">
+              <span className="cyan text-sm font-bold">
+                GO PENDIENTE: {MODE_LABELS[status.pending_go.mode] || status.pending_go.mode} en {formatTime(status.pending_go.seconds_until)}
+              </span>
+            </div>
           )}
         </div>
 
-        {status?.override?.active && (
-          <div className="inset mt-4" style={{ borderColor: 'rgba(255,152,0,0.2)' }}>
-            <div className="flex items-center gap-2">
-              <div className="led-dot" style={{ background: 'var(--orange)', boxShadow: '0 0 6px var(--orange)' }} />
-              <span className="yellow text-sm font-semibold">
-                OVERRIDE: {MODE_LABELS[status.override.mode] || status.override.mode} ({formatTime(status.override.remaining_seconds)} restantes)
-              </span>
+        {/* Extend */}
+        <div className="ctrl-card" style={{ flex: 1 }}>
+          <div style={{ fontFamily: 'var(--font-title)', fontSize: '14px', fontWeight: 700, letterSpacing: '1.5px', marginBottom: '16px' }}>
+            Extender Bloque
+          </div>
+          <div className="flex gap-3" style={{ flexWrap: 'wrap' }}>
+            <button onClick={() => onExtend(5)} disabled={apiOffline} className="key-2" style={{ padding: '10px 16px' }}>
+              +5 min
+            </button>
+            <button onClick={() => onExtend(10)} disabled={apiOffline} className="key-2" style={{ padding: '10px 16px' }}>
+              +10 min
+            </button>
+            <button onClick={() => onExtend(15)} disabled={apiOffline} className="key-2" style={{ padding: '10px 16px' }}>
+              +15 min
+            </button>
+          </div>
+        </div>
+
+        {/* Override */}
+        <div className="ctrl-card" style={{ flex: 1, borderColor: 'rgba(255,152,0,0.15)' }}>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="led yellow" />
+            <div style={{ fontFamily: 'var(--font-title)', fontSize: '14px', fontWeight: 700, letterSpacing: '1.5px' }}>
+              Override Temporal
             </div>
           </div>
-        )}
+
+          <div className="flex items-center gap-3 mb-4">
+            <span className="t3 text-sm">Duración</span>
+            <input
+              type="number"
+              min="5"
+              max="120"
+              value={overrideDuration}
+              onChange={(e) => setOverrideDuration(parseInt(e.target.value) || 30)}
+              style={{ width: '60px' }}
+            />
+            <span className="t3 text-sm">min</span>
+          </div>
+
+          <div className="flex gap-3" style={{ flexWrap: 'wrap' }}>
+            <button
+              onClick={() => onOverride(selectedMode, overrideDuration)}
+              disabled={apiOffline}
+              className="key-danger"
+              style={{ padding: '10px 20px' }}
+            >
+              Activar Override
+            </button>
+            {status?.override?.active && (
+              <button
+                onClick={onClearOverride}
+                disabled={apiOffline}
+                className="key-2"
+                style={{ padding: '10px 20px' }}
+              >
+                Limpiar
+              </button>
+            )}
+          </div>
+
+          {status?.override?.active && (
+            <div className="inset mt-4" style={{ borderColor: 'rgba(255,152,0,0.2)' }}>
+              <div className="flex items-center gap-2">
+                <div className="led-dot" style={{ background: 'var(--orange)', boxShadow: '0 0 6px var(--orange)' }} />
+                <span className="yellow text-sm font-semibold">
+                  OVERRIDE: {MODE_LABELS[status.override.mode] || status.override.mode} ({formatTime(status.override.remaining_seconds)} restantes)
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -891,7 +891,7 @@ export function Calendar() {
         {[
           { key: 'estado', label: 'Estado' },
           { key: 'horarios', label: 'Semana' },
-          { key: 'control', label: 'Control' },
+          { key: 'control', label: 'Mes' },
         ].map(tab => (
           <div
             key={tab.key}
