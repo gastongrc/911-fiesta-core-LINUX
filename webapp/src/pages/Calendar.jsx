@@ -4,9 +4,13 @@
  * Matches UI contract: docs/ui-contract/calendar_glass.html
  *
  * Sub-tabs:
- * - Estado: Live header (clock, mode, next block, progress, modules) + day-strip grid
- * - Semana: Editor with expanded today + collapsed laterals
+ * - Estado: Live header + accordion day-strip grid (1 expanded at a time)
+ * - Semana: Accordion editor (1 expanded at a time, sliding door)
  * - Control: GO / Extend / Override (softened glass)
+ *
+ * Accordion rule: only ONE day can be expanded. Clicking a day closes
+ * the previous and opens the new one with a CSS flex transition.
+ * Today is always green-highlighted, even when collapsed.
  *
  * Style: Glass morphism via control-room.css
  */
@@ -63,9 +67,40 @@ function formatTime(s) {
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
+// Today's day index (Monday=0)
+function getTodayIdx() {
+  return (new Date().getDay() + 6) % 7;
+}
+
+// Inline styles for the content wrapper fade transition
+const CONTENT_OPEN = {
+  opacity: 1,
+  transform: 'translateY(0)',
+  transition: 'opacity 0.3s ease 0.12s, transform 0.3s ease 0.12s',
+  pointerEvents: 'auto',
+};
+const CONTENT_CLOSED = {
+  opacity: 0,
+  transform: 'translateY(6px)',
+  transition: 'opacity 0.15s ease, transform 0.15s ease',
+  pointerEvents: 'none',
+  position: 'absolute',
+  width: '100%',
+};
+
+// Today green glow for collapsed today strip
+const TODAY_COLLAPSED_GLOW = {
+  boxShadow: 'inset 0 0 20px rgba(0,230,118,0.06), 0 0 1px rgba(0,230,118,0.3)',
+};
+const TODAY_EXPANDED_GLOW = {
+  boxShadow: 'inset 0 0 30px rgba(0,230,118,0.08), 0 0 2px rgba(0,230,118,0.4)',
+};
+
 // ==================== TAB ESTADO ====================
 function TabEstado({ status, schedule, apiOffline, onAuto }) {
   const [now, setNow] = useState(new Date());
+  const todayIdx = getTodayIdx();
+  const [activeDay, setActiveDay] = useState(todayIdx);
 
   useEffect(() => {
     const tick = setInterval(() => setNow(new Date()), 1000);
@@ -97,7 +132,6 @@ function TabEstado({ status, schedule, apiOffline, onAuto }) {
   const progress = status.progress != null ? Math.min(100, Math.max(0, (status.progress || 0) * 100)) : null;
 
   // Compute current week dates (Monday=0)
-  const todayIdx = (now.getDay() + 6) % 7;
   const monday = new Date(now);
   monday.setDate(now.getDate() - todayIdx);
 
@@ -130,18 +164,13 @@ function TabEstado({ status, schedule, apiOffline, onAuto }) {
         {/* Mode + Next Block */}
         <div className="g" style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
           <div style={{ display: 'flex', gap: '20px' }}>
-            {/* Current mode */}
             <div style={{ flex: 1 }}>
               <div className="t4 text-sm mb-2" style={{ letterSpacing: '1.5px' }}>MODE</div>
               <div style={{ fontSize: '24px', fontWeight: 700, color: modeColor }}>
                 {status.current_mode || '---'}
               </div>
             </div>
-
-            {/* Divider */}
             <div style={{ width: '1px', background: 'rgba(255,255,255,0.06)', alignSelf: 'stretch' }} />
-
-            {/* Next block */}
             <div style={{ flex: 1 }}>
               <div className="t4 text-sm mb-2" style={{ letterSpacing: '1.5px' }}>NEXT BLOCK</div>
               <div className="green" style={{ fontSize: '24px', fontWeight: 700 }}>
@@ -154,15 +183,10 @@ function TabEstado({ status, schedule, apiOffline, onAuto }) {
               )}
             </div>
           </div>
-
-          {/* Progress bar spanning full width */}
           {progress != null && (
             <div style={{ marginTop: '16px' }}>
               <div className="gauge" style={{ height: '6px' }}>
-                <div
-                  className="gauge-fill"
-                  style={{ width: `${Math.max(3, progress)}%`, background: modeColor }}
-                />
+                <div className="gauge-fill" style={{ width: `${Math.max(3, progress)}%`, background: modeColor }} />
               </div>
               <div className="flex justify-between mt-2">
                 <span className="t4 text-sm">{Math.round(progress)}%</span>
@@ -191,48 +215,85 @@ function TabEstado({ status, schedule, apiOffline, onAuto }) {
         </div>
       </div>
 
-      {/* ─── DAY STRIP GRID ─── */}
+      {/* ─── DAY STRIP ACCORDION ─── */}
       <div style={{ display: 'flex', gap: 0, minHeight: '520px', borderRadius: 'var(--r-lg)', overflow: 'hidden' }}>
         {DAY_ORDER.map((day, i) => {
           const date = new Date(monday);
           date.setDate(monday.getDate() + i);
           const isToday = i === todayIdx;
+          const isActive = i === activeDay;
           const blockCount = (week[day] || []).length;
           const blocks = week[day] || [];
+
+          // Build class string
+          const cls = [
+            'day-strip',
+            isToday ? 'today' : '',
+            isActive ? 'expanded' : 'collapsed',
+          ].filter(Boolean).join(' ');
+
+          // Today glow (always present, stronger when expanded)
+          const todayStyle = isToday
+            ? (isActive ? TODAY_EXPANDED_GLOW : TODAY_COLLAPSED_GLOW)
+            : {};
 
           return (
             <div
               key={day}
-              className={`day-strip${isToday ? ' today expanded' : ''}`}
-              style={i === DAY_ORDER.length - 1 ? { borderRight: 'none' } : undefined}
+              className={cls}
+              onClick={() => !isActive && setActiveDay(i)}
+              style={{
+                ...todayStyle,
+                ...(i === DAY_ORDER.length - 1 ? { borderRight: 'none' } : {}),
+              }}
             >
-              {/* Day header */}
-              <div style={{ padding: '16px 12px', textAlign: 'center', position: 'relative', zIndex: 1, flexShrink: 0 }}>
+              {/* Day header — always visible */}
+              <div style={{ padding: isActive ? '16px 12px' : '16px 6px', textAlign: 'center', position: 'relative', zIndex: 1, flexShrink: 0 }}>
                 <div
                   className={isToday ? 'green' : 't3'}
-                  style={{ fontFamily: 'var(--font-title)', fontSize: '13px', fontWeight: 700 }}
+                  style={{
+                    fontFamily: 'var(--font-title)',
+                    fontSize: isActive ? '13px' : '11px',
+                    fontWeight: 700,
+                    transition: 'font-size 0.3s ease',
+                  }}
                 >
-                  {DAY_NAMES[day]}
+                  {isActive ? DAY_NAMES[day] : DAY_NAMES[day].charAt(0)}
                 </div>
                 <div
                   className={isToday ? 'green' : 't4'}
-                  style={{ fontFamily: 'var(--font-title)', fontSize: '28px', fontWeight: 800, marginTop: '4px' }}
+                  style={{
+                    fontFamily: 'var(--font-title)',
+                    fontSize: isActive ? '28px' : '18px',
+                    fontWeight: 800,
+                    marginTop: '4px',
+                    transition: 'font-size 0.3s ease',
+                  }}
                 >
                   {date.getDate()}
                 </div>
-                <div className={`b${blockCount === 0 ? ' gray' : ''}`} style={{ marginTop: '6px', fontSize: '9px' }}>
+                <div
+                  className={`b${blockCount === 0 ? ' gray' : ''}`}
+                  style={{ marginTop: '6px', fontSize: '9px' }}
+                >
                   {blockCount}
                 </div>
                 {isToday && <div className="led-dot" style={{ margin: '8px auto 0' }} />}
               </div>
 
-              {/* Expanded today: show block timeline */}
-              {isToday && blocks.length > 0 && (
-                <div style={{ padding: '0 12px 16px', position: 'relative', zIndex: 1, flex: 1, overflow: 'auto' }}>
+              {/* Block timeline — rendered always, animated with opacity */}
+              <div style={{
+                ...(isActive ? CONTENT_OPEN : CONTENT_CLOSED),
+                padding: '0 12px 16px',
+                zIndex: 1,
+                flex: isActive ? 1 : 'none',
+                overflow: isActive ? 'auto' : 'hidden',
+              }}>
+                {blocks.length > 0 ? (
                   <div style={{ borderLeft: '2px solid rgba(0,230,118,0.15)', marginLeft: '8px', paddingLeft: '14px' }}>
                     {blocks.map((block, idx) => {
                       const color = MODE_COLORS[block.mode] || '#7f8c8d';
-                      const isCurrent = status.current_mode === block.mode;
+                      const isCurrent = isToday && status.current_mode === block.mode;
                       return (
                         <div
                           key={idx}
@@ -242,7 +303,6 @@ function TabEstado({ status, schedule, apiOffline, onAuto }) {
                             position: 'relative',
                           }}
                         >
-                          {/* Timeline dot */}
                           <div style={{
                             position: 'absolute',
                             left: '-22px',
@@ -252,6 +312,7 @@ function TabEstado({ status, schedule, apiOffline, onAuto }) {
                             borderRadius: '50%',
                             background: isCurrent ? color : 'rgba(255,255,255,0.15)',
                             boxShadow: isCurrent ? `0 0 8px ${color}` : 'none',
+                            transition: 'all 0.3s ease',
                           }} />
                           <div className="flex justify-between mb-1">
                             <span className="mono text-sm" style={{ color }}>{block.from} - {block.to}</span>
@@ -272,8 +333,12 @@ function TabEstado({ status, schedule, apiOffline, onAuto }) {
                       );
                     })}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="t4 text-sm" style={{ textAlign: 'center', padding: '20px 0' }}>
+                    Sin bloques
+                  </div>
+                )}
+              </div>
             </div>
           );
         })}
@@ -285,7 +350,8 @@ function TabEstado({ status, schedule, apiOffline, onAuto }) {
 // ==================== TAB HORARIOS ====================
 function TabHorarios({ schedule, setSchedule, hasChanges, setHasChanges, onSave, apiOffline, gridRev }) {
   const week = schedule?.week || {};
-  const todayIdx = (new Date().getDay() + 6) % 7;
+  const todayIdx = getTodayIdx();
+  const [activeDay, setActiveDay] = useState(todayIdx);
 
   const addBlock = (day) => {
     const newBlock = { from: '20:00', to: '22:00', mode: 'clima_1', actions: [] };
@@ -325,9 +391,6 @@ function TabHorarios({ schedule, setSchedule, hasChanges, setHasChanges, onSave,
     setHasChanges(true);
   };
 
-  // Distance from today: 0 = today, 1 = adjacent, 2+ = far
-  const dayDistance = (idx) => Math.abs(idx - todayIdx);
-
   return (
     <div style={{ padding: '16px 28px', flex: 1, display: 'flex', flexDirection: 'column' }}>
 
@@ -356,29 +419,47 @@ function TabHorarios({ schedule, setSchedule, hasChanges, setHasChanges, onSave,
         </div>
       )}
 
-      {/* Day strip editor — expanded today, collapsed far days */}
+      {/* Day strip accordion editor */}
       <div style={{ display: 'flex', gap: 0, flex: 1, minHeight: 0, borderRadius: 'var(--r-lg)', overflow: 'hidden' }}>
         {DAY_ORDER.map((day, i) => {
           const isToday = i === todayIdx;
-          const dist = dayDistance(i);
-          const isCollapsed = dist >= 3;
+          const isActive = i === activeDay;
           const blocks = week[day] || [];
+
+          const cls = [
+            'day-strip',
+            isToday ? 'today' : '',
+            isActive ? 'expanded' : 'collapsed',
+          ].filter(Boolean).join(' ');
+
+          const todayStyle = isToday
+            ? (isActive ? TODAY_EXPANDED_GLOW : TODAY_COLLAPSED_GLOW)
+            : {};
 
           return (
             <div
               key={`${day}-${gridRev}`}
-              className={`day-strip${isToday ? ' today expanded' : ''}${isCollapsed ? ' collapsed' : ''}`}
-              style={i === DAY_ORDER.length - 1 ? { borderRight: 'none' } : undefined}
+              className={cls}
+              onClick={() => !isActive && setActiveDay(i)}
+              style={{
+                ...todayStyle,
+                ...(i === DAY_ORDER.length - 1 ? { borderRight: 'none' } : {}),
+              }}
             >
-              {/* Day header */}
-              <div style={{ padding: isCollapsed ? '16px 4px' : '16px 10px', textAlign: 'center', position: 'relative', zIndex: 1, flexShrink: 0 }}>
+              {/* Day header — always visible */}
+              <div style={{ padding: isActive ? '16px 10px' : '16px 6px', textAlign: 'center', position: 'relative', zIndex: 1, flexShrink: 0 }}>
                 <div
                   className={isToday ? 'green' : 't3'}
-                  style={{ fontFamily: 'var(--font-title)', fontSize: isCollapsed ? '10px' : '13px', fontWeight: 700 }}
+                  style={{
+                    fontFamily: 'var(--font-title)',
+                    fontSize: isActive ? '13px' : '11px',
+                    fontWeight: 700,
+                    transition: 'font-size 0.3s ease',
+                  }}
                 >
-                  {isCollapsed ? DAY_NAMES[day].charAt(0) : DAY_NAMES[day]}
+                  {isActive ? DAY_NAMES[day] : DAY_NAMES[day].charAt(0)}
                 </div>
-                {!isCollapsed && (
+                {isActive && (
                   <div className={`b${blocks.length === 0 ? ' gray' : ''}`} style={{ marginTop: '6px', fontSize: '9px' }}>
                     {blocks.length}
                   </div>
@@ -386,85 +467,87 @@ function TabHorarios({ schedule, setSchedule, hasChanges, setHasChanges, onSave,
                 {isToday && <div className="led-dot" style={{ margin: '6px auto 0' }} />}
               </div>
 
-              {/* Block editor — only for non-collapsed days */}
-              {!isCollapsed && (
-                <div style={{ padding: '0 8px 12px', position: 'relative', zIndex: 1, flex: 1, overflowY: 'auto' }}>
-                  {blocks.map((block, idx) => {
-                    const color = MODE_COLORS[block.mode] || '#7f8c8d';
-                    return (
-                      <div
-                        key={idx}
-                        className="inset mb-2"
-                        style={{
-                          borderColor: `${color}50`,
-                          borderLeft: `3px solid ${color}`,
-                        }}
-                      >
-                        {/* Time inputs */}
-                        <div className="flex items-center gap-2 mb-2">
-                          <input
-                            type="time"
-                            value={block.from}
-                            onChange={(e) => updateBlock(day, idx, 'from', e.target.value)}
-                            style={{ width: isToday ? '65px' : '52px', padding: '4px', fontSize: '10px' }}
-                          />
-                          <span className="t3" style={{ fontSize: '10px' }}>—</span>
-                          <input
-                            type="time"
-                            value={block.to}
-                            onChange={(e) => updateBlock(day, idx, 'to', e.target.value)}
-                            style={{ width: isToday ? '65px' : '52px', padding: '4px', fontSize: '10px' }}
-                          />
-                          <button
-                            onClick={() => deleteBlock(day, idx)}
-                            className="key-danger"
-                            style={{ padding: '2px 6px', fontSize: '9px', marginLeft: 'auto', opacity: 0.6 }}
-                          >✕</button>
-                        </div>
-
-                        {/* Mode selector */}
-                        <select
-                          value={block.mode}
-                          onChange={(e) => updateBlock(day, idx, 'mode', e.target.value)}
-                          style={{ width: '100%', padding: '4px', fontSize: isToday ? '10px' : '9px', marginBottom: '6px' }}
-                        >
-                          {CANONICAL_MODES.map(m => (
-                            <option key={m} value={m}>{MODE_LABELS[m] || m}</option>
-                          ))}
-                        </select>
-
-                        {/* Extra actions (only in expanded/today or adjacent) */}
-                        {(isToday || dist <= 1) && (
-                          <div className="flex" style={{ flexWrap: 'wrap', gap: '4px' }}>
-                            {EXTRA_ACTIONS.map(action => {
-                              const active = (block.actions || []).includes(action);
-                              return (
-                                <button
-                                  key={action}
-                                  onClick={() => toggleAction(day, idx, action)}
-                                  className={active ? 'key' : 'key-2'}
-                                  style={{ padding: '2px 5px', fontSize: '8px' }}
-                                >
-                                  {EXTRA_DISPLAY[action]}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
+              {/* Block editor — always rendered, opacity animated */}
+              <div style={{
+                ...(isActive ? CONTENT_OPEN : CONTENT_CLOSED),
+                padding: '0 8px 12px',
+                zIndex: 1,
+                flex: isActive ? 1 : 'none',
+                overflowY: isActive ? 'auto' : 'hidden',
+              }}>
+                {blocks.map((block, idx) => {
+                  const color = MODE_COLORS[block.mode] || '#7f8c8d';
+                  return (
+                    <div
+                      key={idx}
+                      className="inset mb-2"
+                      style={{
+                        borderColor: `${color}50`,
+                        borderLeft: `3px solid ${color}`,
+                      }}
+                    >
+                      {/* Time inputs */}
+                      <div className="flex items-center gap-2 mb-2">
+                        <input
+                          type="time"
+                          value={block.from}
+                          onChange={(e) => updateBlock(day, idx, 'from', e.target.value)}
+                          style={{ width: '65px', padding: '4px', fontSize: '10px' }}
+                        />
+                        <span className="t3" style={{ fontSize: '10px' }}>—</span>
+                        <input
+                          type="time"
+                          value={block.to}
+                          onChange={(e) => updateBlock(day, idx, 'to', e.target.value)}
+                          style={{ width: '65px', padding: '4px', fontSize: '10px' }}
+                        />
+                        <button
+                          onClick={() => deleteBlock(day, idx)}
+                          className="key-danger"
+                          style={{ padding: '2px 6px', fontSize: '9px', marginLeft: 'auto', opacity: 0.6 }}
+                        >✕</button>
                       </div>
-                    );
-                  })}
 
-                  {/* Add block button */}
-                  <button
-                    onClick={() => addBlock(day)}
-                    className="key-2 w-full"
-                    style={{ fontSize: '10px', padding: isToday ? '8px' : '6px', opacity: 0.7 }}
-                  >
-                    +
-                  </button>
-                </div>
-              )}
+                      {/* Mode selector */}
+                      <select
+                        value={block.mode}
+                        onChange={(e) => updateBlock(day, idx, 'mode', e.target.value)}
+                        style={{ width: '100%', padding: '4px', fontSize: '10px', marginBottom: '6px' }}
+                      >
+                        {CANONICAL_MODES.map(m => (
+                          <option key={m} value={m}>{MODE_LABELS[m] || m}</option>
+                        ))}
+                      </select>
+
+                      {/* Extra actions */}
+                      <div className="flex" style={{ flexWrap: 'wrap', gap: '4px' }}>
+                        {EXTRA_ACTIONS.map(action => {
+                          const active = (block.actions || []).includes(action);
+                          return (
+                            <button
+                              key={action}
+                              onClick={() => toggleAction(day, idx, action)}
+                              className={active ? 'key' : 'key-2'}
+                              style={{ padding: '2px 5px', fontSize: '8px' }}
+                            >
+                              {EXTRA_DISPLAY[action]}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Add block button */}
+                <button
+                  onClick={() => addBlock(day)}
+                  className="key-2 w-full"
+                  style={{ fontSize: '10px', padding: '8px', opacity: 0.7 }}
+                >
+                  + Agregar
+                </button>
+              </div>
             </div>
           );
         })}
@@ -611,11 +694,10 @@ export function Calendar() {
   const [lastError, setLastError] = useState(null);
   const [warnings, setWarnings] = useState([]);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [gridRev, setGridRev] = useState(0); // Force grid re-render after SAVE
+  const [gridRev, setGridRev] = useState(0);
 
-  // Fetch week schedule (solo si no hay cambios pendientes)
   const fetchWeek = async (force = false) => {
-    if (hasChanges && !force) return; // No pisar ediciones locales
+    if (hasChanges && !force) return;
     try {
       const res = await fetch(`${getApiBase()}/calendar/week`);
       if (res.ok) {
@@ -626,12 +708,9 @@ export function Calendar() {
           setSchedule({ week: data.week || {} });
         }
       }
-    } catch (e) {
-      // Silenciar errores de polling
-    }
+    } catch (e) {}
   };
 
-  // Cargar status - polling 2s
   useEffect(() => {
     const fetchStatus = async () => {
       try {
@@ -652,19 +731,16 @@ export function Calendar() {
     return () => clearInterval(interval);
   }, []);
 
-  // Cargar schedule al montar
   useEffect(() => {
     fetchWeek(true);
   }, []);
 
-  // Polling de week cada 5s SOLO si no hay cambios pendientes
   useEffect(() => {
-    if (hasChanges) return; // No hacer polling si está editando
+    if (hasChanges) return;
     const interval = setInterval(() => fetchWeek(), 5000);
     return () => clearInterval(interval);
   }, [hasChanges]);
 
-  // Acciones - retornan success y refetch si OK
   const handleGo = async (mode, delay) => {
     try {
       const res = await apiPost('/calendar/go', { mode, delay_minutes: delay });
@@ -776,7 +852,6 @@ export function Calendar() {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
 
-      {/* Error Banner */}
       {lastError && (
         <div className="flex items-center justify-between p-3" style={{ background: 'rgba(255,82,82,0.1)', borderBottom: '1px solid var(--red)' }}>
           <span className="red font-bold text-sm">ERROR: {lastError}</span>
@@ -788,14 +863,12 @@ export function Calendar() {
         </div>
       )}
 
-      {/* Success Banner */}
       {saveSuccess && (
         <div className="p-3" style={{ background: 'rgba(0,230,118,0.1)', borderBottom: '1px solid var(--green)' }}>
           <span className="green font-bold text-sm">Guardado OK</span>
         </div>
       )}
 
-      {/* Warnings Banner */}
       {warnings.length > 0 && (
         <div className="p-3" style={{ background: 'rgba(255,152,0,0.1)', borderBottom: '1px solid var(--orange)' }}>
           <div className="yellow font-bold text-sm mb-2">SOLAPAMIENTOS DETECTADOS:</div>
@@ -810,12 +883,10 @@ export function Calendar() {
         </div>
       )}
 
-      {/* Page Header */}
       <div style={{ padding: '20px 28px' }}>
         <h1 style={{ fontFamily: 'var(--font-title)', fontSize: '24px', fontWeight: 700 }}>Calendar</h1>
       </div>
 
-      {/* Sub Navigation */}
       <div className="sub-nav">
         {[
           { key: 'estado', label: 'Estado' },
@@ -832,7 +903,6 @@ export function Calendar() {
         ))}
       </div>
 
-      {/* Content */}
       <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         {activeTab === 'estado' && (
           <TabEstado
