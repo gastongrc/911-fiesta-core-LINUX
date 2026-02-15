@@ -292,6 +292,15 @@ except Exception as e:
     print(f"[MAIN] SystemBridge no disponible: {e}")
     get_system_bridge = None
 
+# Health Tab (consolidated)
+try:
+    from ui.health_tab import HealthMonitorWidget as _HealthMonitorWidgetNew
+    HEALTH_TAB_AVAILABLE = True
+except Exception as e:
+    HEALTH_TAB_AVAILABLE = False
+    _HealthMonitorWidgetNew = None
+    print(f"[MAIN] Health Tab no disponible: {e}")
+
 # Cues Monitor Tab
 
 # TAP Tempo / AutoClock v9 + KickPulseDetector V13
@@ -490,121 +499,21 @@ class EnergyMonitorWidget(QWidget):
             self.energy_detector.reset_calibration()
         except: pass
 
-class HealthMonitorWidget(QWidget):
-    def __init__(self, main_window):
-        super().__init__()
-        self.main_window = main_window
-        self._setup_ui()
-        
-    def _setup_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(12)
-        
-        # Título
-        title = QLabel("HEALTH MONITOR")
-        title.setStyleSheet("font-weight:700; color:#ddd; font-size:14px;")
-        layout.addWidget(title)
-        
-        # Sistema
-        sys_frame = QFrame()
-        sys_frame.setStyleSheet("QFrame{background:#1a1a1a; border:1px solid #333; border-radius:6px;}")
-        sys_layout = QVBoxLayout(sys_frame)
-        sys_layout.setContentsMargins(10, 10, 10, 10)
-        sys_title = QLabel("SISTEMA")
-        sys_title.setStyleSheet("font-weight:700; color:#ccc; font-size:11px;")
-        sys_layout.addWidget(sys_title)
-        
-        grid_sys = QGridLayout()
-        grid_sys.setContentsMargins(0, 5, 0, 0)
-        grid_sys.setSpacing(8)
-        
-        grid_sys.addWidget(QLabel("CPU:"), 0, 0)
-        self.lbl_cpu = QLabel("—")
-        self.lbl_cpu.setStyleSheet("color:#27ae60; font-weight:700;")
-        grid_sys.addWidget(self.lbl_cpu, 0, 1)
-        
-        grid_sys.addWidget(QLabel("RAM:"), 0, 2)
-        self.lbl_ram = QLabel("—")
-        self.lbl_ram.setStyleSheet("color:#3498db; font-weight:700;")
-        grid_sys.addWidget(self.lbl_ram, 0, 3)
-        
-        grid_sys.addWidget(QLabel("Loop Latency:"), 1, 0)
-        self.lbl_loop_lat = QLabel("—")
-        self.lbl_loop_lat.setStyleSheet("color:#f39c12; font-weight:700;")
-        grid_sys.addWidget(self.lbl_loop_lat, 1, 1)
-        
-        sys_layout.addLayout(grid_sys)
-        layout.addWidget(sys_frame)
-        
-        # Avolites
-        avo_frame = QFrame()
-        avo_frame.setStyleSheet("QFrame{background:#1a1a1a; border:1px solid #333; border-radius:6px;}")
-        avo_layout = QVBoxLayout(avo_frame)
-        avo_layout.setContentsMargins(10, 10, 10, 10)
-        avo_title = QLabel("AVOLITES")
-        avo_title.setStyleSheet("font-weight:700; color:#ccc; font-size:11px;")
-        avo_layout.addWidget(avo_title)
-        
-        grid_avo = QGridLayout()
-        grid_avo.setContentsMargins(0, 5, 0, 0)
-        grid_avo.setSpacing(8)
-        
-        grid_avo.addWidget(QLabel("Conectado:"), 0, 0)
-        self.lbl_avo_status = QLabel("—")
-        self.lbl_avo_status.setStyleSheet("color:#e74c3c; font-weight:700;")
-        grid_avo.addWidget(self.lbl_avo_status, 0, 1)
-        
-        grid_avo.addWidget(QLabel("Transporte:"), 0, 2)
-        self.lbl_avo_transport = QLabel("—")
-        self.lbl_avo_transport.setStyleSheet("color:#888;")
-        grid_avo.addWidget(self.lbl_avo_transport, 0, 3)
-        
-        grid_avo.addWidget(QLabel("Destino:"), 1, 0)
-        self.lbl_avo_dest = QLabel("—")
-        self.lbl_avo_dest.setStyleSheet("color:#888;")
-        grid_avo.addWidget(self.lbl_avo_dest, 1, 1, 1, 3)
-        
-        grid_avo.addWidget(QLabel("Cola:"), 2, 0)
-        self.lbl_avo_queue = QLabel("—")
-        self.lbl_avo_queue.setStyleSheet("color:#888;")
-        grid_avo.addWidget(self.lbl_avo_queue, 2, 1)
-        
-        grid_avo.addWidget(QLabel("Último envío:"), 2, 2)
-        self.lbl_avo_last_send = QLabel("—")
-        self.lbl_avo_last_send.setStyleSheet("color:#888;")
-        grid_avo.addWidget(self.lbl_avo_last_send, 2, 3)
-        
-        grid_avo.addWidget(QLabel("Último FIRE:"), 3, 0)
-        self.lbl_last_fire = QLabel("—")
-        self.lbl_last_fire.setStyleSheet("color:#9b59b6; font-weight:700;")
-        grid_avo.addWidget(self.lbl_last_fire, 3, 1)
-        
-        grid_avo.addWidget(QLabel("Último error:"), 4, 0)
-        self.lbl_avo_last_error = QLabel("—")
-        self.lbl_avo_last_error.setStyleSheet("color:#e74c3c; font-size:9px;")
-        grid_avo.addWidget(self.lbl_avo_last_error, 4, 1, 1, 3)
-        
-        avo_layout.addLayout(grid_avo)
-        layout.addWidget(avo_frame)
-        
-        # Botones
-        btn_layout = QHBoxLayout()
-        self.btn_refresh = QPushButton("Refrescar ahora")
-        self.btn_refresh.setStyleSheet("QPushButton{background:#333; border:1px solid #555; border-radius:4px; padding:8px; color:#ccc;} QPushButton:hover{background:#444;}")
-        self.btn_refresh.clicked.connect(self.refresh_metrics)
-        btn_layout.addWidget(self.btn_refresh)
-        
-        btn_layout.addStretch()
-        layout.addLayout(btn_layout)
-        layout.addStretch()
-        
-    def refresh_metrics(self):
-        """Actualizar métricas manualmente"""
-        try:
-            self.main_window._update_health_panel()
-        except Exception as e:
-            print(f"[HEALTH] Error refrescando: {e}")
+# HealthMonitorWidget — use consolidated version from ui/health_tab,
+# fallback to minimal placeholder if import failed.
+if HEALTH_TAB_AVAILABLE and _HealthMonitorWidgetNew is not None:
+    HealthMonitorWidget = _HealthMonitorWidgetNew
+else:
+    class HealthMonitorWidget(QWidget):
+        """Minimal fallback when ui.health_tab is not available."""
+        def __init__(self, main_window):
+            super().__init__()
+            layout = QVBoxLayout(self)
+            layout.addWidget(QLabel("Health tab unavailable — check ui/health_tab.py"))
+        def update_all(self, **kwargs):
+            pass
+        def record_error(self, source, message):
+            pass
 
 class Main(QMainWindow):
     def __init__(self):
@@ -1220,102 +1129,65 @@ class Main(QMainWindow):
         return sum(self._loop_lat_samples) / len(self._loop_lat_samples)
 
     def _update_health_panel(self):
-        """Actualizar panel Health con datos en vivo"""
+        """Actualizar panel Health con datos en vivo (consolidated)"""
         try:
-            # Sistema
-            cpu_txt = "—"
-            mem_txt = "—"
+            if not hasattr(self, 'health_widget') or not self.health_widget:
+                return
+
+            # --- Collect lightweight metrics ---
+            cpu_pct = None
+            cpu_load = None
+            ram_pct = None
+            ram_used_mb = None
+            ram_total_mb = None
             if PSUTIL_AVAILABLE:
                 try:
-                    cpu_txt = f"{psutil.cpu_percent(interval=None):.0f} %"
-                    mem_txt = f"{psutil.virtual_memory().percent:.0f} %"
-                except:
+                    cpu_pct = psutil.cpu_percent(interval=None)
+                    cpu_load = list(os.getloadavg()) if hasattr(os, 'getloadavg') else None
+                    mem = psutil.virtual_memory()
+                    ram_pct = mem.percent
+                    ram_used_mb = int(mem.used / (1024 * 1024))
+                    ram_total_mb = int(mem.total / (1024 * 1024))
+                except Exception:
                     pass
-            
-            lat = self._loop_latency_avg_ms()
-            lat_txt = f"{lat:.0f} ms" if lat is not None else "—"
-            
-            # Avolites - obtener datos del driver
-            try:
-                status = self.avolites.get_status()
-                
-                connected = status.get("connected", False)
-                ready = status.get("ready", False)
-                transport = status.get("transport")
-                console_ip = status.get("console_ip")
-                console_port = status.get("console_port")
-                queue_len = status.get("queue_len")
-                last_send_ms = status.get("last_send_ms")
-                last_error_short = status.get("last_error_short")
-                last_fire_ts = status.get("last_fire_ts")
 
+            loop_lat = self._loop_latency_avg_ms()
+
+            # --- Avolites status ---
+            avolites_status = None
+            try:
+                avolites_status = self.avolites.get_status()
                 # Hook: Apply pending operations when Titan becomes READY
+                ready = avolites_status.get("ready", False) if avolites_status else False
                 if ready and (self._pending_console_baseline or self._pending_initial_apply):
                     self._apply_pending_on_ready()
+            except Exception:
+                pass
 
-                # Estado de conexión
-                if connected:
-                    status_txt = "✔"
-                    status_color = "#27ae60"
-                else:
-                    status_txt = "✖"
-                    status_color = "#e74c3c"
-                
-                # Transporte
-                transport_txt = transport if transport else "—"
-                
-                # Destino
-                dest_txt = f"{console_ip}:{console_port}" if console_ip and console_port else "—"
-                
-                # Cola
-                q_txt = str(queue_len) if isinstance(queue_len, int) else "—"
-                
-                # Último envío
-                send_txt = f"{last_send_ms:.1f} ms" if isinstance(last_send_ms, (int, float)) else "—"
-                
-                # Último FIRE
-                fire_txt = "—"
-                if isinstance(last_fire_ts, (int, float)) and last_fire_ts > 0:
-                    fire_txt = f"hace {max(0, int(time.time() - last_fire_ts))} s"
-                
-                # Último error
-                err_txt = last_error_short if last_error_short else "—"
-                
-            except Exception as e:
-                status_txt = "Error"
-                status_color = "#e74c3c"
-                transport_txt = "—"
-                dest_txt = "—"
-                q_txt = "—"
-                send_txt = "—"
-                fire_txt = "—"
-                err_txt = f"Error: {str(e)[:30]}"
-                print(f"[HEALTH] Error status Avolites: {e}")
-            
-            # Actualizar UI si existe
-            if hasattr(self, 'health_widget') and self.health_widget:
-                self.health_widget.lbl_cpu.setText(cpu_txt)
-                self.health_widget.lbl_ram.setText(mem_txt)
-                self.health_widget.lbl_loop_lat.setText(lat_txt)
-                
-                self.health_widget.lbl_avo_status.setText(status_txt)
-                self.health_widget.lbl_avo_status.setStyleSheet(f"color:{status_color}; font-weight:700;")
-                self.health_widget.lbl_avo_transport.setText(transport_txt)
-                self.health_widget.lbl_avo_dest.setText(dest_txt)
-                self.health_widget.lbl_avo_queue.setText(q_txt)
-                self.health_widget.lbl_avo_last_send.setText(send_txt)
-                self.health_widget.lbl_last_fire.setText(fire_txt)
-                self.health_widget.lbl_avo_last_error.setText(err_txt)
+            # --- Call consolidated update_all ---
+            self.health_widget.update_all(
+                cpu_pct=cpu_pct,
+                cpu_load=cpu_load,
+                ram_pct=ram_pct,
+                ram_used_mb=ram_used_mb,
+                ram_total_mb=ram_total_mb,
+                loop_lat_ms=loop_lat,
+                avolites_status=avolites_status,
+                vision_manager=getattr(self, 'vision_manager', None),
+                audio_engine=getattr(self, 'engine', None),
+                audio_monitor=getattr(self, 'audio_monitor', None),
+                calendar_manager=getattr(self, 'calendar_manager', None),
+            )
 
             # Actualizar VisionConfigWidget si existe
             if hasattr(self, 'vision_config_widget') and self.vision_config_widget:
                 try:
                     self.vision_config_widget.update_status()
-                except Exception as ve:
-                    pass  # Silently ignore vision widget errors
+                except Exception:
+                    pass
 
-        except Exception as e:
-            print(f"[HEALTH] Error actualizando panel: {e}")
+        except Exception:
+            pass
 
     def _log_analyzer_stats(self):
         """V12: Log único al inicio con estadísticas de analizadores Motor Real + Legacy"""
