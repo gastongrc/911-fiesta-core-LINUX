@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 # Import routers
-from api.routers import status, analyzers, cues, network, presets, config, alerts, calendar
+from api.routers import status, analyzers, cues, network, presets, config, alerts, calendar, system_health
 
 # Webapp static build (Vite output)
 WEBAPP_DIST = Path(__file__).resolve().parent.parent / "webapp" / "dist"
@@ -47,6 +47,7 @@ app.include_router(presets.router, prefix="/api/v1", tags=["presets"])
 app.include_router(config.router, prefix="/api/v1", tags=["config"])
 app.include_router(alerts.router, prefix="/api/v1", tags=["alerts"])
 app.include_router(calendar.router, prefix="/api/v1", tags=["calendar"])
+app.include_router(system_health.router, prefix="/api/v1", tags=["system-health"])
 
 # Mount static assets from Vite build (JS/CSS/images)
 if (WEBAPP_DIST / "assets").is_dir():
