@@ -367,7 +367,7 @@
   },
   "net_panel": {
     "enabled": true,
-    "console_ip": "192.168.0.3",
+    "console_ip": "192.168.1.45",
     "console_port": 4430,
     "local_nic": "Descripci¢n . . . . . . . . . . . . . . .",
     "local_ip": "",
@@ -397,6 +397,19 @@
       "net": 0,
       "subnet": 0,
       "universe": 0
+    },
+    "cue_offset": 169,
+    "nic": {
+      "local_nic_name": "Ethernet",
+      "local_nic_id": "hash:2341fbdc3ba155dd",
+      "local_ip": "192.168.1.100",
+      "auto_connect": true
+    },
+    "audio": {
+      "input_device_name": "default",
+      "input_device_index": 9,
+      "sample_rate": 44100,
+      "auto_connect": true
     }
   }
 }

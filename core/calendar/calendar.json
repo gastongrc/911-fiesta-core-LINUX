@@ -40,17 +40,24 @@
     ],
     "saturday": [
       {
-        "from": "20:00",
-        "to": "22:00",
-        "mode": "clima_1"
+        "from": "10:00",
+        "to": "23:59",
+        "mode": "boliche_desarrollo",
+        "actions": [
+          "vision_dj",
+          "vision_haze"
+        ]
       }
     ],
     "sunday": [
       {
-        "from": "20:00",
+        "from": "00:00",
         "to": "22:00",
-        "mode": "clima_1",
-        "actions": []
+        "mode": "boliche_desarrollo",
+        "actions": [
+          "vision_dj",
+          "vision_haze"
+        ]
       }
     ]
   }
