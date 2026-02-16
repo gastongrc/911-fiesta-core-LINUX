@@ -167,11 +167,134 @@ class _HeavyMetricsWorker:
         except Exception:
             return {"path": check_path, "total_gb": None, "used_gb": None, "percent": None}
 
-    def _query_audio(self) -> list:
-        out = self._run(["arecord", "-l"])
-        if not out:
+    def _query_audio(self) -> dict:
+        """
+        Returns structured ALSA info:
+          {
+            "cards": [{"index": 0, "id": "NVidia", "name": "...driver..."}, ...],
+            "capture": [{"card": 1, "device": 0, "name": "...", "busy": False}, ...],
+            "source": "arecord+proc" | "proc_only" | "dev_snd" | "none"
+          }
+        """
+        result: Dict[str, Any] = {"cards": [], "capture": [], "source": "none"}
+
+        # --- /proc/asound/cards (always available if ALSA loaded) ---
+        cards = self._parse_proc_asound_cards()
+        if cards:
+            result["cards"] = cards
+            result["source"] = "proc_only"
+
+        # --- arecord -l (capture devices with subdevice info) ---
+        arecord_out = self._run(["arecord", "-l"])
+        if arecord_out:
+            result["capture"] = self._parse_arecord(arecord_out)
+            result["source"] = "arecord+proc" if cards else "arecord"
+        elif not cards:
+            # Last resort: list /dev/snd entries
+            result["cards"] = self._fallback_dev_snd()
+            if result["cards"]:
+                result["source"] = "dev_snd"
+
+        return result
+
+    @staticmethod
+    def _parse_proc_asound_cards() -> list:
+        """Parse /proc/asound/cards → list of {index, id, name}."""
+        try:
+            with open("/proc/asound/cards", "r") as f:
+                raw = f.read()
+        except (FileNotFoundError, PermissionError, OSError):
             return []
-        return [line.strip() for line in out.split("\n") if "card" in line.lower()]
+        cards = []
+        lines = raw.strip().split("\n")
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            # Format: " 0 [NVidia         ]: HDA-Intel - HDA NVidia"
+            if line and line[0].isdigit():
+                parts = line.split("[", 1)
+                try:
+                    idx = int(parts[0].strip())
+                except (ValueError, IndexError):
+                    i += 1
+                    continue
+                card_id = ""
+                name_tail = ""
+                if len(parts) > 1:
+                    bracket_end = parts[1].find("]")
+                    if bracket_end >= 0:
+                        card_id = parts[1][:bracket_end].strip()
+                        name_tail = parts[1][bracket_end + 1:].strip().lstrip(":").strip()
+                        # Grab "- long name" part
+                        dash_pos = name_tail.find(" - ")
+                        if dash_pos >= 0:
+                            name_tail = name_tail[dash_pos + 3:].strip()
+                # Second line is the long description
+                long_name = ""
+                if i + 1 < len(lines):
+                    long_name = lines[i + 1].strip()
+                    i += 1
+                cards.append({"index": idx, "id": card_id, "name": name_tail or long_name})
+            i += 1
+        return cards
+
+    @staticmethod
+    def _parse_arecord(output: str) -> list:
+        """
+        Parse `arecord -l` output into structured capture devices.
+        Example line:
+          card 1: USBAudio [USB Audio], device 0: USB Audio [USB Audio]
+            Subdevices: 0/1      ← 0 available of 1 total → BUSY
+        """
+        import re
+        captures = []
+        lines = output.strip().split("\n")
+        i = 0
+        # Pattern: card N: ID [Name], device M: ...
+        card_re = re.compile(
+            r"card\s+(\d+):\s+\S+\s+\[([^\]]*)\],\s*device\s+(\d+):\s*(.*)"
+        )
+        while i < len(lines):
+            m = card_re.search(lines[i])
+            if m:
+                card_idx = int(m.group(1))
+                card_name = m.group(2).strip()
+                dev_idx = int(m.group(3))
+                dev_desc = m.group(4).strip()
+                busy = False
+                # Check next line for Subdevices: available/total
+                if i + 1 < len(lines) and "Subdevices:" in lines[i + 1]:
+                    sub_m = re.search(r"Subdevices:\s*(\d+)/(\d+)", lines[i + 1])
+                    if sub_m:
+                        available = int(sub_m.group(1))
+                        busy = (available == 0)
+                    i += 1
+                captures.append({
+                    "card": card_idx,
+                    "device": dev_idx,
+                    "name": card_name,
+                    "desc": dev_desc,
+                    "busy": busy,
+                })
+            i += 1
+        return captures
+
+    @staticmethod
+    def _fallback_dev_snd() -> list:
+        """List /dev/snd/controlC* as last resort."""
+        try:
+            entries = os.listdir("/dev/snd")
+        except (FileNotFoundError, PermissionError, OSError):
+            return []
+        cards = []
+        for e in sorted(entries):
+            if e.startswith("controlC"):
+                try:
+                    idx = int(e.replace("controlC", ""))
+                    cards.append({"index": idx, "id": e, "name": f"/dev/snd/{e}"})
+                except ValueError:
+                    pass
+        return cards
 
 
 # Singleton worker
@@ -297,16 +420,45 @@ class HealthMonitorWidget(QWidget):
         net_frame.layout().addLayout(net_grid)
         layout.addWidget(net_frame)
 
-        # --- AUDIO ---
-        audio_frame = self._make_section("AUDIO")
+        # --- AUDIO (ALSA) ---
+        audio_frame = self._make_section("AUDIO (ALSA)")
+        audio_vbox = audio_frame.layout()
+
         audio_grid = QGridLayout()
         audio_grid.setSpacing(6)
         audio_grid.setContentsMargins(0, 4, 0, 0)
         r = 0
-        self.lbl_audio_devices = self._add_row(audio_grid, r, "Devices ALSA", "---"); r += 1
+        self.lbl_audio_source = self._add_row(audio_grid, r, "Detection", "---"); r += 1
         self.lbl_audio_active = self._add_row(audio_grid, r, "Active Input", "---"); r += 1
         self.lbl_audio_state = self._add_row(audio_grid, r, "State", "---"); r += 1
-        audio_frame.layout().addLayout(audio_grid)
+        audio_vbox.addLayout(audio_grid)
+
+        # Cards list (dynamic, populated at update)
+        self.lbl_audio_cards_header = QLabel("Cards:")
+        self.lbl_audio_cards_header.setStyleSheet(_metric_label_style())
+        audio_vbox.addWidget(self.lbl_audio_cards_header)
+        self.lbl_audio_cards = QLabel("---")
+        self.lbl_audio_cards.setWordWrap(True)
+        self.lbl_audio_cards.setTextFormat(Qt.RichText)
+        self.lbl_audio_cards.setStyleSheet(
+            f"color:{_TEXT}; font-size:11px; font-family:'JetBrains Mono','Consolas',monospace; "
+            f"padding:4px 6px; background:#0e0e14; border-radius:4px;"
+        )
+        audio_vbox.addWidget(self.lbl_audio_cards)
+
+        # Capture devices list (dynamic)
+        self.lbl_audio_capture_header = QLabel("Capture devices:")
+        self.lbl_audio_capture_header.setStyleSheet(_metric_label_style())
+        audio_vbox.addWidget(self.lbl_audio_capture_header)
+        self.lbl_audio_capture = QLabel("---")
+        self.lbl_audio_capture.setWordWrap(True)
+        self.lbl_audio_capture.setTextFormat(Qt.RichText)
+        self.lbl_audio_capture.setStyleSheet(
+            f"color:{_TEXT}; font-size:11px; font-family:'JetBrains Mono','Consolas',monospace; "
+            f"padding:4px 6px; background:#0e0e14; border-radius:4px;"
+        )
+        audio_vbox.addWidget(self.lbl_audio_capture)
+
         layout.addWidget(audio_frame)
 
         # --- CALENDAR ---
@@ -386,6 +538,18 @@ class HealthMonitorWidget(QWidget):
             return f"{s // 60}m {s % 60}s"
         return f"{s}s"
 
+    @staticmethod
+    def _resolve_sd_device_name(device_index) -> str:
+        """Try to resolve a sounddevice device index to a human name."""
+        try:
+            import sounddevice as sd
+            info = sd.query_devices(device_index)
+            if isinstance(info, dict):
+                return f"[{device_index}] {info.get('name', '?')}"
+        except Exception:
+            pass
+        return f"device #{device_index}"
+
     def _cam_text(self, handler) -> tuple:
         """Returns (text, color) for a camera handler."""
         if handler is None:
@@ -437,7 +601,6 @@ class HealthMonitorWidget(QWidget):
         heavy = _heavy_worker.get()
         gpu = heavy.get("gpu")
         disk = heavy.get("disk")
-        audio_devs = heavy.get("audio_devices", [])
 
         # ---- HARDWARE: CPU ----
         if cpu_pct is not None:
@@ -616,39 +779,92 @@ class HealthMonitorWidget(QWidget):
             for lbl in cam_labels.values():
                 self._set_value(lbl, "---", _MUTED)
 
-        # ---- AUDIO ----
-        if audio_devs:
-            self._set_value(self.lbl_audio_devices, f"{len(audio_devs)} device(s)")
-        else:
-            self._set_value(self.lbl_audio_devices, "None detected", _YELLOW)
+        # ---- AUDIO (ALSA) ----
+        audio_info = heavy.get("audio_devices") or {}
+        alsa_cards = audio_info.get("cards", [])
+        alsa_capture = audio_info.get("capture", [])
+        alsa_source = audio_info.get("source", "none")
 
+        # Detection source
+        self._set_value(self.lbl_audio_source, alsa_source,
+                        _GREEN if alsa_source not in ("none", "dev_snd") else _YELLOW)
+
+        # Cards list
+        if alsa_cards:
+            lines = []
+            for c in alsa_cards:
+                lines.append(f"  [{c.get('index', '?')}] {c.get('id', '')} — {c.get('name', '')}")
+            self.lbl_audio_cards.setText("<br>".join(lines))
+        else:
+            self.lbl_audio_cards.setText('<span style="color:%s;">No ALSA cards detected</span>' % _YELLOW)
+            if alsa_source == "none":
+                warnings.append("No ALSA cards")
+
+        # Capture devices list
+        if alsa_capture:
+            lines = []
+            for cap in alsa_capture:
+                busy_tag = (' <span style="color:%s;">[BUSY]</span>' % _YELLOW) if cap.get("busy") else ""
+                idle_tag = (' <span style="color:%s;">[idle]</span>' % _GREEN) if not cap.get("busy") else ""
+                lines.append(
+                    f'  card {cap.get("card", "?")}, dev {cap.get("device", "?")}: '
+                    f'{cap.get("name", "")} {cap.get("desc", "")}{busy_tag}{idle_tag}'
+                )
+            self.lbl_audio_capture.setText("<br>".join(lines))
+        else:
+            self.lbl_audio_capture.setText('<span style="color:%s;">No capture devices (arecord -l)</span>' % _MUTED)
+
+        # Active input from engine
         if audio_engine:
-            running = getattr(audio_engine, "is_running", False)
+            running = getattr(audio_engine, "running", False)
+            dev_idx = getattr(audio_engine, "device_index", None)
             dev_name = getattr(audio_engine, "device_name", None)
-            self._set_value(self.lbl_audio_active, dev_name or "---")
+            if dev_name:
+                active_txt = dev_name
+            elif dev_idx is not None:
+                # Resolve device_index to a name via sounddevice if possible
+                active_txt = self._resolve_sd_device_name(dev_idx)
+            else:
+                active_txt = "UNKNOWN (engine no reporta)"
+            self._set_value(self.lbl_audio_active, active_txt)
+
             if running:
                 state_txt = "Running"
                 state_color = _GREEN
                 if audio_monitor:
-                    alerts = getattr(audio_monitor, "active_alerts", set())
-                    if isinstance(alerts, set):
+                    alerts = getattr(audio_monitor, "alerts", None)
+                    if alerts is None:
+                        alerts = getattr(audio_monitor, "active_alerts", None)
+                    if isinstance(alerts, dict):
+                        if alerts.get("clipping"):
+                            state_txt = "CLIPPING"
+                            state_color = _RED
+                            warnings.append("Audio clipping")
+                        elif alerts.get("stream_lost"):
+                            state_txt = "STREAM LOST"
+                            state_color = _RED
+                            warnings.append("Audio stream lost")
+                        elif alerts.get("no_audio"):
+                            state_txt = "SILENCE"
+                            state_color = _YELLOW
+                    elif isinstance(alerts, set):
                         if "clipping" in alerts:
                             state_txt = "CLIPPING"
                             state_color = _RED
                             warnings.append("Audio clipping")
-                        elif "no_audio" in alerts:
-                            state_txt = "SILENCE"
-                            state_color = _YELLOW
                         elif "stream_lost" in alerts:
                             state_txt = "STREAM LOST"
                             state_color = _RED
                             warnings.append("Audio stream lost")
+                        elif "no_audio" in alerts:
+                            state_txt = "SILENCE"
+                            state_color = _YELLOW
                 self._set_value(self.lbl_audio_state, f"{_status_dot(state_color)} {state_txt}", state_color)
             else:
                 self._set_value(self.lbl_audio_state, f"{_status_dot(_ERR_COLOR)} Stopped", _RED)
                 warnings.append("Audio stopped")
         else:
-            self._set_value(self.lbl_audio_active, "---", _MUTED)
+            self._set_value(self.lbl_audio_active, "UNKNOWN (engine no reporta)", _MUTED)
             self._set_value(self.lbl_audio_state, "---", _MUTED)
 
         # ---- CALENDAR ----
