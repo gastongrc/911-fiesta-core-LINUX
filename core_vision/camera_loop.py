@@ -131,15 +131,23 @@ class CameraLoop:
             return
 
         print(f"[CameraLoop] {self.camera_name} deteniendo...")
+
+        # 1. Cerrar source PRIMERO para desbloquear reads pendientes
+        if self.source:
+            try:
+                self.source.stop()
+            except Exception as e:
+                print(f"[CameraLoop] {self.camera_name} error cerrando source: {e}")
+
+        # 2. Señalizar fin del loop
         self.running = False
         self.vision_state.set_system_enabled(False)
 
+        # 3. Join del thread (source ya cerrada → thread se desbloquea)
         if self.thread:
             self.thread.join(timeout=5.0)
-
-        # Cerrar fuente MJPEG
-        if self.source:
-            self.source.stop()
+            if self.thread.is_alive():
+                print(f"[CameraLoop] {self.camera_name} CRITICAL: thread still alive after join(5s) — posible zombie")
 
         print(f"[CameraLoop] {self.camera_name} detenido")
 

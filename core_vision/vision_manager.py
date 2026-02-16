@@ -1,5 +1,5 @@
 """
-VisionManager PRO - Phase 6.14.1 + V9 Artist
+VisionManager PRO - Phase 6.14.1 + V9 Artist + Phase 6.15 Watchdog
 Manager centralizado del Vision System PRO
 Coordina: VisionConfig, VisionState, HazeDetector, DJDetector, ArtistDetector, CameraLoop
 Soporta: IP cameras (MJPEG Axis + RTSP H.264) - USB REMOVED
@@ -11,8 +11,11 @@ Phase 6.14: Deterministic camera restart on config change (no more "SKIPPED" gho
 Phase 6.14.1: Stop→Start always comes back with live cameras
   - start() calls apply_camera_config(force=True) before starting loops
   - apply_camera_config() detects dirty state (enabled+configured but source=None)
+Phase 6.15: Lightweight watchdog thread (5s interval)
+  - Auto-restarts camera loops on dead thread, 0 fps, or stall
 """
 import threading
+import time
 import hashlib
 import json
 from typing import Optional, Callable, Any, Dict
@@ -142,6 +145,10 @@ class VisionManager:
 
         # Estado del manager
         self.running = False
+
+        # Phase 6.15: Watchdog
+        self._watchdog_stop = threading.Event()
+        self._watchdog_thread: Optional[threading.Thread] = None
 
         # FIX 4: Modo calendario - control de Artist Tracker
         # Solo disponible si calendario habilita SHOW/ARTISTA
@@ -542,6 +549,10 @@ class VisionManager:
             self.camera_loop_dj.start()
             self.camera_loop_artist.start()
             self.running = True
+
+            # Phase 6.15: Start watchdog
+            self._start_watchdog()
+
             print("[VisionManager] Iniciado correctamente (3 cámaras MJPEG)")
         except Exception as e:
             print(f"[VisionManager] Error iniciando: {e}")
@@ -558,6 +569,9 @@ class VisionManager:
         print(f"[VisionManager] Active threads before stop: {threading.active_count()}")
 
         try:
+            # Phase 6.15: Stop watchdog before teardown
+            self._stop_watchdog()
+
             # FASE 1: Detener todos los sources PRIMERO (para interrumpir threads MJPEG)
             print("[VisionManager] PHASE 1: Stopping sources...")
             for cam_name, loop in [("haze", self.camera_loop_haze), ("dj", self.camera_loop_dj), ("artist", self.camera_loop_artist)]:
@@ -596,6 +610,81 @@ class VisionManager:
         self.camera_loop_haze.restart()
         self.camera_loop_dj.restart()
         self.camera_loop_artist.restart()
+
+    # ===== WATCHDOG (Phase 6.15) =====
+
+    _WATCHDOG_INTERVAL_S = 5.0
+
+    def _start_watchdog(self):
+        """Inicia el watchdog thread que monitorea camera loops cada 5s."""
+        self._watchdog_stop.clear()
+        if self._watchdog_thread and self._watchdog_thread.is_alive():
+            return
+        self._watchdog_thread = threading.Thread(
+            target=self._watchdog_loop, daemon=True, name="VisionWatchdog"
+        )
+        self._watchdog_thread.start()
+
+    def _stop_watchdog(self):
+        """Detiene el watchdog thread."""
+        self._watchdog_stop.set()
+        if self._watchdog_thread:
+            self._watchdog_thread.join(timeout=self._WATCHDOG_INTERVAL_S + 1)
+            self._watchdog_thread = None
+
+    def _watchdog_loop(self):
+        """Loop del watchdog: cada 5s verifica salud de cada camera loop."""
+        print("[VisionWatchdog] Started (interval=5s)")
+        while not self._watchdog_stop.wait(timeout=self._WATCHDOG_INTERVAL_S):
+            if not self.running:
+                continue
+            self._watchdog_check()
+        print("[VisionWatchdog] Stopped")
+
+    def _watchdog_check(self):
+        """Verifica cada camera loop y reinicia si detecta fallo."""
+        loop_map = {
+            "haze": self.camera_loop_haze,
+            "dj": self.camera_loop_dj,
+            "artist": self.camera_loop_artist,
+        }
+        for cam_name, loop in loop_map.items():
+            if not loop or not loop.has_valid_source:
+                continue
+            if not loop.running:
+                continue
+
+            # 1. Thread muerto
+            if loop.thread is None or not loop.thread.is_alive():
+                print(f"[VisionWatchdog] Restarting camera: {cam_name} (reason=thread_dead)")
+                try:
+                    loop.restart()
+                except Exception as e:
+                    print(f"[VisionWatchdog] Restart failed for {cam_name}: {e}")
+                continue
+
+            # 2. FPS=0 pero connected (stall sin detección)
+            try:
+                status = self.get_camera_status(cam_name)
+            except Exception:
+                continue
+
+            if status.get("connected") and status.get("fps", 0) == 0:
+                print(f"[VisionWatchdog] Restarting camera: {cam_name} (reason=fps_zero_but_connected)")
+                try:
+                    loop.restart()
+                except Exception as e:
+                    print(f"[VisionWatchdog] Restart failed for {cam_name}: {e}")
+                continue
+
+            # 3. Stall detectado por source
+            if status.get("stall_detected"):
+                print(f"[VisionWatchdog] Restarting camera: {cam_name} (reason=stall_detected)")
+                try:
+                    loop.restart()
+                except Exception as e:
+                    print(f"[VisionWatchdog] Restart failed for {cam_name}: {e}")
+                continue
 
     # ===== CONFIGURATION =====
 

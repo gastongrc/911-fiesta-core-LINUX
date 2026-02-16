@@ -1194,15 +1194,24 @@ class RTSPSourcePyAV(CameraSource):
     def stop(self) -> None:
         """
         Detiene el thread de captura de forma thread-safe.
-        NUNCA toca _container directamente - el thread lo libera.
+        Phase 6.15: Cierra container ANTES del join para desbloquear reads FFmpeg.
         """
         print(f"[RTSPSourcePyAV] STOPPING: {self._safe_url()}")
         self._stop_event.set()
 
+        # Forzar cierre del container para desbloquear el thread si está en av.read()
+        if self._container is not None:
+            try:
+                self._container.close()
+            except Exception as e:
+                print(f"[RTSPSourcePyAV] WARNING closing container in stop(): {e}")
+            finally:
+                self._container = None
+
         if self._thread:
             self._thread.join(timeout=2.0)
             if self._thread.is_alive():
-                print(f"[RTSPSourcePyAV] WARNING: thread didn't stop in 2s")
+                print(f"[RTSPSourcePyAV] CRITICAL: thread still alive after join(2s) — posible zombie")
             self._thread = None
 
         self._opened = False
