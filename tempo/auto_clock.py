@@ -1,5 +1,6 @@
 # tempo/auto_clock.py
-# AutoClock v11 - Clock autónomo con lock state machine + PLL + interval-gated anti-double
+# AutoClock v12 - SPEC lock criteria: consecutive valid intervals + anti-flap
+# V12: LOCKED requires 5 consecutive valid intervals + variance<=15%. Anti-flap: 3 strikes.
 # V11: Unified monotonic timestamps (fix time.time/monotonic mix) + get_ui_state() + quiet logs
 # V10: Interval-gated anti-double hit (dt < 0.55*interval = REJECT when LOCKING/LOCKED)
 # V9: Acepta intervalos que son multiplos del intervalo esperado (n*expected for n=2..4)
@@ -57,17 +58,22 @@ class AutoClock:
     - TAP gating: solo enviar TAPs cuando LOCKED
     - Seed/reset/drop logic para estabilidad
 
-    Lock States:
-    - UNLOCKED: Juntando evidencia (< 3 hits)
-    - LOCKING: Tiene hits pero intervalos inconsistentes
-    - LOCKED: Intervalos estables, OK para TAP a Titan
+    Lock States (V12 SPEC):
+    - UNLOCKED: < 3 hits en buffer
+    - LOCKING: Evaluando, necesita 5 intervalos consecutivos válidos
+    - LOCKED: 5+ consecutivos con variance <= 15%
+    - Anti-flap: LOCKED→LOCKING requiere 3 intervalos malos consecutivos (var > 22.5%)
     """
 
     # Constantes para lock state machine
-    MIN_HITS_FOR_LOCKING = 3      # Hits mínimos para empezar a evaluar
-    MIN_HITS_FOR_LOCKED = 5       # Hits mínimos para LOCKED
-    MAX_INTERVAL_VARIANCE = 0.15  # 15% varianza máxima para LOCKED
+    MIN_HITS_FOR_LOCKING = 3      # Hits mínimos para empezar a evaluar (UNLOCKED→LOCKING)
     LOCK_TIMEOUT_S = 4.0          # Timeout sin hits = volver a UNLOCKED
+
+    # V12 SPEC: Criterio de LOCKED (no negociable)
+    CONSECUTIVE_FOR_LOCKED = 5    # Intervalos válidos consecutivos requeridos
+    VARIANCE_LOCK = 0.15          # Varianza máxima para lograr/mantener LOCKED
+    VARIANCE_UNLOCK = 0.225       # Varianza para perder LOCKED (hysteresis = 1.5×)
+    UNLOCK_STRIKES = 3            # Intervalos malos consecutivos para LOCKED→LOCKING
 
     # V9: PLL multiple acceptance
     PLL_MULTIPLES = [2, 3, 4]     # Accept intervals that are 2x, 3x, 4x expected
@@ -99,10 +105,12 @@ class AutoClock:
         # Historial para calcular promedios
         self.hit_times: List[float] = []
 
-        # Lock state machine (v8)
+        # Lock state machine (v8 + v12 SPEC)
         self._lock_state = LockState.UNLOCKED
         self._last_lock_change_ts = time.monotonic()
         self._hit_count = 0
+        self._consecutive_valid = 0   # V12: intervalos válidos consecutivos
+        self._unlock_strikes = 0      # V12: intervalos malos consecutivos (anti-flap)
 
         # Parámetros configurables (sliders)
         self.params = {
@@ -252,22 +260,26 @@ class AutoClock:
             self._kick_detected = True
             self._last_kick_ts = timestamp
             self._hit_count += 1
+            self._consecutive_valid = 0   # V12: seed = no interval yet
             return
 
         delta_ms = (timestamp - self.last_hit_ts) * 1000.0
 
         # V10: ABSOLUTE_DEBOUNCE: Safety minimum regardless of tempo
         if delta_ms < self.ABSOLUTE_MIN_HIT_MS:
+            self._consecutive_valid = 0   # V12: ghost/noise → reset chain
             return
 
         # V10: INTERVAL_DOUBLE: When LOCKING/LOCKED, use interval-gated anti-double
         if self._lock_state in (LockState.LOCKING, LockState.LOCKED):
             min_interval_gated = self.interval_ms * self.DOUBLE_HIT_RATIO
             if delta_ms < min_interval_gated:
+                self._consecutive_valid = 0   # V12: double hit → reset chain
                 return
         else:
             # UNLOCKED: use legacy min_hit_ms debounce
             if delta_ms < self.params["min_hit_ms"]:
+                self._consecutive_valid = 0   # V12: reject → reset chain
                 return
 
         # FORCE_RESET: Very large gap - always reseed regardless of lock
@@ -277,6 +289,7 @@ class AutoClock:
             self._kick_detected = True
             self._last_kick_ts = timestamp
             self._hit_count += 1
+            self._consecutive_valid = 0   # V12: reset = new sequence
             self._lock_state = LockState.UNLOCKED
             return
 
@@ -292,6 +305,7 @@ class AutoClock:
                     self._kick_detected = True
                     self._last_kick_ts = timestamp
                     self._hit_count += 1
+                    self._consecutive_valid += 1  # V12: PLL match = valid interval
                     if len(self.hit_times) > 10:
                         self.hit_times = self.hit_times[-10:]
                     self._update_lock_state()
@@ -299,6 +313,7 @@ class AutoClock:
                 else:
                     # DROP: When LOCKED and not PLL match, don't corrupt tempo
                     self.last_hit_ts = timestamp
+                    self._consecutive_valid = 0   # V12: PLL-drop → reset chain
                     return
             else:
                 # RESET: When not LOCKED, treat gap as new sequence
@@ -307,6 +322,7 @@ class AutoClock:
                 self._kick_detected = True
                 self._last_kick_ts = timestamp
                 self._hit_count += 1
+                self._consecutive_valid = 0       # V12: reset = new sequence
                 return
 
         # V10: ACCEPT_1X: dt in valid range - register hit as 1x beat
@@ -315,6 +331,7 @@ class AutoClock:
         self._kick_detected = True
         self._last_kick_ts = timestamp
         self._hit_count += 1
+        self._consecutive_valid += 1  # V12: valid 1x interval
 
         # Limitar historial
         if len(self.hit_times) > 10:
@@ -335,9 +352,12 @@ class AutoClock:
 
     def _update_lock_state(self):
         """
-        V11: Actualiza la máquina de estados basada en historial de hits.
-        UNLOCKED → LOCKING → LOCKED
-        All timestamps are monotonic (V11 fix).
+        V12 SPEC: Lock state machine con consecutive_valid + anti-flap.
+
+        UNLOCKED → LOCKING: hits >= MIN_HITS_FOR_LOCKING (3)
+        LOCKING  → LOCKED:  consecutive_valid >= 5 AND variance <= 15%
+        LOCKED   → LOCKING: variance > 22.5% durante 3 intervalos consecutivos
+
         Logs only on state transitions (1 line per change).
         """
         now = time.monotonic()
@@ -345,21 +365,24 @@ class AutoClock:
 
         # Timeout check: sin hits por mucho tiempo = UNLOCKED
         if self.last_hit_ts > 0 and (now - self.last_hit_ts) > self.LOCK_TIMEOUT_S:
-            self._lock_state = LockState.UNLOCKED
-            if prev_state != self._lock_state:
+            if prev_state != LockState.UNLOCKED:
+                self._consecutive_valid = 0
+                self._unlock_strikes = 0
+                self._lock_state = LockState.UNLOCKED
                 print(f"[AutoClock] {prev_state.value}→UNLOCKED (timeout)")
             return
 
         num_hits = len(self.hit_times)
 
-        # UNLOCKED: muy pocos hits
+        # UNLOCKED: muy pocos hits para evaluar
         if num_hits < self.MIN_HITS_FOR_LOCKING:
-            self._lock_state = LockState.UNLOCKED
-            if prev_state != self._lock_state:
+            if prev_state != LockState.UNLOCKED:
+                self._lock_state = LockState.UNLOCKED
+                self._unlock_strikes = 0
                 print(f"[AutoClock] {prev_state.value}→UNLOCKED (hits={num_hits})")
             return
 
-        # Calcular varianza de intervalos
+        # Calcular varianza de intervalos filtrados
         intervals_ms = self._get_valid_intervals_ms()
         if len(intervals_ms) < 2:
             return
@@ -367,22 +390,35 @@ class AutoClock:
         median_interval = np.median(intervals_ms)
         variance = np.std(intervals_ms) / median_interval if median_interval > 0 else 1.0
 
-        # LOCKING → LOCKED si varianza baja y suficientes hits
-        if variance <= self.MAX_INTERVAL_VARIANCE and num_hits >= self.MIN_HITS_FOR_LOCKED:
-            self._lock_state = LockState.LOCKED
-        elif num_hits >= self.MIN_HITS_FOR_LOCKING:
-            if self._lock_state == LockState.UNLOCKED:
-                self._lock_state = LockState.LOCKING
-            elif self._lock_state == LockState.LOCKED and variance > self.MAX_INTERVAL_VARIANCE * 1.5:
-                self._lock_state = LockState.LOCKING
+        # --- Transiciones ---
 
-        # V11: Log only on transitions
+        if self._lock_state == LockState.LOCKED:
+            # Anti-flap: necesita UNLOCK_STRIKES intervalos malos consecutivos
+            if variance > self.VARIANCE_UNLOCK:
+                self._unlock_strikes += 1
+                if self._unlock_strikes >= self.UNLOCK_STRIKES:
+                    self._lock_state = LockState.LOCKING
+                    self._consecutive_valid = 0
+                    self._unlock_strikes = 0
+            else:
+                self._unlock_strikes = 0
+
+        elif self._consecutive_valid >= self.CONSECUTIVE_FOR_LOCKED and variance <= self.VARIANCE_LOCK:
+            # LOCKING/UNLOCKED → LOCKED
+            self._lock_state = LockState.LOCKED
+            self._unlock_strikes = 0
+
+        elif self._lock_state == LockState.UNLOCKED:
+            # UNLOCKED → LOCKING (suficientes hits para empezar a evaluar)
+            self._lock_state = LockState.LOCKING
+
+        # Log solo transiciones
         if self._lock_state != prev_state:
             if self._lock_state == LockState.LOCKED:
                 bpm = 60000.0 / median_interval if median_interval > 0 else 0
-                print(f"[AutoClock] {prev_state.value}→LOCKED bpm={bpm:.1f}")
+                print(f"[AutoClock] {prev_state.value}→LOCKED bpm={bpm:.1f} consec={self._consecutive_valid}")
             else:
-                print(f"[AutoClock] {prev_state.value}→{self._lock_state.value}")
+                print(f"[AutoClock] {prev_state.value}→{self._lock_state.value} consec={self._consecutive_valid} var={variance:.3f}")
 
     def _get_valid_intervals_ms(self) -> List[float]:
         """
@@ -421,6 +457,8 @@ class AutoClock:
             if self._lock_state != LockState.UNLOCKED:
                 prev = self._lock_state.value
                 self._lock_state = LockState.UNLOCKED
+                self._consecutive_valid = 0
+                self._unlock_strikes = 0
                 print(f"[AutoClock] {prev}→UNLOCKED (timeout)")
         return self._lock_state
 
@@ -586,6 +624,8 @@ class AutoClock:
         self._tap_last = 0.0
         self._lock_state = LockState.UNLOCKED
         self._hit_count = 0
+        self._consecutive_valid = 0
+        self._unlock_strikes = 0
         self.last_hit_ts = 0.0
         print("[AutoClock] Reset complete")
 
