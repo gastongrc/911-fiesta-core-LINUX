@@ -1,7 +1,7 @@
 # tempo/kick_detector.py
-# KickPulseDetector V16 - Hardened dual-gate detection + env-configurable params
+# KickPulseDetector V17 - Show-ready defaults + blind fallback safety
+# V17: k=2.0, ratio=2.0, warmup=3. Adaptive threshold decay when blind >4s (floor 50%).
 # V16: baseline×R dual-gate, warmup/k/ratio configurable via env, logs OFF by default
-# V15: Debug rate counter (DEBUG_KICK=1)
 # V14: Sample-accurate timestamps using block_start_ts + sample_idx/sr
 # For 911 Fiesta TapTempo robust implementation
 
@@ -31,9 +31,14 @@ class KickPulseDetector:
 
     # Configuration
     DEFAULT_DEBOUNCE_MS = 150.0     # Min interval between kicks (150ms = 400 BPM max)
-    DEFAULT_THRESHOLD_K = 2.5       # MAD multiplier for threshold
+    DEFAULT_THRESHOLD_K = 2.0       # V17: was 2.5 — 2.0 works out-of-box on real shows
     DEFAULT_LP_CUTOFF_HZ = 150.0    # Low-pass cutoff for kick band
     DEFAULT_HISTORY_SIZE = 50       # Number of energy samples for MAD calculation
+
+    # V17: Blind fallback — prefer detecting over staying dead
+    BLIND_TIMEOUT_S = 4.0           # Seconds without kick before decay activates
+    BLIND_DECAY_RATE = 0.1          # Threshold reduction per second beyond timeout
+    BLIND_FLOOR = 0.5               # Minimum decay (never go below 50% of computed threshold)
 
     def __init__(
         self,
@@ -55,10 +60,11 @@ class KickPulseDetector:
         self._lp_cutoff_hz = lp_cutoff_hz
         self._history_size = history_size
 
-        # V16: Env-configurable params (override constructor defaults)
-        self._threshold_k = float(os.environ.get("KICK_K", str(threshold_k)))
-        self._baseline_ratio = float(os.environ.get("KICK_RATIO", "3.0"))
-        self._warmup_min = int(os.environ.get("KICK_WARMUP", "5"))
+        # V17: Env-configurable params — hardcoded show-ready defaults
+        # Env vars override these; without env, works out-of-box on real audio.
+        self._threshold_k = float(os.environ.get("KICK_K", "2.0"))
+        self._baseline_ratio = float(os.environ.get("KICK_RATIO", "2.0"))
+        self._warmup_min = int(os.environ.get("KICK_WARMUP", "3"))
 
         # Energy history for MAD calculation
         self._energy_history: Deque[float] = deque(maxlen=history_size)
@@ -76,12 +82,15 @@ class KickPulseDetector:
         self._last_threshold: float = 0.0
         self._last_baseline: float = 0.0
 
+        # V17: Blind fallback timer (initialized to now — gives 4s grace before decay)
+        self._last_kick_mono: float = time.monotonic()
+
         # V16: Debug diagnostics (DEBUG_KICK=1), logs OFF by default
         self._debug_kick = os.environ.get("DEBUG_KICK", "0") == "1"
         self._debug_recent: Deque[float] = deque()
         self._debug_last_log: float = 0.0
 
-        print(f"[KickDetector] V16 init (debounce={debounce_ms:.0f}ms, k={self._threshold_k:.1f}, ratio={self._baseline_ratio:.1f}, warmup={self._warmup_min}, lp={lp_cutoff_hz:.0f}Hz, debug={'ON' if self._debug_kick else 'off'})")
+        print(f"[KickDetector] V17 init (debounce={debounce_ms:.0f}ms, k={self._threshold_k:.1f}, ratio={self._baseline_ratio:.1f}, warmup={self._warmup_min}, lp={lp_cutoff_hz:.0f}Hz, blind_timeout={self.BLIND_TIMEOUT_S:.0f}s, debug={'ON' if self._debug_kick else 'off'})")
 
     def process_audio(self, block: np.ndarray, sr: int, block_start_ts: float = None) -> bool:
         """
@@ -162,27 +171,39 @@ class KickPulseDetector:
         # Debounce
         dt_ms = (kick_ts - self._last_kick_ts) * 1000.0 if self._last_kick_ts > 0 else 9999.0
 
-        # V16: Dual-gate — BOTH conditions required
+        # Dual-gate thresholds
         baseline_thresh = baseline * self._baseline_ratio
+
+        # V17: Blind fallback — adaptive decay when no kicks for too long
+        now_mono = time.monotonic()
+        blind_s = now_mono - self._last_kick_mono
+        decay = 1.0
+        if blind_s > self.BLIND_TIMEOUT_S:
+            decay = max(self.BLIND_FLOOR,
+                        1.0 - (blind_s - self.BLIND_TIMEOUT_S) * self.BLIND_DECAY_RATE)
+            threshold *= decay
+            baseline_thresh *= decay
+
+        # Dual-gate — BOTH conditions required
         hit = (energy > threshold
                and energy > baseline_thresh
                and dt_ms >= self._debounce_ms)
 
-        # V16: Debug diagnostics every 2s (fires even without kick)
+        # Debug diagnostics every 2s (fires even without kick — shows why it's blind)
         if self._debug_kick:
-            now_dbg = time.monotonic()
             if hit:
-                self._debug_recent.append(now_dbg)
-            # Purge older than 2s
-            cutoff = now_dbg - 2.0
+                self._debug_recent.append(now_mono)
+            cutoff = now_mono - 2.0
             while self._debug_recent and self._debug_recent[0] < cutoff:
                 self._debug_recent.popleft()
-            if now_dbg - self._debug_last_log >= 2.0:
-                self._debug_last_log = now_dbg
-                print(f"[KickDetector] energy={energy:.4f} baseline={baseline:.4f} median={median:.4f} mad={mad:.5f} thresh={threshold:.4f} bR={baseline_thresh:.4f} kicks_2s={len(self._debug_recent)}")
+            if now_mono - self._debug_last_log >= 2.0:
+                self._debug_last_log = now_mono
+                decay_str = f" decay={decay:.2f}" if decay < 1.0 else ""
+                print(f"[KickDetector] energy={energy:.4f} base={baseline:.4f} med={median:.4f} mad={mad:.5f} thr={threshold:.4f} bR={baseline_thresh:.4f} kicks_2s={len(self._debug_recent)} blind={blind_s:.1f}s{decay_str}")
 
         if hit:
             self._last_kick_ts = kick_ts
+            self._last_kick_mono = now_mono  # V17: reset blind timer
             self._total_kicks += 1
             with self._queue_lock:
                 self._kick_queue.append(kick_ts)
@@ -276,6 +297,7 @@ class KickPulseDetector:
         """Reset detector state."""
         self._energy_history.clear()
         self._last_kick_ts = 0.0
+        self._last_kick_mono = time.monotonic()
         self._total_kicks = 0
         with self._queue_lock:
             self._kick_queue.clear()
