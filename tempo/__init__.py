@@ -1,8 +1,7 @@
 # tempo/__init__.py
-# Tempo module for 911 Fiesta - AutoClock v8 + TAP Tempo
-# V11 compatible
+# Tempo module for 911 Fiesta - AutoClock v11 + TAP Tempo
 
-from .auto_clock import AutoClock, LockState
+from .auto_clock import AutoClock, ClockUIState, LockState
 from .tap_bridge import TapBridge
 
-__all__ = ['AutoClock', 'LockState', 'TapBridge']
+__all__ = ['AutoClock', 'ClockUIState', 'LockState', 'TapBridge']

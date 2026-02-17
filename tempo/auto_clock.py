@@ -1,5 +1,6 @@
 # tempo/auto_clock.py
-# AutoClock v10 - Clock autónomo con lock state machine + PLL + interval-gated anti-double
+# AutoClock v11 - Clock autónomo con lock state machine + PLL + interval-gated anti-double
+# V11: Unified monotonic timestamps (fix time.time/monotonic mix) + get_ui_state() + quiet logs
 # V10: Interval-gated anti-double hit (dt < 0.55*interval = REJECT when LOCKING/LOCKED)
 # V9: Acepta intervalos que son multiplos del intervalo esperado (n*expected for n=2..4)
 # V8: Seed/reset/drop logic para estabilidad
@@ -7,6 +8,7 @@
 import time
 import numpy as np
 from enum import Enum
+from dataclasses import dataclass
 from typing import Optional, List
 
 try:
@@ -21,6 +23,16 @@ class LockState(Enum):
     UNLOCKED = "UNLOCKED"   # Juntando evidencia, no enviar TAPs
     LOCKING = "LOCKING"     # Necesita K pulsos consistentes
     LOCKED = "LOCKED"       # Estable, habilitar TAPs a Titan
+
+
+@dataclass
+class ClockUIState:
+    """Estado mínimo para la UI. Snapshot inmutable por frame."""
+    lock_state: str          # "UNLOCKED" / "LOCKING" / "LOCKED"
+    bpm: float               # BPM calculado actual
+    interval_ms: float       # Intervalo en ms
+    last_kick_age_ms: float  # ms desde último kick (-1 si nunca)
+    hits_in_buffer: int      # Cantidad de hits en buffer
 
 
 class AutoClock:
@@ -73,10 +85,10 @@ class AutoClock:
         # Corrección cada X segundos
         self.correction_period = correction_period
 
-        # Flags de tiempo
-        self.last_tick_ts = time.time()
+        # V11: ALL timestamps use time.monotonic() — never time.time()
+        self.last_tick_ts = time.monotonic()
         self.last_hit_ts = 0.0
-        self.last_correction_ts = time.time()
+        self.last_correction_ts = time.monotonic()
 
         # TAP tempo state
         self._tap_last = 0.0
@@ -89,8 +101,8 @@ class AutoClock:
 
         # Lock state machine (v8)
         self._lock_state = LockState.UNLOCKED
-        self._last_lock_change_ts = time.time()
-        self._consecutive_good_intervals = 0
+        self._last_lock_change_ts = time.monotonic()
+        self._hit_count = 0
 
         # Parámetros configurables (sliders)
         self.params = {
@@ -161,7 +173,7 @@ class AutoClock:
         Avanza el clock. Retorna True si hay un tick (beat).
         Llamar desde el loop principal (~60Hz o mas).
         """
-        now = time.time()
+        now = time.monotonic()
 
         # Si hay manual override activo, usar ese BPM
         if self._is_manual_active():
@@ -177,7 +189,7 @@ class AutoClock:
         """Verifica si el BPM manual (TAP) esta activo."""
         if self._manual_bpm <= 0:
             return False
-        elapsed = time.time() - self._manual_ts
+        elapsed = time.monotonic() - self._manual_ts
         return elapsed < self._manual_freeze_s
 
     # ============================================================
@@ -239,27 +251,23 @@ class AutoClock:
             self.hit_times = [timestamp]
             self._kick_detected = True
             self._last_kick_ts = timestamp
-            self._hit_count = getattr(self, '_hit_count', 0) + 1
-            print(f"[AutoClock] HIT_SEED t={timestamp:.3f}")
+            self._hit_count += 1
             return
 
         delta_ms = (timestamp - self.last_hit_ts) * 1000.0
 
         # V10: ABSOLUTE_DEBOUNCE: Safety minimum regardless of tempo
         if delta_ms < self.ABSOLUTE_MIN_HIT_MS:
-            print(f"[AutoClock] HIT_REJECT (absolute<{self.ABSOLUTE_MIN_HIT_MS:.0f}ms) dt={delta_ms:.0f}ms")
             return
 
         # V10: INTERVAL_DOUBLE: When LOCKING/LOCKED, use interval-gated anti-double
         if self._lock_state in (LockState.LOCKING, LockState.LOCKED):
             min_interval_gated = self.interval_ms * self.DOUBLE_HIT_RATIO
             if delta_ms < min_interval_gated:
-                print(f"[AutoClock] HIT_REJECT (double<{self.DOUBLE_HIT_RATIO:.0%}*{self.interval_ms:.0f}={min_interval_gated:.0f}ms) dt={delta_ms:.0f}ms")
                 return
         else:
             # UNLOCKED: use legacy min_hit_ms debounce
             if delta_ms < self.params["min_hit_ms"]:
-                print(f"[AutoClock] HIT_REJECT (debounce) dt={delta_ms:.0f}ms")
                 return
 
         # FORCE_RESET: Very large gap - always reseed regardless of lock
@@ -268,9 +276,8 @@ class AutoClock:
             self.hit_times = [timestamp]
             self._kick_detected = True
             self._last_kick_ts = timestamp
-            self._hit_count = getattr(self, '_hit_count', 0) + 1
+            self._hit_count += 1
             self._lock_state = LockState.UNLOCKED
-            print(f"[AutoClock] HIT_RESET (dt>{self.FORCE_RESET_MS:.0f}ms) dt={delta_ms:.0f}ms -> reseed")
             return
 
         # GAP handling depends on lock state
@@ -284,16 +291,13 @@ class AutoClock:
                     self.hit_times.append(timestamp)
                     self._kick_detected = True
                     self._last_kick_ts = timestamp
-                    self._hit_count = getattr(self, '_hit_count', 0) + 1
-                    print(f"[AutoClock] HIT_PLL_ACCEPT n={n}x dt={delta_ms:.0f}ms ratio={ratio:.2f}")
+                    self._hit_count += 1
                     if len(self.hit_times) > 10:
                         self.hit_times = self.hit_times[-10:]
                     self._update_lock_state()
                     return
                 else:
                     # DROP: When LOCKED and not PLL match, don't corrupt tempo
-                    print(f"[AutoClock] HIT_DROP (gap while LOCKED) dt={delta_ms:.0f}ms ratio={ratio:.2f}")
-                    # Update last_hit_ts to prevent accumulating gap
                     self.last_hit_ts = timestamp
                     return
             else:
@@ -302,8 +306,7 @@ class AutoClock:
                 self.hit_times = [timestamp]
                 self._kick_detected = True
                 self._last_kick_ts = timestamp
-                self._hit_count = getattr(self, '_hit_count', 0) + 1
-                print(f"[AutoClock] HIT_RESET (gap while UNLOCKED) dt={delta_ms:.0f}ms -> reseed")
+                self._hit_count += 1
                 return
 
         # V10: ACCEPT_1X: dt in valid range - register hit as 1x beat
@@ -311,9 +314,7 @@ class AutoClock:
         self.hit_times.append(timestamp)
         self._kick_detected = True
         self._last_kick_ts = timestamp
-        self._hit_count = getattr(self, '_hit_count', 0) + 1
-
-        print(f"[AutoClock] HIT_ACCEPT_1X dt={delta_ms:.0f}ms hits={self._hit_count}")
+        self._hit_count += 1
 
         # Limitar historial
         if len(self.hit_times) > 10:
@@ -334,29 +335,28 @@ class AutoClock:
 
     def _update_lock_state(self):
         """
-        V8.1: Actualiza la máquina de estados basada en historial de hits.
+        V11: Actualiza la máquina de estados basada en historial de hits.
         UNLOCKED → LOCKING → LOCKED
-        Uses monotonic time for consistency with register_hit().
+        All timestamps are monotonic (V11 fix).
+        Logs only on state transitions (1 line per change).
         """
         now = time.monotonic()
-        old_state = self._lock_state
+        prev_state = self._lock_state
 
         # Timeout check: sin hits por mucho tiempo = UNLOCKED
         if self.last_hit_ts > 0 and (now - self.last_hit_ts) > self.LOCK_TIMEOUT_S:
-            if self._lock_state != LockState.UNLOCKED:
-                self._lock_state = LockState.UNLOCKED
-                self._consecutive_good_intervals = 0
-                print(f"[AutoClock] UNLOCK (reason=timeout)")
+            self._lock_state = LockState.UNLOCKED
+            if prev_state != self._lock_state:
+                print(f"[AutoClock] {prev_state.value}→UNLOCKED (timeout)")
             return
 
         num_hits = len(self.hit_times)
 
         # UNLOCKED: muy pocos hits
         if num_hits < self.MIN_HITS_FOR_LOCKING:
-            if self._lock_state != LockState.UNLOCKED:
-                prev = self._lock_state.value
-                self._lock_state = LockState.UNLOCKED
-                print(f"[AutoClock] STATE {prev}→UNLOCKED (hits={num_hits})")
+            self._lock_state = LockState.UNLOCKED
+            if prev_state != self._lock_state:
+                print(f"[AutoClock] {prev_state.value}→UNLOCKED (hits={num_hits})")
             return
 
         # Calcular varianza de intervalos
@@ -369,19 +369,20 @@ class AutoClock:
 
         # LOCKING → LOCKED si varianza baja y suficientes hits
         if variance <= self.MAX_INTERVAL_VARIANCE and num_hits >= self.MIN_HITS_FOR_LOCKED:
-            if self._lock_state != LockState.LOCKED:
-                prev = self._lock_state.value
-                self._lock_state = LockState.LOCKED
-                bpm = 60000.0 / median_interval if median_interval > 0 else 0
-                print(f"[AutoClock] STATE {prev}→LOCKED bpm={bpm:.1f}")
+            self._lock_state = LockState.LOCKED
         elif num_hits >= self.MIN_HITS_FOR_LOCKING:
             if self._lock_state == LockState.UNLOCKED:
                 self._lock_state = LockState.LOCKING
-                print(f"[AutoClock] STATE UNLOCKED→LOCKING")
             elif self._lock_state == LockState.LOCKED and variance > self.MAX_INTERVAL_VARIANCE * 1.5:
-                # Lost lock - varianza demasiado alta
                 self._lock_state = LockState.LOCKING
-                print(f"[AutoClock] STATE LOCKED→LOCKING (variance={variance:.1%})")
+
+        # V11: Log only on transitions
+        if self._lock_state != prev_state:
+            if self._lock_state == LockState.LOCKED:
+                bpm = 60000.0 / median_interval if median_interval > 0 else 0
+                print(f"[AutoClock] {prev_state.value}→LOCKED bpm={bpm:.1f}")
+            else:
+                print(f"[AutoClock] {prev_state.value}→{self._lock_state.value}")
 
     def _get_valid_intervals_ms(self) -> List[float]:
         """
@@ -415,10 +416,12 @@ class AutoClock:
 
     def get_lock_state(self) -> LockState:
         """Retorna el estado actual del lock."""
-        # Check timeout
-        if time.time() - self.last_hit_ts > self.LOCK_TIMEOUT_S:
+        # V11: monotonic for consistent timeout check
+        if self.last_hit_ts > 0 and (time.monotonic() - self.last_hit_ts) > self.LOCK_TIMEOUT_S:
             if self._lock_state != LockState.UNLOCKED:
+                prev = self._lock_state.value
                 self._lock_state = LockState.UNLOCKED
+                print(f"[AutoClock] {prev}→UNLOCKED (timeout)")
         return self._lock_state
 
     def is_locked(self) -> bool:
@@ -436,7 +439,7 @@ class AutoClock:
         NO aplica si hay TAP manual activo.
         Usa intervalos filtrados por MAD para robustez.
         """
-        now = time.time()
+        now = time.monotonic()
 
         # No corregir si hay TAP manual activo
         if self._is_manual_active():
@@ -481,7 +484,7 @@ class AutoClock:
         Seteo manual del intervalo usando taps sucesivos.
         Congela autocalibration por 5 segundos.
         """
-        now = time.time()
+        now = time.monotonic()
 
         if self._tap_last > 0:
             delta = (now - self._tap_last) * 1000.0
@@ -516,7 +519,7 @@ class AutoClock:
             return
 
         self._manual_bpm = float(bpm)
-        self._manual_ts = time.time()
+        self._manual_ts = time.monotonic()
         self.interval_ms = 60000.0 / bpm
         self.tick_interval = self.interval_ms / 1000.0
 
@@ -544,6 +547,21 @@ class AutoClock:
         """Retorna intervalo actual en ms."""
         return self.interval_ms
 
+    def get_ui_state(self) -> ClockUIState:
+        """
+        V11: Snapshot liviano para la UI. Sin allocations pesadas.
+        Llamar desde update_display() cada ~40ms.
+        """
+        now = time.monotonic()
+        kick_age = (now - self._last_kick_ts) * 1000.0 if self._last_kick_ts > 0 else -1.0
+        return ClockUIState(
+            lock_state=self.get_lock_state().value,
+            bpm=self.get_bpm(),
+            interval_ms=self.interval_ms,
+            last_kick_age_ms=kick_age,
+            hits_in_buffer=len(self.hit_times),
+        )
+
     def get_status(self) -> dict:
         """Retorna estado completo del clock."""
         return {
@@ -567,9 +585,9 @@ class AutoClock:
         self._manual_ts = 0.0
         self._tap_last = 0.0
         self._lock_state = LockState.UNLOCKED
-        self._consecutive_good_intervals = 0
+        self._hit_count = 0
         self.last_hit_ts = 0.0
         print("[AutoClock] Reset complete")
 
 
-__all__ = ['AutoClock', 'LockState']
+__all__ = ['AutoClock', 'ClockUIState', 'LockState']

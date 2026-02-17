@@ -1,7 +1,7 @@
 # clock_widget.py
-# TabTempo / ClockWidget - UI for AutoClock v7 + TAP Tempo
-# LED AZUL (clock) + LED VERDE (kick) + Interval display + TAP button + Sliders
-# Restaurado desde rama historica para 911 Fiesta V11
+# TabTempo / ClockWidget - UI for AutoClock v11 + TAP Tempo
+# LED AZUL (clock) + LED VERDE (kick) + LED LOCK (state) + Interval display + TAP button + Sliders
+# V11: LockLED indicator (green=LOCKED, yellow=LOCKING, off=UNLOCKED)
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -99,9 +99,78 @@ class KickLED(QFrame):
             """)
 
 
+class LockLED(QFrame):
+    """
+    LED indicador de lock state del AutoClock.
+    Verde fijo = LOCKED (tempo estable)
+    Amarillo parpadeante = LOCKING (recibiendo kicks, evaluando)
+    Apagado = UNLOCKED (sin datos)
+    """
+
+    _STYLE_OFF = """
+        QFrame {
+            background: qradialgradient(cx:0.5, cy:0.5, radius:0.5,
+                fx:0.5, fy:0.5,
+                stop:0 #333333, stop:0.5 #222222, stop:1 #111111);
+            border-radius: 25px;
+            border: 3px solid #444444;
+        }
+    """
+    _STYLE_LOCKED = """
+        QFrame {
+            background: qradialgradient(cx:0.5, cy:0.5, radius:0.5,
+                fx:0.5, fy:0.5,
+                stop:0 #00ff88, stop:0.5 #00cc66, stop:1 #006633);
+            border-radius: 25px;
+            border: 3px solid #00ff88;
+        }
+    """
+    _STYLE_LOCKING_ON = """
+        QFrame {
+            background: qradialgradient(cx:0.5, cy:0.5, radius:0.5,
+                fx:0.5, fy:0.5,
+                stop:0 #ffcc00, stop:0.5 #cc9900, stop:1 #665500);
+            border-radius: 25px;
+            border: 3px solid #ffcc00;
+        }
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(50, 50)
+        self._state = "UNLOCKED"
+        self._blink_on = False
+        self._blink_timer = QTimer(self)
+        self._blink_timer.timeout.connect(self._blink_toggle)
+        self.setStyleSheet(self._STYLE_OFF)
+
+    def set_state(self, lock_state: str):
+        """Update LED from lock state string: UNLOCKED / LOCKING / LOCKED."""
+        if lock_state == self._state:
+            return
+        self._state = lock_state
+        if lock_state == "LOCKED":
+            self._blink_timer.stop()
+            self.setStyleSheet(self._STYLE_LOCKED)
+        elif lock_state == "LOCKING":
+            self._blink_on = True
+            self.setStyleSheet(self._STYLE_LOCKING_ON)
+            self._blink_timer.start(400)
+        else:
+            self._blink_timer.stop()
+            self.setStyleSheet(self._STYLE_OFF)
+
+    def _blink_toggle(self):
+        self._blink_on = not self._blink_on
+        if self._blink_on:
+            self.setStyleSheet(self._STYLE_LOCKING_ON)
+        else:
+            self.setStyleSheet(self._STYLE_OFF)
+
+
 class ClockWidget(QWidget):
     """
-    Tempo tab for AutoClock v9 + KickPulseDetector V13.
+    Tempo tab for AutoClock v11 + KickPulseDetector V14.
 
     Components:
     - PulseLED (AZUL): Clock interno
@@ -209,7 +278,7 @@ class ClockWidget(QWidget):
         title.setAlignment(Qt.AlignCenter)
         main_layout.addWidget(title)
 
-        subtitle = QLabel("AutoClock v7")
+        subtitle = QLabel("AutoClock v11")
         subtitle.setFont(QFont("Arial", 10))
         subtitle.setStyleSheet("color: #666; background: transparent;")
         subtitle.setAlignment(Qt.AlignCenter)
@@ -247,6 +316,20 @@ class ClockWidget(QWidget):
         kick_container.addWidget(self.kick_led, 0, Qt.AlignCenter)
         kick_container.addWidget(kick_label, 0, Qt.AlignCenter)
 
+        # LED LOCK STATE (V11)
+        lock_container = QVBoxLayout()
+        lock_container.setAlignment(Qt.AlignCenter)
+
+        self.lock_led = LockLED()
+
+        self._lock_label = QLabel("LOCK")
+        self._lock_label.setFont(QFont("Arial", 9))
+        self._lock_label.setStyleSheet("color: #666; background: transparent;")
+        self._lock_label.setAlignment(Qt.AlignCenter)
+
+        lock_container.addWidget(self.lock_led, 0, Qt.AlignCenter)
+        lock_container.addWidget(self._lock_label, 0, Qt.AlignCenter)
+
         # Interval Display
         interval_container = QVBoxLayout()
         interval_container.setAlignment(Qt.AlignCenter)
@@ -274,6 +357,7 @@ class ClockWidget(QWidget):
         center_layout.addStretch()
         center_layout.addLayout(clock_container)
         center_layout.addLayout(kick_container)
+        center_layout.addLayout(lock_container)
         center_layout.addLayout(interval_container)
         center_layout.addStretch()
 
@@ -495,15 +579,29 @@ class ClockWidget(QWidget):
         self.interval_label.setText("750")
         self.bpm_label.setText("80 BPM")
         self.manual_indicator.setText("")
+        self.lock_led.set_state("UNLOCKED")
 
     def update_display(self):
-        """Update all displays from AutoClock state."""
+        """Update all displays from AutoClock state via get_ui_state()."""
         if self.auto_clock is None:
             return
 
-        # Update interval
-        ms = self.auto_clock.get_interval_ms()
-        self.set_interval_ms(ms)
+        # V11: single snapshot for all UI updates
+        ui = self.auto_clock.get_ui_state()
+
+        # Update interval + BPM
+        self.set_interval_ms(ui.interval_ms)
+
+        # Update lock LED
+        self.lock_led.set_state(ui.lock_state)
+
+        # Update lock label color to match state
+        if ui.lock_state == "LOCKED":
+            self._lock_label.setStyleSheet("color: #00ff88; background: transparent;")
+        elif ui.lock_state == "LOCKING":
+            self._lock_label.setStyleSheet("color: #ffcc00; background: transparent;")
+        else:
+            self._lock_label.setStyleSheet("color: #666; background: transparent;")
 
         # Update manual indicator
         if self.auto_clock.manual_override_active():
@@ -520,4 +618,4 @@ class ClockWidget(QWidget):
 TabTempo = ClockWidget
 
 
-__all__ = ['ClockWidget', 'TabTempo', 'PulseLED', 'KickLED']
+__all__ = ['ClockWidget', 'TabTempo', 'PulseLED', 'KickLED', 'LockLED']
