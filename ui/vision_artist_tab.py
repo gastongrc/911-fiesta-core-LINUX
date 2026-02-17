@@ -4,9 +4,11 @@ Preview + LayeredZoneEditor PRO + Debug Overlay + TEST FIRE buttons
 
 Phase V9: YOLO-based ROI-only detection, 8-zone support (C72-C79)
 Replaces old VisionArtistTab with HOG-based detection
+Phase 9.1: Thread-safe frame buffer (fix cross-thread Qt crash)
 """
 import cv2
 import numpy as np
+import threading
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QGroupBox, QDoubleSpinBox, QCheckBox, QFrame, QGridLayout,
@@ -68,22 +70,29 @@ class VisionArtistTab(QWidget):
         self._last_frame = None
         self._zone_states = {}  # zone_id -> {detected, conf, active}
 
+        # Thread-safe frame buffer (Phase 9.1 - fix cross-thread Qt crash)
+        self._frame_lock = threading.Lock()
+        self._latest_frame = None
+        self._frame_updated = False
+
         self._build_ui()
 
-        # Timer for UI updates
+        # Timer for UI updates (33ms ~30 FPS for smooth preview)
         self.update_timer = QTimer(self)
-        self.update_timer.setInterval(250)  # 4 FPS
-        self.update_timer.timeout.connect(self._update_state)
+        self.update_timer.setInterval(33)
+        self.update_timer.timeout.connect(self._on_timer_tick)
         self.update_timer.start()
 
-        # Connect frame callback
+        # Connect frame callback (thread-safe: only buffers, no Qt calls)
         try:
-            self.vision_manager.set_ui_callback_artist(self.update_frame)
+            self.vision_manager.set_ui_callback_artist(self._on_frame_received)
         except AttributeError:
             print("[VisionArtistTab] Warning: set_ui_callback_artist() not available")
 
         # Load existing zones
         self._load_zones()
+
+        print("[VisionArtistTab] Initialized with thread-safe frame buffer")
 
     def _build_ui(self):
         """Build the UI."""
@@ -280,19 +289,57 @@ class VisionArtistTab(QWidget):
 
         return group
 
+    def _on_frame_received(self, frame):
+        """
+        Callback para recibir frames de la cámara Artist.
+        THREAD-SAFE: Solo almacena en buffer, NO toca UI.
+        Llamado desde el thread de CameraLoop.
+        """
+        if frame is None:
+            return
+
+        with self._frame_lock:
+            self._latest_frame = frame.copy()
+            self._frame_updated = True
+
+    # Legacy method name for compatibility
     def update_frame(self, frame):
-        """Callback to receive frames from Artist camera."""
+        """Legacy callback - redirects to thread-safe method."""
+        self._on_frame_received(frame)
+
+    def _on_timer_tick(self):
+        """
+        Timer tick - updates UI from main thread.
+        Calls _update_preview every tick and _update_state every 8 ticks (~250ms).
+        """
+        self._update_preview()
+
+        if not hasattr(self, '_state_tick_counter'):
+            self._state_tick_counter = 0
+        self._state_tick_counter += 1
+        if self._state_tick_counter >= 8:  # ~250ms
+            self._state_tick_counter = 0
+            self._update_state()
+
+    def _update_preview(self):
+        """Update preview from thread-safe buffer. MAIN THREAD ONLY."""
+        frame = None
+        with self._frame_lock:
+            if self._frame_updated and self._latest_frame is not None:
+                frame = self._latest_frame
+                self._frame_updated = False
+
         if frame is None:
             return
 
         self._last_frame = frame.copy()
 
         try:
-            # Draw debug overlay if enabled
+            # Draw debug overlay if enabled (safe: runs in GUI thread)
             if self._debug_overlay_enabled:
                 frame = self._draw_debug_overlay(frame)
 
-            # Update the ZoneEditor with the frame
+            # Update the ZoneEditor with the frame (safe: runs in GUI thread)
             self.zone_editor.set_frame(frame)
         except Exception as e:
             print(f"[VisionArtistTab] Error updating frame: {e}")
