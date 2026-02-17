@@ -1,5 +1,7 @@
 # tempo/kick_detector.py
-# KickPulseDetector V14 - Sample-accurate kick detection with MAD threshold
+# KickPulseDetector V16 - Hardened dual-gate detection + env-configurable params
+# V16: baseline×R dual-gate, warmup/k/ratio configurable via env, logs OFF by default
+# V15: Debug rate counter (DEBUG_KICK=1)
 # V14: Sample-accurate timestamps using block_start_ts + sample_idx/sr
 # For 911 Fiesta TapTempo robust implementation
 
@@ -50,9 +52,13 @@ class KickPulseDetector:
             history_size: Number of samples for energy history (MAD calculation)
         """
         self._debounce_ms = debounce_ms
-        self._threshold_k = threshold_k
         self._lp_cutoff_hz = lp_cutoff_hz
         self._history_size = history_size
+
+        # V16: Env-configurable params (override constructor defaults)
+        self._threshold_k = float(os.environ.get("KICK_K", str(threshold_k)))
+        self._baseline_ratio = float(os.environ.get("KICK_RATIO", "3.0"))
+        self._warmup_min = int(os.environ.get("KICK_WARMUP", "5"))
 
         # Energy history for MAD calculation
         self._energy_history: Deque[float] = deque(maxlen=history_size)
@@ -68,28 +74,28 @@ class KickPulseDetector:
         self._total_kicks: int = 0
         self._last_energy: float = 0.0
         self._last_threshold: float = 0.0
+        self._last_baseline: float = 0.0
 
-        # V15: Debug rate counter (DEBUG_KICK=1)
+        # V16: Debug diagnostics (DEBUG_KICK=1), logs OFF by default
         self._debug_kick = os.environ.get("DEBUG_KICK", "0") == "1"
         self._debug_recent: Deque[float] = deque()
         self._debug_last_log: float = 0.0
 
-        print(f"[KickDetector] V14 init (debounce={debounce_ms:.0f}ms, k={threshold_k:.1f}, lp={lp_cutoff_hz:.0f}Hz, debug={'ON' if self._debug_kick else 'off'})")
+        print(f"[KickDetector] V16 init (debounce={debounce_ms:.0f}ms, k={self._threshold_k:.1f}, ratio={self._baseline_ratio:.1f}, warmup={self._warmup_min}, lp={lp_cutoff_hz:.0f}Hz, debug={'ON' if self._debug_kick else 'off'})")
 
     def process_audio(self, block: np.ndarray, sr: int, block_start_ts: float = None) -> bool:
         """
-        Process audio block to detect kick onsets.
+        V16: Dual-gate kick detection.
 
-        V14: Sample-accurate timestamps using block_start_ts + sample_idx/sr.
-
-        Uses low-band energy with MAD-based adaptive threshold.
-        Thread-safe: can be called from audio thread.
+        HIT requires BOTH:
+          1. energy > MAD threshold  (adaptive to history)
+          2. energy > baseline × R   (relative to THIS block's floor)
 
         Args:
             block: Audio samples (mono or stereo)
             sr: Sample rate
-            block_start_ts: Monotonic timestamp at start of block (for sample-accurate timing)
-                           If None, uses time.monotonic() (legacy behavior)
+            block_start_ts: Monotonic timestamp at start of block.
+                           If None, uses time.monotonic() (legacy).
 
         Returns:
             bool: True if kick was detected
@@ -97,7 +103,6 @@ class KickPulseDetector:
         if block is None or len(block) == 0:
             return False
 
-        # V14: Capture fallback timestamp early if not provided
         if block_start_ts is None:
             block_start_ts = time.monotonic()
 
@@ -110,79 +115,77 @@ class KickPulseDetector:
             return False
 
         block_len = len(x)
-        block_ms = (block_len / sr) * 1000.0
 
-        # Simple low-pass for kick detection
-        # Moving average with window ~lp_cutoff_hz
+        # Moving average LP for kick band
         win_samples = max(1, int(sr / self._lp_cutoff_hz))
 
         if len(x) < win_samples:
             return False
 
-        # Compute envelope: abs + smoothing
+        # Envelope: abs + smoothing
         env = np.abs(x)
 
-        # Simple moving average for low-pass effect
         kernel = np.ones(win_samples, dtype=np.float32) / win_samples
         if len(env) > len(kernel):
             env_smooth = np.convolve(env, kernel, mode='valid')
-            # V14: Track peak sample index for sample-accurate timing
             peak_idx_in_conv = int(np.argmax(env_smooth))
-            # Adjust for convolution offset (mode='valid' shifts by kernel_size//2)
             sample_idx_peak = peak_idx_in_conv + (win_samples // 2)
             energy = float(env_smooth[peak_idx_in_conv])
+            # V16: baseline = median of smoothed envelope in this block
+            baseline = float(np.median(env_smooth))
         else:
             sample_idx_peak = int(np.argmax(env))
             energy = float(np.max(env))
+            baseline = float(np.median(env))
 
         self._last_energy = energy
+        self._last_baseline = baseline
 
         # Add to history
         self._energy_history.append(energy)
 
-        # Need at least 10 samples for MAD
-        if len(self._energy_history) < 10:
+        # V16: Configurable warmup (default 5, was 10)
+        if len(self._energy_history) < self._warmup_min:
             return False
 
-        # Calculate MAD-based threshold
+        # MAD-based threshold
         history_arr = np.array(self._energy_history)
         median = float(np.median(history_arr))
         mad = float(np.median(np.abs(history_arr - median)))
 
-        # Robust threshold: median + k * 1.4826 * MAD
-        # 1.4826 converts MAD to sigma-equivalent for normal distribution
         threshold = median + self._threshold_k * 1.4826 * max(mad, 1e-6)
         self._last_threshold = threshold
 
-        # V14: Sample-accurate kick timestamp
+        # Sample-accurate kick timestamp
         kick_ts = block_start_ts + (sample_idx_peak / sr)
 
-        # Check for kick (energy above threshold)
+        # Debounce
         dt_ms = (kick_ts - self._last_kick_ts) * 1000.0 if self._last_kick_ts > 0 else 9999.0
 
-        if energy > threshold and dt_ms >= self._debounce_ms:
+        # V16: Dual-gate — BOTH conditions required
+        baseline_thresh = baseline * self._baseline_ratio
+        hit = (energy > threshold
+               and energy > baseline_thresh
+               and dt_ms >= self._debounce_ms)
+
+        # V16: Debug diagnostics every 2s (fires even without kick)
+        if self._debug_kick:
+            now_dbg = time.monotonic()
+            if hit:
+                self._debug_recent.append(now_dbg)
+            # Purge older than 2s
+            cutoff = now_dbg - 2.0
+            while self._debug_recent and self._debug_recent[0] < cutoff:
+                self._debug_recent.popleft()
+            if now_dbg - self._debug_last_log >= 2.0:
+                self._debug_last_log = now_dbg
+                print(f"[KickDetector] energy={energy:.4f} baseline={baseline:.4f} median={median:.4f} mad={mad:.5f} thresh={threshold:.4f} bR={baseline_thresh:.4f} kicks_2s={len(self._debug_recent)}")
+
+        if hit:
             self._last_kick_ts = kick_ts
             self._total_kicks += 1
-
-            # Push to thread-safe queue
             with self._queue_lock:
                 self._kick_queue.append(kick_ts)
-
-            print(f"[KickDetector] KICK ts={kick_ts:.3f} idx={sample_idx_peak} block_start={block_start_ts:.3f} block_ms={block_ms:.1f}")
-
-            # V15: Debug rate counter
-            if self._debug_kick:
-                now_dbg = time.monotonic()
-                self._debug_recent.append(now_dbg)
-                # Purge older than 1s
-                cutoff = now_dbg - 1.0
-                while self._debug_recent and self._debug_recent[0] < cutoff:
-                    self._debug_recent.popleft()
-                # Log at most once per second
-                if now_dbg - self._debug_last_log >= 1.0:
-                    self._debug_last_log = now_dbg
-                    print(f"[KickDetector] kicks_per_sec={len(self._debug_recent)} median={median:.4f} threshold={threshold:.4f}")
-
             return True
 
         return False
