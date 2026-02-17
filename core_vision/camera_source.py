@@ -7,6 +7,7 @@ Phase 6.9 - Robust stop mechanism for MJPEGSource
 Phase 6.10 - USB REMOVED, MJPEG only (ip_only mode enforced)
 Phase 6.11 - RTSP support + unified low-latency buffer (queue maxsize=1)
 Phase 6.13 - PyAV-based RTSP with VMS-grade low latency
+Phase 6.16 - Serialize RTSP handshake, eliminate cross-thread container.close
 """
 import cv2
 import numpy as np
@@ -25,6 +26,12 @@ try:
 except ImportError:
     PYAV_AVAILABLE = False
     print("[CameraSource] WARNING: PyAV not available, RTSP will use OpenCV fallback")
+
+# Phase 6.16: Global lock to serialize RTSP handshakes (av.open).
+# FFmpeg's avformat RTSP negotiation is not reliably thread-safe
+# under concurrent initialization. Only av.open() is serialized;
+# demux/decode run freely in their own threads after the lock is released.
+_RTSP_CONNECT_LOCK = threading.Lock()
 
 
 class CameraSource(ABC):
@@ -1194,24 +1201,22 @@ class RTSPSourcePyAV(CameraSource):
     def stop(self) -> None:
         """
         Detiene el thread de captura de forma thread-safe.
-        Phase 6.15: Cierra container ANTES del join para desbloquear reads FFmpeg.
+
+        Phase 6.16: NO cerrar container desde este thread.
+        container.close() cross-thread vs demux() causa use-after-free / segfault.
+        El cierre real ocurre dentro de _capture_loop (mismo thread que demux).
+        Con read_timeout=5.0, el thread se desbloquea solo al detectar _stop_event.
         """
         print(f"[RTSPSourcePyAV] STOPPING: {self._safe_url()}")
         self._stop_event.set()
 
-        # Forzar cierre del container para desbloquear el thread si está en av.read()
-        if self._container is not None:
-            try:
-                self._container.close()
-            except Exception as e:
-                print(f"[RTSPSourcePyAV] WARNING closing container in stop(): {e}")
-            finally:
-                self._container = None
+        # NO llamar container.close() aquí — el capture thread lo cierra al salir.
+        # Con read_timeout=5.0s, demux() retornará en ≤5s y chequeará _stop_event.
 
         if self._thread:
-            self._thread.join(timeout=2.0)
+            self._thread.join(timeout=8.0)
             if self._thread.is_alive():
-                print(f"[RTSPSourcePyAV] CRITICAL: thread still alive after join(2s) — posible zombie")
+                print(f"[RTSPSourcePyAV] CRITICAL: thread still alive after join(8s) — posible zombie")
             self._thread = None
 
         self._opened = False
@@ -1307,7 +1312,11 @@ class RTSPSourcePyAV(CameraSource):
         return options
 
     def _capture_loop(self):
-        """Thread principal de captura RTSP PyAV."""
+        """
+        Thread principal de captura RTSP PyAV.
+        Phase 6.16: Container SIEMPRE se cierra aquí (mismo thread que demux/decode).
+        Nunca desde otro thread — evita use-after-free en FFmpeg.
+        """
         print(f"[RTSPSourcePyAV] Thread started: {threading.current_thread().name}")
 
         while not self._stop_event.is_set():
@@ -1316,9 +1325,9 @@ class RTSPSourcePyAV(CameraSource):
             except Exception as e:
                 if not self._stop_event.is_set():
                     print(f"[RTSPSourcePyAV] Capture loop error: {e}")
-
-            # Cleanup container INSIDE thread (thread-safe)
-            self._release_container_internal()
+            finally:
+                # CRITICAL: Cerrar container SIEMPRE dentro de este thread
+                self._release_container_internal()
 
             reconnect_requested = self._reconnect_event.is_set()
             if reconnect_requested:
@@ -1360,12 +1369,21 @@ class RTSPSourcePyAV(CameraSource):
         options = self._get_ffmpeg_options()
         print(f"[RTSPSourcePyAV] FFmpeg options: {options}")
 
+        # Phase 6.16: Serialize RTSP handshake globally.
+        # av.open() hace RTSP DESCRIBE/SETUP/PLAY + codec init.
+        # FFmpeg no es confiable bajo inicialización RTSP concurrente.
+        # Solo el open se serializa; demux/decode corren libres después.
         try:
-            self._container = av.open(
-                self.url,
-                options=options,
-                timeout=(self.connect_timeout, None)
-            )
+            with _RTSP_CONNECT_LOCK:
+                if self._stop_event.is_set():
+                    return
+                print(f"[RTSPSourcePyAV] Lock acquired, opening stream...")
+                self._container = av.open(
+                    self.url,
+                    options=options,
+                    timeout=(self.connect_timeout, 5.0)
+                )
+            print(f"[RTSPSourcePyAV] Lock released, stream open")
         except Exception as e:
             print(f"[RTSPSourcePyAV] Failed to open: {e}")
             return
@@ -1381,8 +1399,9 @@ class RTSPSourcePyAV(CameraSource):
             print(f"[RTSPSourcePyAV] No video stream found")
             return
 
-        # Configure for low latency decoding
-        video_stream.thread_type = "AUTO"
+        # Phase 6.16: SLICE threading — less internal FFmpeg threads,
+        # reduces race risk during concurrent decode across 3 cameras.
+        video_stream.thread_type = "SLICE"
 
         width = video_stream.codec_context.width
         height = video_stream.codec_context.height
