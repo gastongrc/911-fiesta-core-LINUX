@@ -3,6 +3,7 @@
 # V14: Sample-accurate timestamps using block_start_ts + sample_idx/sr
 # For 911 Fiesta TapTempo robust implementation
 
+import os
 import time
 import threading
 import numpy as np
@@ -68,7 +69,12 @@ class KickPulseDetector:
         self._last_energy: float = 0.0
         self._last_threshold: float = 0.0
 
-        print(f"[KickDetector] V14 init (debounce={debounce_ms:.0f}ms, k={threshold_k:.1f}, lp={lp_cutoff_hz:.0f}Hz)")
+        # V15: Debug rate counter (DEBUG_KICK=1)
+        self._debug_kick = os.environ.get("DEBUG_KICK", "0") == "1"
+        self._debug_recent: Deque[float] = deque()
+        self._debug_last_log: float = 0.0
+
+        print(f"[KickDetector] V14 init (debounce={debounce_ms:.0f}ms, k={threshold_k:.1f}, lp={lp_cutoff_hz:.0f}Hz, debug={'ON' if self._debug_kick else 'off'})")
 
     def process_audio(self, block: np.ndarray, sr: int, block_start_ts: float = None) -> bool:
         """
@@ -163,6 +169,20 @@ class KickPulseDetector:
                 self._kick_queue.append(kick_ts)
 
             print(f"[KickDetector] KICK ts={kick_ts:.3f} idx={sample_idx_peak} block_start={block_start_ts:.3f} block_ms={block_ms:.1f}")
+
+            # V15: Debug rate counter
+            if self._debug_kick:
+                now_dbg = time.monotonic()
+                self._debug_recent.append(now_dbg)
+                # Purge older than 1s
+                cutoff = now_dbg - 1.0
+                while self._debug_recent and self._debug_recent[0] < cutoff:
+                    self._debug_recent.popleft()
+                # Log at most once per second
+                if now_dbg - self._debug_last_log >= 1.0:
+                    self._debug_last_log = now_dbg
+                    print(f"[KickDetector] kicks_per_sec={len(self._debug_recent)} median={median:.4f} threshold={threshold:.4f}")
+
             return True
 
         return False
