@@ -308,6 +308,7 @@ try:
     from tempo.auto_clock import AutoClock
     from tempo.tap_bridge import TapBridge
     from tempo.kick_detector import KickPulseDetector
+    from tempo.tap_sender import TapTempoSender
     from clock_widget import ClockWidget
     TAP_TEMPO_AVAILABLE = True
 except Exception as e:
@@ -316,6 +317,7 @@ except Exception as e:
     AutoClock = None
     TapBridge = None
     KickPulseDetector = None
+    TapTempoSender = None
     ClockWidget = None
 try:
     from cues_monitor_tab import create_cues_monitor_tab
@@ -658,13 +660,16 @@ class Main(QMainWindow):
                 ) if KickPulseDetector else None
                 # TapBridge v3: pasa auto_clock para gating por lock state
                 self.tap_bridge = TapBridge(self.avolites, self.auto_clock)
+                # TapTempoSender: sends tap bursts to Titan on tempo change
+                self.tap_sender = TapTempoSender() if TapTempoSender else None
                 # V11.1: Edge detection state for hit registration
                 self._prev_is_golpe = False
-                print("[MAIN] AutoClock v9 + KickDetector V13 + TapBridge v3 inicializados")
+                print("[MAIN] AutoClock v9 + KickDetector V13 + TapBridge v3 + TapSender v1 inicializados")
             except Exception as e:
                 self.auto_clock = None
                 self.kick_detector = None
                 self.tap_bridge = None
+                self.tap_sender = None
                 self._prev_is_golpe = False
                 print(f"[MAIN] Error inicializando AutoClock/KickDetector/TapBridge: {e}")
         else:
@@ -3815,6 +3820,11 @@ class Main(QMainWindow):
                 # Update widget display
                 if hasattr(self, "clock_widget") and self.clock_widget:
                     self.clock_widget.update_display()
+
+                # TapTempoSender: observe state and fire burst if needed
+                if hasattr(self, "tap_sender") and self.tap_sender:
+                    ui = self.auto_clock.get_ui_state()
+                    self.tap_sender.update(ui.lock_state, ui.interval_ms)
             except:
                 pass
 
