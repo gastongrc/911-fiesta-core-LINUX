@@ -252,7 +252,7 @@ fi
 # Ensure fiesta911 user is in required groups
 GROUPS_LIST="audio video"
 if [[ "${INSTALL_PROFILE}" == "show" ]]; then
-    GROUPS_LIST="audio video render"
+    GROUPS_LIST="audio video render tty"
 fi
 
 for grp in ${GROUPS_LIST}; do

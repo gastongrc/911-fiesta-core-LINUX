@@ -39,11 +39,31 @@ fi
 # ---------------------------------------------------------------------------
 if [[ -z "${DISPLAY:-}" ]]; then
     err "No DISPLAY set. SHOW requires Xorg (startx via xinitrc_show)."
+    err "  If running from SSH: export DISPLAY=:0 && xhost +local:"
     exit 1
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Qt environment
+# 3. Verify user groups (warn only, don't block)
+# ---------------------------------------------------------------------------
+CURRENT_USER=$(whoami)
+MISSING_GROUPS=""
+for grp in video tty render audio; do
+    if getent group "${grp}" >/dev/null 2>&1; then
+        if ! id -nG "${CURRENT_USER}" 2>/dev/null | grep -qw "${grp}"; then
+            MISSING_GROUPS="${MISSING_GROUPS} ${grp}"
+        fi
+    fi
+done
+
+if [[ -n "${MISSING_GROUPS}" ]]; then
+    log "WARN: User '${CURRENT_USER}' is NOT in groups:${MISSING_GROUPS}"
+    log "  Fix: sudo usermod -aG video,tty,render,audio ${CURRENT_USER}"
+    log "  (Xorg may fail without video+tty groups)"
+fi
+
+# ---------------------------------------------------------------------------
+# 4. Qt environment — NEVER use offscreen for GUI
 # ---------------------------------------------------------------------------
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
 # Disable Qt auto-scaling: force 1:1 pixel mapping to physical framebuffer.
@@ -53,12 +73,20 @@ export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
 export QT_AUTO_SCREEN_SCALE_FACTOR=0
 export QT_SCALE_FACTOR=1
 
+# Safety: refuse to run with offscreen (would be invisible GUI)
+if [[ "${QT_QPA_PLATFORM}" == "offscreen" ]]; then
+    err "QT_QPA_PLATFORM=offscreen — refusing to launch invisible GUI."
+    err "  Unset the variable or set QT_QPA_PLATFORM=xcb"
+    exit 1
+fi
+
 # ---------------------------------------------------------------------------
-# 4. Launch
+# 5. Launch
 # ---------------------------------------------------------------------------
 log "Starting 911 Fiesta SHOW GUI ..."
 log "  DISPLAY=${DISPLAY}"
 log "  QT_QPA_PLATFORM=${QT_QPA_PLATFORM}"
+log "  User=${CURRENT_USER} Groups=$(id -nG 2>/dev/null || echo 'unknown')"
 log "  Venv: ${VENV_DIR}"
 log "  Working dir: ${FIESTA_HOME}"
 
