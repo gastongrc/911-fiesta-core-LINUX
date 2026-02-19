@@ -277,33 +277,39 @@ log "Systemd service installed and enabled."
 if [[ "${INSTALL_PROFILE}" == "show" ]]; then
     log "Configuring SHOW kiosk (Xorg + openbox, no desktop environment) ..."
 
-    # --- show.target ---
+    # --- show.target (custom systemd target) ---
     cp "${FIESTA_HOME}/systemd/show.target" /etc/systemd/system/show.target
     chmod 644 /etc/systemd/system/show.target
     log "Installed show.target."
 
-    # --- Autologin on TTY1 via agetty ---
-    GETTY_DROP_IN="/etc/systemd/system/getty@tty1.service.d"
-    mkdir -p "${GETTY_DROP_IN}"
-    cp "${FIESTA_HOME}/systemd/show-getty-autologin.conf" \
-       "${GETTY_DROP_IN}/autologin.conf"
-    chmod 644 "${GETTY_DROP_IN}/autologin.conf"
-    log "Installed getty@tty1 autologin drop-in."
+    # --- show-gui.service (Xorg + openbox + app, managed by systemd) ---
+    cp "${FIESTA_HOME}/systemd/show-gui.service" /etc/systemd/system/show-gui.service
+    chmod 644 /etc/systemd/system/show-gui.service
+    systemctl enable show-gui.service 2>/dev/null || true
+    log "Installed and enabled show-gui.service."
 
-    # --- .xinitrc (Xorg session: openbox + run_show.sh) ---
+    # --- .xinitrc (Xorg session: xrandr + openbox + run_show.sh) ---
     cp "${FIESTA_HOME}/scripts/xinitrc_show" "${FIESTA_HOME}/.xinitrc"
     chown "${FIESTA_USER}:${FIESTA_USER}" "${FIESTA_HOME}/.xinitrc"
     chmod 755 "${FIESTA_HOME}/.xinitrc"
     log "Installed .xinitrc for ${FIESTA_USER}."
 
-    # --- Xorg monitor config (force 1920x1080 at framebuffer level) ---
+    # --- Xorg monitor config (driver-agnostic, 1920x1080) ---
     XORG_CONF_DIR="/etc/X11/xorg.conf.d"
     mkdir -p "${XORG_CONF_DIR}"
     cp "${FIESTA_HOME}/xorg/10-monitor.conf" "${XORG_CONF_DIR}/10-monitor.conf"
     chmod 644 "${XORG_CONF_DIR}/10-monitor.conf"
     log "Installed Xorg monitor config (1920x1080) to ${XORG_CONF_DIR}/."
 
-    # --- .bash_profile (auto-startx on TTY1) ---
+    # --- Autologin on TTY1 (fallback: manual startx from console) ---
+    GETTY_DROP_IN="/etc/systemd/system/getty@tty1.service.d"
+    mkdir -p "${GETTY_DROP_IN}"
+    cp "${FIESTA_HOME}/systemd/show-getty-autologin.conf" \
+       "${GETTY_DROP_IN}/autologin.conf"
+    chmod 644 "${GETTY_DROP_IN}/autologin.conf"
+    log "Installed getty@tty1 autologin drop-in (fallback)."
+
+    # --- .bash_profile (fallback: auto-startx if logged in on TTY1) ---
     BASH_PROFILE="${FIESTA_HOME}/.bash_profile"
     STARTX_MARKER="# 911fiesta-kiosk-startx"
     if [[ -f "${BASH_PROFILE}" ]] && grep -q "${STARTX_MARKER}" "${BASH_PROFILE}"; then
@@ -311,14 +317,14 @@ if [[ "${INSTALL_PROFILE}" == "show" ]]; then
     else
         cat >> "${BASH_PROFILE}" <<'PROFILE'
 
-# Auto-start Xorg on TTY1 (SHOW kiosk mode)
+# Fallback: auto-start Xorg on TTY1 if show-gui.service didn't start X
 # 911fiesta-kiosk-startx
 if [ -z "$DISPLAY" ] && [ "$(tty)" = "/dev/tty1" ]; then
     exec startx "$HOME/.xinitrc"
 fi
 PROFILE
         chown "${FIESTA_USER}:${FIESTA_USER}" "${BASH_PROFILE}"
-        log "Added startx block to .bash_profile."
+        log "Added startx block to .bash_profile (fallback)."
     fi
 
     # --- Disable GDM (no desktop manager) ---
@@ -337,12 +343,17 @@ PROFILE
     log "SHOW kiosk configuration complete."
     log ""
     log "  Boot chain:"
-    log "    systemd → show.target → getty@tty1 (autologin)"
-    log "      → .bash_profile → startx → .xinitrc"
-    log "        → openbox → run_show.sh → main.py"
+    log "    systemd → show.target → show-gui.service"
+    log "      → startx → .xinitrc → xrandr + openbox"
+    log "        → run_show.sh → python main.py"
+    log ""
+    log "  Verify:"
+    log "    systemctl status show-gui.service"
+    log "    journalctl -u show-gui.service -f"
     log ""
     log "  Rollback to GNOME:"
     log "    sudo systemctl set-default graphical.target"
+    log "    sudo systemctl disable show-gui.service"
     log "    sudo systemctl enable gdm"
     log "    sudo reboot"
 fi

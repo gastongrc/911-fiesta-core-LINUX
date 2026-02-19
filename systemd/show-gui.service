@@ -1,0 +1,69 @@
+# 911 Fiesta V7 - SHOW GUI Service (Xorg kiosk)
+#
+# Launches Xorg + openbox + 911 Fiesta as fiesta911 user.
+# Managed by systemd — restarts on crash, logs to journal.
+#
+# This replaces the fragile .bash_profile → startx chain.
+# No GDM, no display manager, no desktop environment.
+#
+# Install:
+#   sudo cp /opt/911fiesta/systemd/show-gui.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable show-gui.service
+#
+# Verify:
+#   systemctl status show-gui.service
+#   journalctl -u show-gui.service -f
+
+[Unit]
+Description=911 Fiesta SHOW GUI (Xorg kiosk)
+After=multi-user.target systemd-logind.service
+Wants=systemd-logind.service
+
+# Do NOT run alongside GDM/GNOME
+Conflicts=gdm.service display-manager.service
+
+# Rate-limit restarts
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=fiesta911
+Group=fiesta911
+
+# PAM session is needed for Xorg to access VT/input devices.
+# Without it, startx fails with "Cannot open virtual console" errors.
+PAMName=login
+
+# VT allocation — pin Xorg to VT7 (standard for first X display).
+# Ensures consistent DISPLAY=:0 and avoids fighting with getty on VT1.
+Environment="XORG_VT=vt7"
+
+# startx needs HOME set for .xinitrc and DBUS for session bus
+Environment="HOME=/opt/911fiesta"
+
+WorkingDirectory=/opt/911fiesta
+
+# --- Entrypoint ---
+# startx reads $HOME/.xinitrc which launches openbox + run_show.sh
+# The -- vt7 argument tells Xorg which VT to use.
+ExecStart=/usr/bin/startx /opt/911fiesta/.xinitrc -- :0 vt7 -keeptty -noreset
+
+# --- Restart policy ---
+Restart=on-failure
+RestartSec=5
+
+# --- Logging ---
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=show-gui
+
+# --- TTY access (needed for Xorg without root) ---
+# Give the service access to a virtual terminal
+TTYPath=/dev/tty7
+# The UtmpIdentifier helps logind track the session
+UtmpIdentifier=tty7
+
+[Install]
+WantedBy=show.target

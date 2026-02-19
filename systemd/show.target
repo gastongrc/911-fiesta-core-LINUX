@@ -5,10 +5,8 @@
 #
 # Boot chain:
 #   BIOS → systemd → show.target (default)
-#     → multi-user.target
-#       → getty@tty1 (autologin fiesta911)
-#         → .bash_profile → startx
-#           → .xinitrc → openbox → 911 Fiesta
+#     → multi-user.target (networking, etc.)
+#     → show-gui.service (Xorg + openbox + 911 Fiesta)
 #
 # Activate:
 #   sudo systemctl set-default show.target
@@ -22,5 +20,6 @@
 Description=911 Fiesta SHOW Kiosk
 Requires=multi-user.target
 After=multi-user.target
+Wants=show-gui.service
 Conflicts=graphical.target
 AllowIsolate=yes

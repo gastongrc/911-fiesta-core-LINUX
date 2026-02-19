@@ -10,37 +10,31 @@ It includes audio analysis, vision/camera pipelines, and the lighting cue engine
 **User:** `fiesta911` (login user with `/bin/bash` shell)
 **Target OS:** Ubuntu 22.04.5 LTS (amd64)
 
-### Two Launch Paths
-
-| Path | When to use |
-|------|-------------|
-| **Kiosk (primary)** | Production Core911: no desktop, boots straight to app |
-| **GDM + XDG autostart** | Dev/test: Ubuntu Desktop with GNOME, app auto-starts at login |
-
-The `install_911fiesta.sh --profile show` deploys the **kiosk** path by default.
-
 ---
 
 ## Architecture: API vs SHOW
 
+Two independent processes, two independent systemd units:
+
 ```
-                  ┌─────────────────────────────────────────┐
-                  │           Ubuntu 22.04 LTS               │
-                  │                                          │
-  systemd ──────► │  911fiesta.service (headless API)        │
-  (always on)     │    uvicorn api.main:app :8000            │
-                  │    QT_QPA_PLATFORM=offscreen             │
-                  │                                          │
-  show.target ──► │  getty@tty1 autologin → .bash_profile    │
-  (kiosk only)    │    → startx → .xinitrc → openbox         │
-                  │      → run_show.sh → python main.py      │
-                  │        QT_QPA_PLATFORM=xcb               │
-                  └─────────────────────────────────────────┘
+                  ┌──────────────────────────────────────────┐
+                  │           Ubuntu 22.04 LTS                │
+                  │                                           │
+  multi-user ──► │  911fiesta.service (headless API)          │
+  .target         │    uvicorn api.main:app :8000              │
+                  │    QT_QPA_PLATFORM=offscreen               │
+                  │                                           │
+  show.target ──► │  show-gui.service (Xorg + GUI)            │
+                  │    startx → .xinitrc → openbox             │
+                  │      → run_show.sh → python main.py        │
+                  │        QT_QPA_PLATFORM=xcb, DISPLAY=:0     │
+                  └──────────────────────────────────────────┘
 ```
 
-- The **API** runs as a systemd service (headless, no display).
-- The **SHOW GUI** runs as a user session process (requires Xorg + display).
+- **API** (`911fiesta.service`): headless FastAPI on port 8000. No display needed.
+- **SHOW GUI** (`show-gui.service`): PySide6 GUI on Xorg. Requires physical display.
 - They do NOT conflict — different entry points, different processes.
+- `show.target` conflicts with `graphical.target` (no GDM/GNOME alongside).
 
 ---
 
@@ -61,7 +55,7 @@ sudo passwd fiesta911
 sudo bash scripts/install_911fiesta.sh --profile show --torch-gpu
 
 # 5. Verify
-bash scripts/healthcheck_911fiesta.sh
+bash scripts/diag_show_boot.sh
 
 # 6. Reboot — kiosk starts automatically
 sudo reboot
@@ -69,21 +63,29 @@ sudo reboot
 
 ---
 
-## Kiosk Boot Chain (Primary)
+## Kiosk Boot Chain
 
 ```
-BIOS → systemd → show.target → multi-user.target
-  → getty@tty1 (autologin fiesta911)
-    → .bash_profile (checks TTY1 + no DISPLAY)
-      → startx ~/.xinitrc
-        → xset (disable blanking/DPMS)
-        → xrandr (detect connected output, set 1920x1080)
-        → openbox (minimal WM)
-        → run_show.sh
-          → verify venv, DISPLAY, user groups
-          → QT_QPA_PLATFORM=xcb
-          → python main.py
+BIOS → systemd → show.target (default target)
+  ├── multi-user.target (networking, 911fiesta.service API, etc.)
+  └── show-gui.service
+        → startx /opt/911fiesta/.xinitrc -- :0 vt7
+          → xset (disable blanking/DPMS)
+          → xrandr (detect connected output, set 1920x1080)
+          → openbox (minimal WM)
+          → run_show.sh
+            → verify venv, DISPLAY, user groups
+            → QT_QPA_PLATFORM=xcb
+            → python main.py (PySide6 GUI)
 ```
+
+### Key: systemd manages everything
+
+- `show-gui.service` is a proper systemd service — not a `.bash_profile` hack
+- Logs go to journal: `journalctl -u show-gui.service -f`
+- Restarts on crash: `Restart=on-failure`, `RestartSec=5`
+- Clean dependency: `show.target` → `Wants=show-gui.service`
+- No GDM, no display manager, no desktop environment
 
 ### Key: Dynamic Video Output Detection
 
@@ -93,42 +95,39 @@ CONNECTED_OUTPUT=$(xrandr --query | grep " connected" | head -n1 | awk '{print $
 xrandr --output "${CONNECTED_OUTPUT}" --mode 1920x1080 --rate 60
 ```
 
-This works with **any** output name: `HDMI-0`, `HDMI-1`, `DP-1`, `VGA-1`, etc.
-No hardcoded output names.
+Works with **any** output: `HDMI-0`, `HDMI-1`, `DP-1`, `VGA-1`, etc.
 
-### Key: Driver-Agnostic Xorg Config
+### Key: Driver-Agnostic Xorg
 
-`xorg/10-monitor.conf` does NOT hardcode `Driver "nvidia"`. Xorg auto-detects
-the correct driver (nvidia, modesetting, intel, amdgpu). The config only sets
-the preferred resolution.
+`xorg/10-monitor.conf` does NOT hardcode any GPU driver. Xorg auto-detects
+the correct driver (nvidia, modesetting, intel, amdgpu).
 
 ---
 
-## GDM + XDG Autostart (Alternative)
+## GDM + XDG Autostart (Alternative — dev/test only)
 
 For development machines with GNOME desktop:
 
 ```bash
-# 1. Install XDG autostart file
+# 1. Disable show-gui.service (conflicts with GDM)
+sudo systemctl disable show-gui.service
+
+# 2. Set graphical target
+sudo systemctl set-default graphical.target
+
+# 3. Install XDG autostart file
 sudo cp /opt/911fiesta/systemd/911fiesta-show.desktop /etc/xdg/autostart/
 
-# 2. Configure GDM autologin
+# 4. Configure GDM autologin
 sudo nano /etc/gdm3/custom.conf
 # Set:
 #   [daemon]
 #   AutomaticLoginEnable=true
 #   AutomaticLogin=fiesta911
 
-# 3. Reboot
+# 5. Reboot
 sudo reboot
 ```
-
-> **Note:** LightDM uses `/etc/lightdm/lightdm.conf`:
-> ```ini
-> [Seat:*]
-> autologin-user=fiesta911
-> autologin-user-timeout=0
-> ```
 
 ---
 
@@ -139,29 +138,48 @@ The `fiesta911` user MUST be in these groups:
 | Group | Why |
 |-------|-----|
 | `video` | Access to GPU device nodes (`/dev/dri/*`) |
-| `tty` | Access to TTY for startx without root |
+| `tty` | Access to TTY/VT for Xorg |
 | `render` | Access to GPU render nodes (DRM) |
 | `audio` | Access to USB audio devices (ALSA) |
 
 The bootstrap script adds these automatically. To verify/fix:
 
 ```bash
-# Check
 id fiesta911
-
-# Fix if missing
+# Fix if missing:
 sudo usermod -aG video,tty,render,audio fiesta911
-# User must log out and back in for group changes to take effect
+# Log out and back in for changes to take effect
 ```
 
 ---
 
-## Manual Launch
-
-For testing only (autologin should be configured on production machines):
+## Service Management
 
 ```bash
-# As the fiesta911 user, in a graphical session:
+# Status
+systemctl status show-gui.service
+systemctl status 911fiesta.service
+
+# Logs (live)
+journalctl -u show-gui.service -f
+journalctl -u 911fiesta.service -f
+
+# Restart GUI
+sudo systemctl restart show-gui.service
+
+# Stop GUI (Xorg stops too)
+sudo systemctl stop show-gui.service
+
+# Diagnostic
+bash /opt/911fiesta/scripts/diag_show_boot.sh
+```
+
+---
+
+## Manual Launch (testing only)
+
+```bash
+# As fiesta911 user, in a graphical session:
 bash /opt/911fiesta/scripts/run_show.sh
 
 # Or directly:
@@ -177,7 +195,7 @@ python main.py
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `DISPLAY` | (from session) | X11 display server |
+| `DISPLAY` | `:0` (from startx) | X11 display server |
 | `QT_QPA_PLATFORM` | `xcb` | Qt platform plugin (must be `xcb` for GUI) |
 | `QT_AUTO_SCREEN_SCALE_FACTOR` | `0` | HiDPI scaling (disabled for kiosk) |
 | `QT_SCALE_FACTOR` | `1` | Manual scale factor (1:1 pixel mapping) |
@@ -191,62 +209,70 @@ python main.py
 
 ```bash
 sudo bash /opt/911fiesta/scripts/update_911fiesta.sh --profile show
-# If GPU torch needs updating:
-sudo bash /opt/911fiesta/scripts/update_911fiesta.sh --profile show --torch-gpu
+sudo systemctl restart show-gui.service
 ```
 
 ---
 
 ## Troubleshooting
 
-### Xorg fails to start (startx crash)
+### Run diagnostics first
+
+```bash
+bash /opt/911fiesta/scripts/diag_show_boot.sh
+```
+
+### show-gui.service fails to start
+
+```bash
+journalctl -u show-gui.service -b --no-pager | tail -50
+```
+
+Common causes:
+- Missing groups: `id fiesta911` must show `video tty render audio`
+- VT conflict: Another X server on `:0` or `vt7`. Stop GDM: `sudo systemctl stop gdm`
+- Missing Xorg: `which startx` — if not found: `sudo apt install xinit`
+
+### Xorg fails to start
 
 1. Check Xorg log: `cat /var/log/Xorg.0.log | grep "(EE)"`
 2. Check if `10-monitor.conf` is blocking: `sudo rm /etc/X11/xorg.conf.d/10-monitor.conf` and retry
 3. Check user groups: `id fiesta911` — needs `video tty render`
-4. Check NVIDIA driver: `nvidia-smi` — if not found, Xorg will use `modesetting` (OK)
+4. Check NVIDIA driver: `nvidia-smi` — if not found, Xorg uses `modesetting` (OK)
 
 ### "Could not find or load the Qt platform plugin xcb"
 
-Missing xcb libraries. Run:
 ```bash
 sudo apt install libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
     libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
     libxcb-shape0 libxcb-xfixes0
 ```
 
-Or re-run bootstrap: `sudo bash scripts/bootstrap_linux.sh --profile show`
+### "No DISPLAY set"
 
-### "Could not connect to display"
-
-- Ensure you are in a graphical session (not SSH without X forwarding).
-- Check: `echo $DISPLAY` — should be `:0` or `:1`.
-- If running from SSH for testing: `export DISPLAY=:0` and `xhost +local:`.
+- If from `show-gui.service`: check journal for Xorg startup errors
+- If from SSH: `export DISPLAY=:0 && xhost +local:`
 
 ### "QT_QPA_PLATFORM=offscreen — refusing to launch"
 
-The `run_show.sh` script detected that `QT_QPA_PLATFORM=offscreen` is set.
-This happens when the API service's env file leaks into the GUI session.
-Fix: `unset QT_QPA_PLATFORM` or `export QT_QPA_PLATFORM=xcb` before launching.
-
-### PySide6 not found
-
-```bash
-source /opt/911fiesta/.venv/bin/activate
-pip install PySide6==6.9.0
-```
+API env leaked. Fix: `export QT_QPA_PLATFORM=xcb`
 
 ### SHOW starts but no audio
 
-- Check USB audio device: `arecord -l`
-- Ensure fiesta911 is in `audio` group: `id fiesta911`
+- Check USB audio: `arecord -l`
+- Check group: `id fiesta911` — needs `audio`
 - Check config: `/etc/911fiesta/audio_monitor.json`
 
-### SHOW starts but cameras fail
+---
 
-- Check camera connectivity: `ping 192.168.1.110`
-- Check config: `/etc/911fiesta/vision_config.json`
-- Run healthcheck: `bash /opt/911fiesta/scripts/healthcheck_911fiesta.sh`
+## Rollback to GNOME Desktop
+
+```bash
+sudo systemctl disable show-gui.service
+sudo systemctl set-default graphical.target
+sudo systemctl enable gdm
+sudo reboot
+```
 
 ---
 
@@ -256,13 +282,44 @@ pip install PySide6==6.9.0
 |---|---|
 | `main.py` | SHOW entrypoint (PySide6 GUI) |
 | `api/main.py` | API entrypoint (FastAPI, headless) |
-| `scripts/run_show.sh` | GUI wrapper: venv + groups check + display + launch |
-| `scripts/xinitrc_show` | Xorg session: xrandr output detection + openbox + launch |
-| `xorg/10-monitor.conf` | Xorg monitor config (driver-agnostic, 1920x1080) |
+| `systemd/show-gui.service` | **Xorg kiosk service (systemd-managed)** |
+| `systemd/show.target` | Custom kiosk target (Wants show-gui.service) |
 | `systemd/911fiesta.service` | API systemd unit (headless) |
-| `systemd/show.target` | Kiosk systemd target |
-| `systemd/show-getty-autologin.conf` | TTY1 autologin drop-in |
+| `scripts/run_show.sh` | GUI wrapper: venv + groups check + display + launch |
+| `scripts/xinitrc_show` | Xorg session: xrandr + openbox + run_show.sh |
+| `scripts/diag_show_boot.sh` | Boot diagnostics / smoke test |
+| `xorg/10-monitor.conf` | Xorg config (driver-agnostic, 1920x1080) |
+| `systemd/show-getty-autologin.conf` | TTY1 autologin (fallback) |
 | `systemd/911fiesta-show.desktop` | XDG autostart (GDM alternative) |
 | `scripts/bootstrap_linux.sh` | System setup (packages, user, groups) |
-| `scripts/install_911fiesta.sh` | App install (venv, deps, kiosk config) |
-| `scripts/healthcheck_911fiesta.sh` | Validation script |
+| `scripts/install_911fiesta.sh` | App install (deploys show-gui.service) |
+
+## Validation Checklist
+
+After install + reboot, these must all pass:
+
+```bash
+# 1. Default target
+systemctl get-default
+# Expected: show.target
+
+# 2. show-gui.service running
+systemctl status show-gui.service
+# Expected: active (running)
+
+# 3. Xorg running
+pgrep Xorg
+# Expected: PID
+
+# 4. App running
+pgrep -f "python.*main.py"
+# Expected: PID
+
+# 5. Journal clean (no crash loop)
+journalctl -u show-gui.service -b --no-pager | tail -20
+# Expected: startup messages, no errors
+
+# 6. Diagnostics
+bash /opt/911fiesta/scripts/diag_show_boot.sh
+# Expected: ALL CHECKS PASSED
+```
