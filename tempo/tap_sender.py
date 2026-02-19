@@ -1,23 +1,23 @@
 # tempo/tap_sender.py
-# TapTempoSender v2.0 - Transport Clock for Titan BPM sync
+# TapTempoSender v3.0 — Stable burst sender for Titan BPM sync
 #
-# Architecture:
-# - Persistent daemon worker thread (sleeps between taps)
-# - Qt thread calls update() every ~40ms → sets shared state
-# - Worker reads shared state → sends taps at beat-aligned intervals
-# - State machine: IDLE → SYNC_BURST → KEEPALIVE ↔ CHANGE_BURST
+# v2.0 regression: wake.set() every 40ms from update() starved
+# _interruptible_wait(), causing the worker to spin instead of sleep.
+# GIL contention slowed Qt thread → detector/clock degraded → no LOCK.
+# Taps fired at wrong intervals → Titan converged to wrong BPM.
 #
-# Why transport clock:
-# Titan's TapBPM macro needs periodic taps to maintain BPM.
-# A burst-only-on-change design loses sync within seconds.
-# This V2 sends keep-alive taps every N beats while LOCKED.
+# v3.0 fix: NO shared Event between Qt thread and worker.
+# Worker uses time.monotonic() scheduler — zero coupling with tick rate.
+# update() is O(1): writes 2 floats under a lock, nothing else.
+# Worker polls shared state at its own cadence, never spins.
+#
+# Kill switch: TAP_SENDER_ENABLED=0 → sender created but worker is no-op.
 #
 # Endpoint: GET http://{ip}:{port}/titan/script/2/Macros/Run?macroId={macro}
 
 import os
 import time
 import threading
-import logging
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
@@ -25,14 +25,10 @@ from typing import Optional
 import requests
 from requests.adapters import HTTPAdapter
 
-logger = logging.getLogger("TapTempoSender")
-
 
 class SenderState(Enum):
     IDLE = "IDLE"
-    SYNC_BURST = "SYNC_BURST"
-    CHANGE_BURST = "CHANGE_BURST"
-    KEEPALIVE = "KEEPALIVE"
+    BURST = "BURST"
 
 
 @dataclass
@@ -45,106 +41,100 @@ class TapSenderConfig:
     # Burst config
     burst_count: int = int(os.environ.get("TAP_BURST_COUNT", "3"))
 
-    # Keep-alive: send 1 tap every N beats (default 4 = 1 bar)
-    beats_per_tap: int = int(os.environ.get("TAP_BEATS_PER_TAP", "4"))
-
-    # Tempo change detection
+    # Tempo change detection thresholds
     diff_ms: float = float(os.environ.get("TAP_DIFF_MS", "12"))
     diff_ratio: float = float(os.environ.get("TAP_DIFF_RATIO", "0.03"))
 
-    # HTTP
-    connect_timeout: float = 1.0
-    read_timeout: float = 1.0
+    # HTTP timeouts (seconds)
+    connect_timeout: float = 0.8
+    read_timeout: float = 0.8
+
+    # Kill switch: "0" disables all sending
+    enabled: bool = os.environ.get("TAP_SENDER_ENABLED", "1") != "0"
 
 
 class TapTempoSender:
     """
-    Tempo → Titan Transport Clock v2.0
+    Tempo → Titan Burst Sender v3.0
 
-    State machine:
-      IDLE ──(lock achieved)──► SYNC_BURST ──(done)──► KEEPALIVE
-      KEEPALIVE ──(tempo changed)──► CHANGE_BURST ──(done)──► KEEPALIVE
-      ANY ──(lock lost)──► IDLE
+    Behavior:
+      - IDLE while not LOCKED (zero traffic)
+      - On LOCK achieved: BURST of N taps spaced at interval_ms
+      - On tempo change while LOCKED: BURST of N taps at new interval_ms
+      - On LOCK lost: abort any in-progress burst immediately
 
-    Thread model:
-      - update() called from Qt thread every ~40ms: writes shared state
-      - _worker() runs on persistent daemon thread: reads state, sends taps
-      - Anti-spam: never sends faster than 1 tap per beat interval
+    Threading:
+      - update() called from Qt thread: O(1), writes 2 values, NO I/O
+      - _worker() on daemon thread: polls state every 200ms when idle,
+        uses time.monotonic() for precise tap spacing during burst
+      - NO shared Event — worker sleeps independently of tick rate
     """
+
+    # Worker poll interval when idle (seconds)
+    _POLL_S = 0.2
 
     def __init__(self, config: Optional[TapSenderConfig] = None):
         self._cfg = config or TapSenderConfig()
 
-        # --- Shared state (written by Qt thread, read by worker) ---
-        self._state_lock = threading.Lock()
+        # --- Shared state (Qt thread writes, worker reads) ---
+        self._lock = threading.Lock()
         self._lock_state: str = "UNLOCKED"
         self._interval_ms: float = 0.0
-        self._was_locked: bool = False
 
-        # --- Worker-owned state (only touched by worker thread) ---
+        # --- Worker-only state ---
         self._sender_state = SenderState.IDLE
+        self._was_locked: bool = False
         self._last_sent_interval_ms: float = 0.0
         self._burst_remaining: int = 0
 
-        # --- Worker thread control ---
-        self._wake = threading.Event()
-        self._stop_event = threading.Event()
+        # --- Thread control ---
+        self._stop = threading.Event()
 
-        # --- HTTP session (own session, not shared with TitanQueue) ---
+        # --- HTTP session ---
         self._session = requests.Session()
-        adapter = HTTPAdapter(pool_connections=1, pool_maxsize=2, max_retries=0)
+        adapter = HTTPAdapter(pool_connections=1, pool_maxsize=1, max_retries=0)
         self._session.mount("http://", adapter)
-        self._session.headers.update({
-            "Connection": "keep-alive",
-            "User-Agent": "911Fiesta-TapSender/2.0",
-        })
+        self._session.headers["Connection"] = "keep-alive"
 
         # --- Stats ---
-        self._bursts_sent: int = 0
         self._taps_ok: int = 0
-        self._taps_failed: int = 0
+        self._taps_fail: int = 0
+        self._bursts: int = 0
 
         self._url = (
             f"http://{self._cfg.titan_ip}:{self._cfg.titan_port}"
             f"/titan/script/2/Macros/Run?macroId={self._cfg.macro_id}"
         )
 
-        # Start persistent worker
-        self._worker_thread = threading.Thread(
-            target=self._worker,
-            name="TapSender-Worker",
-            daemon=True,
+        # Start worker
+        self._thread = threading.Thread(
+            target=self._worker, name="TapSender", daemon=True
         )
-        self._worker_thread.start()
+        self._thread.start()
 
+        status = "ENABLED" if self._cfg.enabled else "DISABLED (TAP_SENDER_ENABLED=0)"
         print(
-            f"[TapSender] v2.0 transport clock → {self._cfg.titan_ip}:{self._cfg.titan_port} "
+            f"[TapSender] v3.0 {status} → {self._cfg.titan_ip}:{self._cfg.titan_port} "
             f"macro={self._cfg.macro_id} burst={self._cfg.burst_count} "
-            f"keepalive=every {self._cfg.beats_per_tap} beats "
             f"diff={self._cfg.diff_ms}ms/{self._cfg.diff_ratio*100:.0f}%"
         )
 
     # =================================================================
-    # Public API (called from Qt thread, every ~40ms)
+    # Public API — called from Qt thread, every ~40ms
+    # MUST be O(1), NO I/O, NO sleep, NO blocking
     # =================================================================
 
     def update(self, lock_state: str, interval_ms: float):
-        """
-        Called every tick (~40ms) from Qt thread.
-        Writes shared state for worker to consume. Never blocks.
-        """
-        with self._state_lock:
+        """Write state for worker. O(1), never blocks."""
+        with self._lock:
             self._lock_state = lock_state
             self._interval_ms = interval_ms
-        # Wake worker so it can react to state changes
-        self._wake.set()
 
     def stop(self):
-        """Stop worker thread and close HTTP session."""
-        self._stop_event.set()
-        self._wake.set()
-        if self._worker_thread.is_alive():
-            self._worker_thread.join(timeout=2.0)
+        """Graceful shutdown."""
+        self._stop.set()
+        if self._thread.is_alive():
+            self._thread.join(timeout=2.0)
         try:
             self._session.close()
         except Exception:
@@ -153,196 +143,147 @@ class TapTempoSender:
     def get_stats(self) -> dict:
         return {
             "state": self._sender_state.value,
-            "bursts_sent": self._bursts_sent,
+            "enabled": self._cfg.enabled,
+            "bursts": self._bursts,
             "taps_ok": self._taps_ok,
-            "taps_failed": self._taps_failed,
-            "last_sent_interval_ms": self._last_sent_interval_ms,
+            "taps_fail": self._taps_fail,
         }
 
     # =================================================================
-    # Worker thread (persistent, sleeps between taps)
+    # Worker thread — polls shared state, sends HTTP on its own schedule
     # =================================================================
 
     def _worker(self):
-        """
-        Persistent worker loop. Runs on daemon thread.
-        Reads shared state, manages state machine, sends taps.
-        """
-        while not self._stop_event.is_set():
-            # Read shared state
-            with self._state_lock:
+        while not self._stop.is_set():
+            # Kill switch check
+            if not self._cfg.enabled:
+                self._stop.wait(timeout=2.0)
+                continue
+
+            # Read shared state (single lock acquire per iteration)
+            with self._lock:
                 lock_state = self._lock_state
                 interval_ms = self._interval_ms
 
             locked = (lock_state == "LOCKED")
 
-            # === LOCK LOST → IDLE ===
+            # --- LOCK LOST → IDLE ---
             if not locked:
-                if self._sender_state != SenderState.IDLE:
-                    if self._was_locked:
-                        print("[TapSender] lock lost → IDLE")
-                    self._sender_state = SenderState.IDLE
-                    self._burst_remaining = 0
+                if self._was_locked and self._sender_state == SenderState.BURST:
+                    print("[TapSender] ABORT reason=LOCK_LOST")
+                self._sender_state = SenderState.IDLE
                 self._was_locked = False
-                # Sleep until woken by update()
-                self._wake.wait(timeout=1.0)
-                self._wake.clear()
+                self._burst_remaining = 0
+                self._stop.wait(timeout=self._POLL_S)
                 continue
 
-            # === LOCK JUST ACHIEVED → SYNC_BURST ===
+            # --- LOCK JUST ACHIEVED → BURST ---
             if locked and not self._was_locked:
                 self._was_locked = True
-                self._sender_state = SenderState.SYNC_BURST
-                self._burst_remaining = self._cfg.burst_count
-                self._last_sent_interval_ms = interval_ms
-                bpm = 60000.0 / interval_ms if interval_ms > 0 else 0
-                self._bursts_sent += 1
-                print(
-                    f"[TapSender] SYNC_BURST interval={interval_ms:.1f}ms "
-                    f"bpm={bpm:.1f} taps={self._cfg.burst_count}"
-                )
+                self._start_burst(interval_ms, "LOCKED")
+                self._execute_burst(interval_ms)
+                continue
 
-            # === KEEPALIVE: check for tempo change ===
-            if self._sender_state == SenderState.KEEPALIVE:
-                if self._tempo_changed(interval_ms):
-                    self._sender_state = SenderState.CHANGE_BURST
-                    self._burst_remaining = self._cfg.burst_count
-                    self._last_sent_interval_ms = interval_ms
-                    bpm = 60000.0 / interval_ms if interval_ms > 0 else 0
-                    self._bursts_sent += 1
-                    print(
-                        f"[TapSender] CHANGE_BURST interval={interval_ms:.1f}ms "
-                        f"bpm={bpm:.1f} taps={self._cfg.burst_count}"
-                    )
+            # --- LOCKED steady state: check for tempo change ---
+            if self._tempo_changed(interval_ms):
+                self._start_burst(interval_ms, "CHANGE")
+                self._execute_burst(interval_ms)
+                continue
 
-            # === Execute current state ===
-            if self._sender_state in (SenderState.SYNC_BURST, SenderState.CHANGE_BURST):
-                self._do_burst(interval_ms)
-            elif self._sender_state == SenderState.KEEPALIVE:
-                self._do_keepalive(interval_ms)
-            else:
-                # Shouldn't get here while locked, but safety
-                self._wake.wait(timeout=0.5)
-                self._wake.clear()
+            # --- LOCKED, no change: just poll ---
+            self._stop.wait(timeout=self._POLL_S)
 
-    def _do_burst(self, interval_ms: float):
-        """Send remaining burst taps, 1 per beat interval."""
-        while self._burst_remaining > 0 and not self._stop_event.is_set():
-            # Check lock still held
-            with self._state_lock:
+    def _start_burst(self, interval_ms: float, reason: str):
+        """Initialize a burst. Worker-only."""
+        self._sender_state = SenderState.BURST
+        self._burst_remaining = self._cfg.burst_count
+        self._last_sent_interval_ms = interval_ms
+        self._bursts += 1
+        bpm = 60000.0 / interval_ms if interval_ms > 0 else 0
+        print(
+            f"[TapSender] BURST bpm={bpm:.1f} interval_ms={interval_ms:.1f} "
+            f"count={self._cfg.burst_count} reason={reason}"
+        )
+
+    def _execute_burst(self, interval_ms: float):
+        """
+        Send burst_count taps spaced at interval_ms using monotonic clock.
+        Cancels immediately on lock loss or stop.
+        """
+        wait_s = interval_ms / 1000.0 if interval_ms > 0 else 0.5
+
+        while self._burst_remaining > 0 and not self._stop.is_set():
+            t0 = time.monotonic()
+
+            # Check lock before sending
+            with self._lock:
                 if self._lock_state != "LOCKED":
+                    print("[TapSender] ABORT reason=LOCK_LOST")
+                    self._burst_remaining = 0
+                    self._sender_state = SenderState.IDLE
                     return
 
             ok = self._send_tap()
             self._burst_remaining -= 1
 
             if not ok:
-                # Abort burst on HTTP failure
                 self._burst_remaining = 0
-                self._sender_state = SenderState.KEEPALIVE
+                self._sender_state = SenderState.IDLE
                 return
 
-            # Wait 1 beat between taps (except after last)
+            # Precise monotonic wait for next tap (except after last)
             if self._burst_remaining > 0:
-                wait_s = interval_ms / 1000.0
-                if self._interruptible_wait(wait_s):
-                    return  # Stopped or lock lost
+                elapsed = time.monotonic() - t0
+                remaining = wait_s - elapsed
+                if remaining > 0:
+                    # Sleep in <=200ms chunks to allow fast cancellation
+                    deadline = time.monotonic() + remaining
+                    while time.monotonic() < deadline and not self._stop.is_set():
+                        chunk = min(deadline - time.monotonic(), 0.2)
+                        if chunk > 0:
+                            self._stop.wait(timeout=chunk)
+                        # Check lock during wait
+                        with self._lock:
+                            if self._lock_state != "LOCKED":
+                                print("[TapSender] ABORT reason=LOCK_LOST")
+                                self._burst_remaining = 0
+                                self._sender_state = SenderState.IDLE
+                                return
 
-        # Burst complete → KEEPALIVE
-        self._sender_state = SenderState.KEEPALIVE
-
-    def _do_keepalive(self, interval_ms: float):
-        """Wait N beats, send 1 tap, repeat."""
-        # Wait beats_per_tap beats
-        wait_s = (interval_ms * self._cfg.beats_per_tap) / 1000.0
-        if self._interruptible_wait(wait_s):
-            return  # Stopped or lock lost or tempo changed
-
-        # Re-check lock + read fresh interval
-        with self._state_lock:
-            if self._lock_state != "LOCKED":
-                return
-            fresh_interval = self._interval_ms
-
-        # Check for tempo change before sending
-        if self._tempo_changed(fresh_interval):
-            self._sender_state = SenderState.CHANGE_BURST
-            self._burst_remaining = self._cfg.burst_count
-            self._last_sent_interval_ms = fresh_interval
-            bpm = 60000.0 / fresh_interval if fresh_interval > 0 else 0
-            self._bursts_sent += 1
-            print(
-                f"[TapSender] CHANGE_BURST interval={fresh_interval:.1f}ms "
-                f"bpm={bpm:.1f} taps={self._cfg.burst_count}"
-            )
-            return  # Will handle burst on next loop iteration
-
-        self._send_tap()
-
-    def _interruptible_wait(self, seconds: float) -> bool:
-        """
-        Sleep for `seconds` but wake early if stop or wake event fires.
-        Returns True if interrupted (caller should re-evaluate state).
-        """
-        # Split into small chunks to detect lock loss / tempo change quickly
-        # Max chunk = 0.5s so we react within 500ms
-        remaining = seconds
-        while remaining > 0 and not self._stop_event.is_set():
-            chunk = min(remaining, 0.5)
-            self._wake.wait(timeout=chunk)
-            self._wake.clear()
-            remaining -= chunk
-
-            if self._stop_event.is_set():
-                return True
-
-            # Check if lock lost
-            with self._state_lock:
-                if self._lock_state != "LOCKED":
-                    return True
-
-        return self._stop_event.is_set()
+        self._sender_state = SenderState.IDLE
 
     # =================================================================
     # Tempo change detection
     # =================================================================
 
     def _tempo_changed(self, interval_ms: float) -> bool:
-        """True if interval_ms differs enough from last sent."""
         if self._last_sent_interval_ms <= 0:
-            return True
+            return False  # Never sent → wait for first burst via LOCKED edge
         diff = abs(interval_ms - self._last_sent_interval_ms)
         threshold = max(self._cfg.diff_ms,
                         self._last_sent_interval_ms * self._cfg.diff_ratio)
         return diff >= threshold
 
     # =================================================================
-    # HTTP
+    # HTTP — always on worker thread, never on Qt thread
     # =================================================================
 
     def _send_tap(self) -> bool:
-        """Single HTTP GET to Titan Macro Run. Returns True on success."""
         try:
             resp = self._session.get(
                 self._url,
                 timeout=(self._cfg.connect_timeout, self._cfg.read_timeout),
-                verify=False,
             )
             if resp.status_code == 200:
                 self._taps_ok += 1
                 return True
-            else:
-                self._taps_failed += 1
-                print(f"[TapSender] FAIL HTTP {resp.status_code}")
-                return False
+            self._taps_fail += 1
+            print(f"[TapSender] FAIL HTTP {resp.status_code}")
+            return False
         except Exception as e:
-            self._taps_failed += 1
+            self._taps_fail += 1
             print(f"[TapSender] FAIL {e}")
             return False
-
-    # =================================================================
-    # Cleanup
-    # =================================================================
 
     def __del__(self):
         try:

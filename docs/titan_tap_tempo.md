@@ -1,4 +1,30 @@
-# Titan Tap Tempo Integration (v2.0 — Transport Clock)
+# Titan Tap Tempo Integration (v3.0 — Stable Burst Sender)
+
+## v2.0 → v3.0 regression fix
+
+v2.0 introduced a regression: `wake.set()` called from `update()` every 40ms
+starved the worker's `_interruptible_wait()`, causing it to spin instead of
+sleep. GIL contention slowed the Qt main thread, degrading the kick detector
+and AutoClock. LOCK rarely achieved; taps fired at wrong intervals.
+
+v3.0 fix:
+- **NO shared Event** between Qt thread and worker
+- Worker uses `time.monotonic()` for tap spacing + `_stop.wait(timeout)` for idle polling
+- `update()` is O(1): writes 2 values under a lock, nothing else
+- Removed keepalive (send only on lock-achieved and tempo-change)
+
+## Kill Switch
+
+```bash
+# Disable all sending (zero HTTP traffic, zero side effects)
+TAP_SENDER_ENABLED=0
+
+# Enable (default)
+TAP_SENDER_ENABLED=1
+```
+
+When disabled, the worker thread sleeps and does nothing. The object exists but
+is inert. No code changes needed.
 
 ## Endpoint
 
@@ -8,148 +34,85 @@ GET http://{TITAN_IP}:{TITAN_PORT}/titan/script/2/Macros/Run?macroId={TAP_MACRO_
 
 Default: `http://192.168.1.45:4430/titan/script/2/Macros/Run?macroId=Avolites.Macros.TapBPM1`
 
-Returns `true` on success (HTTP 200).
-
-## Why Transport Clock (v2)
-
-Titan's TapBPM macro needs **periodic taps** to maintain BPM sync.
-v1 only sent taps on tempo change — Titan lost sync within seconds.
-v2 sends keep-alive taps every N beats while LOCKED.
-
-## State Machine
+## Behavior
 
 ```
-             lock achieved
-   IDLE ──────────────────► SYNC_BURST ──(done)──► KEEPALIVE
-                                                      │  ▲
-                                            tempo     │  │ done
-                                            changed   ▼  │
-                                                 CHANGE_BURST
-
-   ANY ──(lock lost)──► IDLE
+IDLE ──(LOCK achieved)──► BURST(N taps) ──► IDLE
+IDLE ──(tempo changed while LOCKED)──► BURST(N taps) ──► IDLE
+BURST ──(LOCK lost)──► IDLE (abort immediately)
 ```
 
-| State | Action | Tap rate |
-|-------|--------|----------|
-| IDLE | Sleep, zero HTTP traffic | 0 |
-| SYNC_BURST | 3 taps at 1-beat intervals | 1 per beat |
-| KEEPALIVE | 1 tap every 4 beats (1 bar) | 1 per bar |
-| CHANGE_BURST | 3 taps at 1-beat intervals | 1 per beat |
+| Trigger | Action |
+|---------|--------|
+| Lock achieved | Burst of 3 taps at `interval_ms` spacing |
+| Tempo changed (>12ms or >3%) | Burst of 3 taps at new `interval_ms` spacing |
+| Lock lost | Abort burst, go IDLE |
+| Not locked | Zero HTTP traffic |
 
-## Architecture
+## Threading Model
 
 ```
-AutoClock (Qt thread, 40ms timer)
-    │
-    │ get_ui_state() → lock_state + interval_ms
-    │
-    ▼
-TapTempoSender.update(lock_state, interval_ms)
-    │  (writes shared state under lock, wakes worker)
-    │
-    ▼
-Worker thread (persistent daemon, sleeps between taps)
-    │
-    ├─ IDLE: sleep until woken
-    ├─ SYNC_BURST: tap-wait-tap-wait-tap → KEEPALIVE
-    ├─ KEEPALIVE: wait 4 beats → tap → repeat
-    └─ CHANGE_BURST: tap-wait-tap-wait-tap → KEEPALIVE
-         │
-         └──GET──► Titan Macro Run
+Qt thread (40ms timer)          Worker thread (daemon)
+───────────────────             ────────────────────────
+update(lock, interval)          _worker():
+  with lock:                      polls every 200ms
+    write 2 values                reads shared state
+  return  ← O(1)                  if burst needed:
+                                    send taps via monotonic scheduler
+                                    (200ms cancel chunks)
 ```
 
-- **1 persistent daemon thread** (not ephemeral threads per burst)
-- Own `requests.Session` (not shared with TitanQueue)
-- Interruptible waits (500ms chunks) for fast lock-loss response
-- Anti-spam: never faster than 1 tap per beat interval
-
-## Firing Rules
-
-1. **Gate**: Only when `lock_state == "LOCKED"`
-2. **Initial sync**: SYNC_BURST of 3 taps on lock achieved
-3. **Keep-alive**: 1 tap every `beats_per_tap` beats (default 4)
-4. **Tempo change**: CHANGE_BURST when `abs(interval - last_sent) >= max(12ms, last_sent * 3%)`
-5. **Lock lost**: Immediate cancel → IDLE (zero traffic)
+- `update()` NEVER does I/O, NEVER sleeps, NEVER blocks
+- All HTTP happens on worker thread only
+- Worker polls at 200ms when idle — zero coupling with tick rate
+- Burst waits use `time.monotonic()` for precise beat spacing
+- Cancel latency: ≤200ms (chunk size)
 
 ## Configuration (env vars)
 
 | Var | Default | Description |
 |-----|---------|-------------|
+| `TAP_SENDER_ENABLED` | `1` | Kill switch: `0` disables all sending |
 | `TITAN_IP` | `192.168.1.45` | Titan console IP |
 | `TITAN_PORT` | `4430` | Titan WebAPI port |
 | `TAP_MACRO_ID` | `Avolites.Macros.TapBPM1` | Macro to run for tap |
-| `TAP_BURST_COUNT` | `3` | Taps per burst (sync + change) |
-| `TAP_BEATS_PER_TAP` | `4` | Beats between keep-alive taps (4 = 1 bar) |
-| `TAP_DIFF_MS` | `12` | Min ms difference for "tempo changed" |
+| `TAP_BURST_COUNT` | `3` | Taps per burst |
+| `TAP_DIFF_MS` | `12` | Min ms difference for tempo change |
 | `TAP_DIFF_RATIO` | `0.03` | Min ratio difference (3%) |
 
-## Example Timeline (128 BPM = 468ms/beat)
+## Log Format
 
 ```
-t=0.0s   LOCKED achieved
-t=0.0s   [SYNC_BURST] Tap 1 → Titan
-t=0.47s  [SYNC_BURST] Tap 2 → Titan
-t=0.94s  [SYNC_BURST] Tap 3 → Titan  → KEEPALIVE
-t=2.81s  [KEEPALIVE]  Tap 4 → Titan  (4 beats later)
-t=4.68s  [KEEPALIVE]  Tap 5 → Titan  (4 beats later)
-t=5.50s  DJ changes to 130 BPM (461ms)
-t=6.55s  [CHANGE_BURST] Tap 6 → Titan
-t=7.01s  [CHANGE_BURST] Tap 7 → Titan
-t=7.47s  [CHANGE_BURST] Tap 8 → Titan  → KEEPALIVE
-t=9.31s  [KEEPALIVE]  Tap 9 → Titan
-...
+# Startup
+[TapSender] v3.0 ENABLED → 192.168.1.45:4430 macro=... burst=3 diff=12ms/3%
+
+# Burst on lock
+[TapSender] BURST bpm=128.2 interval_ms=468.0 count=3 reason=LOCKED
+
+# Burst on tempo change
+[TapSender] BURST bpm=130.0 interval_ms=461.5 count=3 reason=CHANGE
+
+# Lock lost during burst
+[TapSender] ABORT reason=LOCK_LOST
+
+# HTTP error
+[TapSender] FAIL HTTP 500
+[TapSender] FAIL ConnectionError(...)
 ```
 
-## Manual Test (curl)
+No per-beat logging. No spam.
+
+## Manual Test
 
 ```bash
-# Single tap
 curl -s "http://192.168.1.45:4430/titan/script/2/Macros/Run?macroId=Avolites.Macros.TapBPM1"
 # Expected: true
-
-# Simulate 128 BPM burst (468ms interval)
-curl -s "http://192.168.1.45:4430/titan/script/2/Macros/Run?macroId=Avolites.Macros.TapBPM1" && \
-sleep 0.468 && \
-curl -s "http://192.168.1.45:4430/titan/script/2/Macros/Run?macroId=Avolites.Macros.TapBPM1" && \
-sleep 0.468 && \
-curl -s "http://192.168.1.45:4430/titan/script/2/Macros/Run?macroId=Avolites.Macros.TapBPM1"
 ```
-
-## Test from 911 Fiesta
-
-1. Set env vars in `systemd/911fiesta.env`:
-   ```
-   TITAN_IP=192.168.1.45
-   TITAN_PORT=4430
-   ```
-
-2. Reload and restart:
-   ```bash
-   sudo systemctl daemon-reload
-   sudo systemctl restart 911fiesta.service
-   ```
-
-3. Play music with clear kick. Wait for LOCKED (green LED in Tap Tempo tab).
-
-4. Watch logs:
-   ```bash
-   journalctl -u 911fiesta.service -f | grep TapSender
-   ```
-
-5. Expected output:
-   ```
-   [TapSender] v2.0 transport clock → 192.168.1.45:4430 ...
-   [TapSender] SYNC_BURST interval=468.2ms bpm=128.2 taps=3
-   [TapSender] CHANGE_BURST interval=461.5ms bpm=130.0 taps=3
-   ```
-
-6. Verify in Titan that BPM master stays synced continuously.
 
 ## Files
 
 | File | Change |
 |------|--------|
-| `tempo/tap_sender.py` | v2.0: Transport clock with IDLE/BURST/KEEPALIVE state machine |
-| `tempo/__init__.py` | Added SenderState export |
-| `main.py` | Comment + version string updated |
-| `docs/titan_tap_tempo.md` | This file (updated for v2) |
+| `tempo/tap_sender.py` | v3.0: Fix v2.0 regression, monotonic scheduler, kill switch |
+| `main.py` | Version string v2→v3 |
+| `docs/titan_tap_tempo.md` | This file |

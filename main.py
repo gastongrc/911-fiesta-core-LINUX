@@ -664,7 +664,7 @@ class Main(QMainWindow):
                 self.tap_sender = TapTempoSender() if TapTempoSender else None
                 # V11.1: Edge detection state for hit registration
                 self._prev_is_golpe = False
-                print("[MAIN] AutoClock v9 + KickDetector V13 + TapBridge v3 + TapSender v2 inicializados")
+                print("[MAIN] AutoClock v9 + KickDetector V13 + TapBridge v3 + TapSender v3 inicializados")
             except Exception as e:
                 self.auto_clock = None
                 self.kick_detector = None
