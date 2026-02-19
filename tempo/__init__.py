@@ -3,7 +3,7 @@
 
 from .auto_clock import AutoClock, ClockUIState, LockState
 from .tap_bridge import TapBridge
-from .tap_sender import TapTempoSender, TapSenderConfig
+from .tap_sender import TapTempoSender, TapSenderConfig, SenderState
 
 __all__ = ['AutoClock', 'ClockUIState', 'LockState', 'TapBridge',
-           'TapTempoSender', 'TapSenderConfig']
+           'TapTempoSender', 'TapSenderConfig', 'SenderState']

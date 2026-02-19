@@ -660,11 +660,11 @@ class Main(QMainWindow):
                 ) if KickPulseDetector else None
                 # TapBridge v3: pasa auto_clock para gating por lock state
                 self.tap_bridge = TapBridge(self.avolites, self.auto_clock)
-                # TapTempoSender: sends tap bursts to Titan on tempo change
+                # TapTempoSender v2: transport clock — keeps Titan BPM synced
                 self.tap_sender = TapTempoSender() if TapTempoSender else None
                 # V11.1: Edge detection state for hit registration
                 self._prev_is_golpe = False
-                print("[MAIN] AutoClock v9 + KickDetector V13 + TapBridge v3 + TapSender v1 inicializados")
+                print("[MAIN] AutoClock v9 + KickDetector V13 + TapBridge v3 + TapSender v2 inicializados")
             except Exception as e:
                 self.auto_clock = None
                 self.kick_detector = None
