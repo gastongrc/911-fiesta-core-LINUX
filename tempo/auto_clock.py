@@ -1,5 +1,6 @@
 # tempo/auto_clock.py
-# AutoClock v12 - SPEC lock criteria: consecutive valid intervals + anti-flap
+# AutoClock v13 - Tempo stability: keep 8 hits, smooth 0.12
+# V13: Keep 8 hits in apply_correction (was 2 → random walk). EMA smooth 0.12 (was 0.30).
 # V12: LOCKED requires 5 consecutive valid intervals + variance<=15%. Anti-flap: 3 strikes.
 # V11: Unified monotonic timestamps (fix time.time/monotonic mix) + get_ui_state() + quiet logs
 # V10: Interval-gated anti-double hit (dt < 0.55*interval = REJECT when LOCKING/LOCKED)
@@ -120,7 +121,7 @@ class AutoClock:
             "low_cut": 40,
             "high_cut": 120,
             "min_hit_ms": 140,      # Era 180, ahora 140 (debounce ~143 BPM max)
-            "smooth": 0.30,
+            "smooth": 0.12,          # FIX 4: was 0.30 — slower EMA for stability
             "interval_min_ms": 333,  # 180 BPM max
             "interval_max_ms": 1000, # 60 BPM min (más estricto)
         }
@@ -508,9 +509,9 @@ class AutoClock:
 
         self.tick_interval = self.interval_ms / 1000.0
 
-        # Reset historial (mantener últimos 2 para continuidad)
-        if len(self.hit_times) > 2:
-            self.hit_times = self.hit_times[-2:]
+        # FIX 4: Keep last 8 hits for continuity (was 2 — caused random walk)
+        if len(self.hit_times) > 8:
+            self.hit_times = self.hit_times[-8:]
         self.last_correction_ts = now
 
     # ============================================================

@@ -660,23 +660,33 @@ class Main(QMainWindow):
                 ) if KickPulseDetector else None
                 # TapBridge v3: pasa auto_clock para gating por lock state
                 self.tap_bridge = TapBridge(self.avolites, self.auto_clock)
-                # TapTempoSender v2: transport clock — keeps Titan BPM synced
+                # TapTempoSender v3: transport clock — keeps Titan BPM synced
                 self.tap_sender = TapTempoSender() if TapTempoSender else None
                 # V11.1: Edge detection state for hit registration
                 self._prev_is_golpe = False
-                print("[MAIN] AutoClock v9 + KickDetector V13 + TapBridge v3 + TapSender v3 inicializados")
+                # FIX 6: DEBUG_TEMPO=1 instrumentation
+                self._debug_tempo = os.environ.get("DEBUG_TEMPO", "0") == "1"
+                self._debug_tempo_last = 0.0
+                self._debug_tempo_kicks = 0
+                print(f"[MAIN] AutoClock v13 + KickDetector V18 + TapBridge v3 + TapSender v3 (DEBUG_TEMPO={'ON' if self._debug_tempo else 'off'})")
             except Exception as e:
                 self.auto_clock = None
                 self.kick_detector = None
                 self.tap_bridge = None
                 self.tap_sender = None
                 self._prev_is_golpe = False
+                self._debug_tempo = False
+                self._debug_tempo_last = 0.0
+                self._debug_tempo_kicks = 0
                 print(f"[MAIN] Error inicializando AutoClock/KickDetector/TapBridge: {e}")
         else:
             self.auto_clock = None
             self.kick_detector = None
             self.tap_bridge = None
             self._prev_is_golpe = False
+            self._debug_tempo = False
+            self._debug_tempo_last = 0.0
+            self._debug_tempo_kicks = 0
 
         # =======================================================================
         # V12: Motor Real vs Legacy Analyzer Organization
@@ -3746,7 +3756,48 @@ class Main(QMainWindow):
         
         for k in self._acc:
             self._acc[k] += dt
-        
+
+        # FIX 1+2: Kick detector with incremental read + real block_start_ts
+        # Runs every tick (~33ms) for minimum latency. Reads only NEW samples.
+        if hasattr(self, 'kick_detector') and self.kick_detector:
+            try:
+                kick_block, kick_ts, kick_sr = self.engine.read_new_for_kick()
+                if kick_block is not None and kick_block.size > 0:
+                    self.kick_detector.process_audio(kick_block, kick_sr, kick_ts)
+
+                kicks = self.kick_detector.pop_all_kicks()
+                for kt in kicks:
+                    if hasattr(self, 'auto_clock') and self.auto_clock:
+                        self.auto_clock.register_hit(kt)
+                    if hasattr(self, 'clock_widget') and self.clock_widget:
+                        self.clock_widget.pulse_kick()
+                    if hasattr(self, 'tap_bridge') and self.tap_bridge:
+                        self.tap_bridge.feed_kick(True)
+                    # FIX 6: Count kicks for DEBUG_TEMPO
+                    self._debug_tempo_kicks += 1
+            except:
+                pass
+
+        # FIX 6: DEBUG_TEMPO=1 — 1 line/sec with pipeline telemetry
+        if self._debug_tempo:
+            import time as _time
+            _now = _time.monotonic()
+            if _now - self._debug_tempo_last >= 1.0:
+                self._debug_tempo_last = _now
+                _kicks_s = self._debug_tempo_kicks
+                self._debug_tempo_kicks = 0
+                _kd = getattr(self, 'kick_detector', None)
+                _ac = getattr(self, 'auto_clock', None)
+                _ts = getattr(self, 'tap_sender', None)
+                _energy = _kd._last_energy if _kd else 0.0
+                _thr = _kd._last_threshold if _kd else 0.0
+                _bpm = _ac.get_bpm() if _ac else 0.0
+                _int_ms = _ac.interval_ms if _ac else 0.0
+                _lock = _ac.get_lock_state().value if _ac else "?"
+                _hits = len(_ac.hit_times) if _ac else 0
+                _bursts = _ts._bursts if _ts else 0
+                print(f"[TEMPO] kicks/s={_kicks_s} energy={_energy:.4f} thr={_thr:.4f} int_ms={_int_ms:.1f} bpm={_bpm:.1f} lock={_lock} hits={_hits} bursts={_bursts}")
+
         block_modules = None
         block_scope = None
         
@@ -3914,35 +3965,8 @@ class Main(QMainWindow):
             except:
                 pass
 
-            # V13: Feed KickPulseDetector with audio (thread-safe queue)
-            try:
-                if hasattr(self, 'kick_detector') and self.kick_detector and block is not None:
-                    self.kick_detector.process_audio(block, sr)
-            except:
-                pass
-
-            # V13: Pop all kicks from queue and feed to AutoClock
-            try:
-                if hasattr(self, 'kick_detector') and self.kick_detector:
-                    # Pop all pending kicks (queue-based, thread-safe)
-                    kicks = self.kick_detector.pop_all_kicks()
-
-                    for kick_ts in kicks:
-                        print(f"[TapTempo] PULSE_FEED t={kick_ts:.3f}")
-
-                        # Feed AutoClock v9 with kick timestamp
-                        if hasattr(self, 'auto_clock') and self.auto_clock:
-                            self.auto_clock.register_hit(kick_ts)
-
-                        # Pulsar LED KICK en ClockWidget
-                        if hasattr(self, 'clock_widget') and self.clock_widget:
-                            self.clock_widget.pulse_kick()
-
-                        # Notificar TapBridge
-                        if hasattr(self, 'tap_bridge') and self.tap_bridge:
-                            self.tap_bridge.feed_kick(True)
-            except:
-                pass
+            # V18: Kick processing moved to _frame_tick() — uses incremental read
+            # with real block_start_ts (FIX 1+2). See _frame_tick().
 
         except Exception as e:
             print(f"[MAIN] Error módulos: {e}")

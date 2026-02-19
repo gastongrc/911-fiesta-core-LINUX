@@ -86,6 +86,10 @@ class AudioEngine:
         self._min_gate_samples = 0
         self._gate_hold_counter = 0
 
+        # FIX 1+2: Kick detector incremental read with real timestamps
+        self._last_cb_ts: float = 0.0     # monotonic timestamp of last callback
+        self._kick_rd: int = 0            # read cursor for kick-only path
+
     # ---------- init filtros ----------
     def _recalc_filters(self):
         """
@@ -160,6 +164,9 @@ class AudioEngine:
 
     # ---------- callback ----------
     def _callback(self, indata, frames, time_info, status):
+        # FIX 1: Record capture-time timestamp (closest to real audio arrival)
+        self._last_cb_ts = time.monotonic()
+
         x = to_stereo_f32(indata, 2)
 
         # RAW REAL (sin filtros, sin DC, sin HP, sin notch, sin gate)
@@ -255,6 +262,7 @@ class AudioEngine:
         self._raw_clean = np.zeros((cap, 2), np.float32)
         self._gated = np.zeros((cap, 2), np.float32)
         self._wr = 0; self._len = 0
+        self._kick_rd = 0  # FIX 2: reset kick read cursor
 
         self._recalc_filters()
 
@@ -304,6 +312,49 @@ class AudioEngine:
 
     def get_recent(self, seconds: float, raw: bool=False) -> np.ndarray:
         return self._read_ring(seconds, raw)
+
+    def read_new_for_kick(self):
+        """
+        FIX 1+2: Read only NEW samples since last kick read, with real block_start_ts.
+
+        Returns:
+            tuple: (block, block_start_ts, sr) — block is stereo float32 ndarray,
+                   block_start_ts is monotonic time of first sample in block,
+                   sr is sample rate.  Returns (None, 0.0, 0) if no new data.
+        """
+        if self._len == 0 or self.samplerate is None or self._last_cb_ts == 0.0:
+            return None, 0.0, 0
+
+        with self._lock:
+            cap = self._raw_filt.shape[0]
+            wr = self._wr
+            rd = self._kick_rd
+
+            # Compute new samples available
+            new = (wr - rd) % cap if wr != rd else 0
+            if new == 0:
+                return None, 0.0, 0
+
+            # Cap at 0.25s to avoid processing stale backlog
+            max_new = int(0.25 * self.samplerate)
+            if new > max_new:
+                rd = (wr - max_new) % cap
+                new = max_new
+
+            # Read from ring buffer (_raw_filt = DC+HP filtered)
+            if rd + new <= cap:
+                data = self._raw_filt[rd:rd + new].copy()
+            else:
+                k = cap - rd
+                data = np.vstack((self._raw_filt[rd:], self._raw_filt[:new - k])).copy()
+
+            # FIX 1: block_start_ts = last callback time minus buffer duration
+            block_start_ts = self._last_cb_ts - (new / self.samplerate)
+
+            # Advance cursor
+            self._kick_rd = wr
+
+        return data, block_start_ts, self.samplerate
 
     def calibrate_noise(self, seconds=1.5) -> float:
         """

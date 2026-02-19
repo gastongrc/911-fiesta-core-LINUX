@@ -1,5 +1,7 @@
 # tempo/kick_detector.py
-# KickPulseDetector V17 - Show-ready defaults + blind fallback safety
+# KickPulseDetector V18 - Butterworth band-pass 40-120Hz + real timestamps
+# V18: Replaces moving-avg LP@150Hz with Butterworth 2nd-order band-pass 40-120Hz (SOS).
+#      Isolates kick drum fundamental, rejects hi-hats/snares/cymbals.
 # V17: k=2.0, ratio=2.0, warmup=3. Adaptive threshold decay when blind >4s (floor 50%).
 # V16: baseline×R dual-gate, warmup/k/ratio configurable via env, logs OFF by default
 # V14: Sample-accurate timestamps using block_start_ts + sample_idx/sr
@@ -12,12 +14,18 @@ import numpy as np
 from typing import Optional, Deque, Tuple
 from collections import deque
 
+try:
+    from scipy.signal import sosfilt, sosfilt_zi, butter as _butter_sos
+    _HAS_SCIPY = True
+except ImportError:
+    _HAS_SCIPY = False
+
 
 class KickPulseDetector:
     """
-    V14 Kick Pulse Detector with:
+    V18 Kick Pulse Detector with:
+    - Butterworth 2nd-order band-pass 40-120Hz (replaces moving-avg LP@150Hz)
     - Sample-accurate timestamps (block_start_ts + sample_idx/sr)
-    - Low-band energy detection (<150Hz)
     - Adaptive threshold using MAD (Median Absolute Deviation)
     - Percentile-based peak tracking
     - Debounce with configurable interval
@@ -85,12 +93,39 @@ class KickPulseDetector:
         # V17: Blind fallback timer (initialized to now — gives 4s grace before decay)
         self._last_kick_mono: float = time.monotonic()
 
+        # FIX 3: Butterworth 2nd-order band-pass 40-120Hz (replaces moving-avg LP)
+        self._bp_lo = 40.0
+        self._bp_hi = 120.0
+        self._sos = None
+        self._sos_zi = None
+        self._bp_sr = 0  # sample rate when filter was last computed
+
         # V16: Debug diagnostics (DEBUG_KICK=1), logs OFF by default
         self._debug_kick = os.environ.get("DEBUG_KICK", "0") == "1"
         self._debug_recent: Deque[float] = deque()
         self._debug_last_log: float = 0.0
 
-        print(f"[KickDetector] V17 init (debounce={debounce_ms:.0f}ms, k={self._threshold_k:.1f}, ratio={self._baseline_ratio:.1f}, warmup={self._warmup_min}, lp={lp_cutoff_hz:.0f}Hz, blind_timeout={self.BLIND_TIMEOUT_S:.0f}s, debug={'ON' if self._debug_kick else 'off'})")
+        bp_str = f"bp={self._bp_lo:.0f}-{self._bp_hi:.0f}Hz(SOS)" if _HAS_SCIPY else f"lp={lp_cutoff_hz:.0f}Hz(fallback)"
+        print(f"[KickDetector] V18 init (debounce={debounce_ms:.0f}ms, k={self._threshold_k:.1f}, ratio={self._baseline_ratio:.1f}, warmup={self._warmup_min}, {bp_str}, blind_timeout={self.BLIND_TIMEOUT_S:.0f}s, debug={'ON' if self._debug_kick else 'off'})")
+
+    def _init_bandpass(self, sr: int):
+        """FIX 3: Initialize Butterworth 2nd-order band-pass SOS filter."""
+        if not _HAS_SCIPY or sr == self._bp_sr:
+            return
+        nyq = sr / 2.0
+        lo = max(0.01, self._bp_lo / nyq)
+        hi = min(0.99, self._bp_hi / nyq)
+        if lo >= hi:
+            return
+        try:
+            self._sos = _butter_sos(2, [lo, hi], btype='band', output='sos')
+            # Zero initial conditions (no prior signal)
+            n_sections = self._sos.shape[0]
+            self._sos_zi = np.zeros((n_sections, 2), dtype=np.float64)
+            self._bp_sr = sr
+        except Exception:
+            self._sos = None
+            self._sos_zi = None
 
     def process_audio(self, block: np.ndarray, sr: int, block_start_ts: float = None) -> bool:
         """
@@ -125,14 +160,21 @@ class KickPulseDetector:
 
         block_len = len(x)
 
-        # Moving average LP for kick band
-        win_samples = max(1, int(sr / self._lp_cutoff_hz))
+        # FIX 3: Butterworth 2nd-order band-pass 40-120Hz (isolates kick fundamental)
+        self._init_bandpass(sr)
+        if self._sos is not None:
+            x_bp, self._sos_zi = sosfilt(self._sos, x, zi=self._sos_zi)
+            x_bp = x_bp.astype(np.float32)
+        else:
+            # Fallback: no scipy — use raw signal (original behavior)
+            x_bp = x
 
-        if len(x) < win_samples:
+        # Envelope: abs of band-passed signal + 10ms smoothing
+        env = np.abs(x_bp)
+        win_samples = max(1, int(sr * 0.010))  # 10ms window
+
+        if len(env) < win_samples:
             return False
-
-        # Envelope: abs + smoothing
-        env = np.abs(x)
 
         kernel = np.ones(win_samples, dtype=np.float32) / win_samples
         if len(env) > len(kernel):
@@ -140,7 +182,6 @@ class KickPulseDetector:
             peak_idx_in_conv = int(np.argmax(env_smooth))
             sample_idx_peak = peak_idx_in_conv + (win_samples // 2)
             energy = float(env_smooth[peak_idx_in_conv])
-            # V16: baseline = median of smoothed envelope in this block
             baseline = float(np.median(env_smooth))
         else:
             sample_idx_peak = int(np.argmax(env))
