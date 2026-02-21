@@ -176,6 +176,7 @@ class SnapshotServer:
             "override_active": False,
             "auto": True,
             "source": None,
+            "control_mode": "AUTO",
         }
 
         if self.calendar_manager:
@@ -191,6 +192,8 @@ class SnapshotServer:
                     calendar["time_remaining_s"] = state_data["time_remaining_s"]
                 if state_data.get("time_to_next_s"):
                     calendar["time_to_next_s"] = state_data["time_to_next_s"]
+
+                calendar["control_mode"] = state_data.get("control_mode", "AUTO")
 
                 # next_change_at
                 if state_data.get("next_change_at"):
@@ -258,6 +261,7 @@ class SnapshotServer:
                 "next_mode": state.get("next_mode"),
                 "override_active": state.get("is_override", False),
                 "auto": state.get("auto_mode_enabled", True),
+                "control_mode": state.get("control_mode", "AUTO"),
                 "source": source,
                 "time_remaining_s": time_remaining_s,
                 "day": now.strftime("%A").lower(),
@@ -410,6 +414,44 @@ class SnapshotServer:
         except Exception as e:
             return {"ok": False, "error": str(e), "week": {}, "warnings": [], "applied": None}
 
+    def calendar_set_control_mode(self, mode: str) -> dict:
+        """POST /core/calendar/control_mode - Set AUTO/MANUAL."""
+        if not self.calendar_manager:
+            return {"ok": False, "error": "calendar_manager_not_available"}
+
+        if mode not in ("AUTO", "MANUAL"):
+            return {"ok": False, "error": "invalid_mode"}
+
+        try:
+            success = self.calendar_manager.set_control_mode(mode)
+            return {
+                "ok": success,
+                "error": None if success else "set_control_mode_failed",
+                "control_mode": self.calendar_manager.get_control_mode(),
+                "calendar": self._calendar_snapshot(),
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def calendar_force_block(self, block_id: str) -> dict:
+        """POST /core/calendar/force_block - Force a specific block."""
+        if not self.calendar_manager:
+            return {"ok": False, "error": "calendar_manager_not_available"}
+
+        if not block_id:
+            return {"ok": False, "error": "block_id_required"}
+
+        try:
+            success = self.calendar_manager.force_block(block_id)
+            return {
+                "ok": success,
+                "error": None if success else "block_not_found",
+                "block_id": block_id,
+                "calendar": self._calendar_snapshot(),
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def _detect_overlaps(self, week: dict) -> list:
         """Detecta solapamientos en el schedule."""
         warnings = []
@@ -494,6 +536,12 @@ class SnapshotServer:
 
                 elif self.path == "/core/calendar/save":
                     result = server_instance.calendar_save(data.get("week", {}))
+
+                elif self.path == "/core/calendar/control_mode":
+                    result = server_instance.calendar_set_control_mode(data.get("mode", ""))
+
+                elif self.path == "/core/calendar/force_block":
+                    result = server_instance.calendar_force_block(data.get("block_id", ""))
 
                 else:
                     result = {"ok": False, "error": f"unknown_endpoint: {self.path}"}

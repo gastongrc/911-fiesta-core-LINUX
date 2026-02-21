@@ -10,7 +10,8 @@ import logging
 from fastapi import APIRouter, HTTPException
 from api.models import (
     CalendarGoRequest, CalendarExtendRequest,
-    CalendarOverrideRequest, CalendarSaveRequest
+    CalendarOverrideRequest, CalendarSaveRequest,
+    CalendarControlModeRequest, CalendarForceBlockRequest,
 )
 
 router = APIRouter()
@@ -75,6 +76,7 @@ async def get_calendar_status():
         "time_to_next_s": cal.get("time_to_next_s", -1),
         "override_active": cal.get("override_active", False),
         "auto": cal.get("auto", True),
+        "control_mode": cal.get("control_mode", "AUTO"),
         "core_online": True
     }
 
@@ -212,6 +214,58 @@ async def calendar_extend(request: CalendarExtendRequest):
         return {
             "success": False,
             "error": result.get("error")
+        }
+
+
+# ==================== CONTROL MODE ====================
+
+@router.post("/calendar/control_mode")
+async def calendar_control_mode(request: CalendarControlModeRequest):
+    """
+    POST /api/v1/calendar/control_mode
+    Switch between AUTO and MANUAL control modes.
+    """
+    result = await _forward_to_core("/core/calendar/control_mode", {
+        "mode": request.mode
+    })
+
+    if result.get("ok"):
+        return {
+            "success": True,
+            "control_mode": result.get("control_mode"),
+            "calendar": result.get("calendar")
+        }
+    else:
+        return {
+            "success": False,
+            "error": result.get("error"),
+            "calendar": result.get("calendar")
+        }
+
+
+# ==================== FORCE BLOCK ====================
+
+@router.post("/calendar/force_block")
+async def calendar_force_block(request: CalendarForceBlockRequest):
+    """
+    POST /api/v1/calendar/force_block
+    Force a specific schedule block (MANUAL mode).
+    """
+    result = await _forward_to_core("/core/calendar/force_block", {
+        "block_id": request.block_id
+    })
+
+    if result.get("ok"):
+        return {
+            "success": True,
+            "block_id": result.get("block_id"),
+            "calendar": result.get("calendar")
+        }
+    else:
+        return {
+            "success": False,
+            "error": result.get("error"),
+            "calendar": result.get("calendar")
         }
 
 

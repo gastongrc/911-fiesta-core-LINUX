@@ -378,6 +378,16 @@ class CalendarWeekResponse(BaseModel):
     week: Dict[str, List[Dict[str, Any]]]
 
 
+class CalendarControlModeRequest(BaseModel):
+    """Request para cambiar control_mode (AUTO/MANUAL)"""
+    mode: str = Field(..., pattern="^(AUTO|MANUAL)$")
+
+
+class CalendarForceBlockRequest(BaseModel):
+    """Request para forzar un bloque específico"""
+    block_id: str = Field(..., min_length=1)
+
+
 # ==================== ERROR MODELS ====================
 
 class ErrorResponse(BaseModel):

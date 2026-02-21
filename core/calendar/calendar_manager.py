@@ -133,6 +133,65 @@ class CalendarManager:
     # Umbral de alerta (5 minutos antes del cambio)
     ALERT_THRESHOLD_MINUTES = 5
 
+    # Valid control modes
+    CONTROL_MODE_AUTO = "AUTO"
+    CONTROL_MODE_MANUAL = "MANUAL"
+
+    def _get_runtime_state_path(self) -> str:
+        """Returns path to runtime_state.json next to calendar.json."""
+        return os.path.join(
+            os.path.dirname(os.path.abspath(self._config_path)),
+            "runtime_state.json"
+        )
+
+    def _load_runtime_state(self) -> None:
+        """Load control_mode and last_active_block_id from runtime_state.json."""
+        path = self._get_runtime_state_path()
+        try:
+            if os.path.exists(path):
+                with open(path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                mode = data.get("control_mode", self.CONTROL_MODE_AUTO)
+                if mode not in (self.CONTROL_MODE_AUTO, self.CONTROL_MODE_MANUAL):
+                    mode = self.CONTROL_MODE_AUTO
+                self._control_mode = mode
+                self._last_active_block_id = data.get("last_active_block_id")
+                print(f"[CAL_BOOT] runtime_state loaded: control_mode={self._control_mode} last_block={self._last_active_block_id}")
+                return
+        except Exception as e:
+            print(f"[CAL_BOOT] runtime_state load error: {e}")
+
+        # Defaults
+        self._control_mode = self.CONTROL_MODE_AUTO
+        self._last_active_block_id = None
+        print("[CAL_BOOT] runtime_state defaults: control_mode=AUTO")
+
+    def _persist_runtime_state(self) -> None:
+        """Persist control_mode and last_active_block_id atomically."""
+        path = self._get_runtime_state_path()
+        data = {
+            "control_mode": self._control_mode,
+            "last_active_block_id": self._last_active_block_id,
+        }
+        try:
+            dir_path = os.path.dirname(path)
+            os.makedirs(dir_path, exist_ok=True)
+            tmp_fd, tmp_path = tempfile.mkstemp(
+                suffix=".tmp", prefix="runtime_state_", dir=dir_path
+            )
+            try:
+                with os.fdopen(tmp_fd, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                os.replace(tmp_path, path)
+            except BaseException:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
+        except Exception as e:
+            print(f"[CalendarManager] runtime_state persist error: {e}")
+
     def __init__(self, config_path: Optional[str] = None, system_bridge=None):
         """
         Inicializa el CalendarManager.
@@ -189,17 +248,25 @@ class CalendarManager:
         self._on_alert: Optional[Callable[[UpcomingAlert], None]] = None
         self._on_override_expired: Optional[Callable[[], None]] = None
 
-        # Primera resolucion
-        self._resolve_now()
+        # ===== LOAD RUNTIME STATE BEFORE ANY RESOLVE =====
+        self._load_runtime_state()
 
-        # Iniciar polling automatico
-        self._start_polling()
+        # ===== BOOT SEQUENCE: branch on control_mode =====
+        if self._control_mode == self.CONTROL_MODE_AUTO:
+            # AUTO: resolve immediately, start polling
+            self._resolve_now()
+            self._start_polling()
+        else:
+            # MANUAL: apply last_active_block_id if available, NO resolve, NO polling
+            if self._last_active_block_id:
+                self._force_block_internal(self._last_active_block_id)
+            print("[CAL_BOOT] MANUAL mode — polling NOT started")
 
-        print("[CalendarManager] v6.4 Inicializado - polling cada 60s")
+        print(f"[CalendarManager] v6.5 Inicializado - control_mode={self._control_mode}")
         print(f"[CAL_BOOT] app_id={id(self)} cwd={os.getcwd()} cal_abs_path={os.path.abspath(self._config_path)}")
 
-        # Aplicar estado inicial si hay system_bridge
-        if self._system_bridge is not None:
+        # Aplicar estado inicial si hay system_bridge (AUTO mode only, already resolved)
+        if self._control_mode == self.CONTROL_MODE_AUTO and self._system_bridge is not None:
             try:
                 actions_str = f" + {self._state.current_actions}" if self._state.current_actions else ""
                 print(f"[Calendar] initial state → {self._state.current_mode}{actions_str}")
@@ -239,6 +306,13 @@ class CalendarManager:
         self._running = True
         self._schedule_next_poll()
 
+    def _stop_polling(self) -> None:
+        """Detiene el timer de polling (internal, no log)"""
+        self._running = False
+        if self._timer:
+            self._timer.cancel()
+            self._timer = None
+
     def _schedule_next_poll(self) -> None:
         """Programa el proximo poll"""
         if not self._running:
@@ -267,6 +341,7 @@ class CalendarManager:
         """
         Resuelve el modo actual basado en la hora.
         Respeta overrides activos.
+        Skips resolution entirely in MANUAL control_mode.
 
         V6.5 FIX: Cuando NO hay bloque activo, aplica ZZZ (apagado).
         Esto garantiza teardown completo entre bloques.
@@ -274,6 +349,9 @@ class CalendarManager:
         now = datetime.now()
 
         with self._lock:
+            # MANUAL mode: skip automatic resolution entirely
+            if self._control_mode == self.CONTROL_MODE_MANUAL:
+                return
             # Si hay override activo, no resolver automaticamente
             if self._override.active:
                 print(f"[CAL_RESOLVE] skip reason=override_active mode={self._override.mode}")
@@ -374,6 +452,13 @@ class CalendarManager:
             self._state.next_change_at = next_change
             self._state.update_progress(now)
 
+            # Track last_active_block_id for MANUAL mode persistence
+            if block:
+                block_id = f"{block.day or 'unknown'}|{block.from_time}|{block.to_time}|{block.mode}"
+                if self._last_active_block_id != block_id:
+                    self._last_active_block_id = block_id
+                    self._persist_runtime_state()
+
             # Calcular proximo modo
             if next_change:
                 next_mode, _, _ = self._resolver.resolve(next_change)
@@ -460,6 +545,156 @@ class CalendarManager:
             self._timer.cancel()
             self._timer = None
         print("[CalendarManager] Polling detenido")
+
+    # ==================== CONTROL MODE ====================
+
+    def set_control_mode(self, mode: str) -> bool:
+        """
+        Switch between AUTO and MANUAL control modes.
+
+        AUTO: resolve immediately, start polling.
+        MANUAL: stop polling, skip automatic governance.
+
+        Args:
+            mode: "AUTO" or "MANUAL"
+
+        Returns:
+            True if mode was changed
+        """
+        if mode not in (self.CONTROL_MODE_AUTO, self.CONTROL_MODE_MANUAL):
+            print(f"[CalendarManager] Invalid control_mode: {mode}")
+            return False
+
+        with self._lock:
+            if self._control_mode == mode:
+                return True  # Already in requested mode
+
+            old = self._control_mode
+            self._control_mode = mode
+            print(f"[CalendarManager] control_mode: {old} → {mode}")
+
+        if mode == self.CONTROL_MODE_MANUAL:
+            self._stop_polling()
+        else:
+            # AUTO: resolve and start polling
+            self._resolve_now()
+            self._start_polling()
+
+        self._persist_runtime_state()
+        return True
+
+    def get_control_mode(self) -> str:
+        """Returns current control mode (AUTO or MANUAL)."""
+        with self._lock:
+            return self._control_mode
+
+    # ==================== FORCE BLOCK ====================
+
+    def _find_block_by_id(self, block_id: str) -> Optional[ScheduleBlock]:
+        """Locate a ScheduleBlock in the loaded schedule by deterministic block_id."""
+        try:
+            parts = block_id.split("|")
+            if len(parts) != 4:
+                return None
+            day, from_time, to_time, mode = parts
+
+            day_blocks = self._resolver.get_blocks_for_day(day)
+            for b in day_blocks:
+                if (b.get("from") == from_time and
+                        b.get("to") == to_time and
+                        b.get("mode") == mode):
+                    actions = b.get("actions", [])
+                    if isinstance(actions, list):
+                        actions = actions.copy()
+                    else:
+                        actions = []
+                    return ScheduleBlock(
+                        from_time=from_time,
+                        to_time=to_time,
+                        mode=mode,
+                        day=day,
+                        actions=actions,
+                    )
+        except Exception as e:
+            print(f"[CalendarManager] _find_block_by_id error: {e}")
+        return None
+
+    def _force_block_internal(self, block_id: str) -> bool:
+        """
+        Apply a schedule block by block_id without lock (used during boot).
+        Does NOT persist — caller is responsible.
+        """
+        block = self._find_block_by_id(block_id)
+        if not block:
+            print(f"[CAL_BOOT] force_block: block not found: {block_id}")
+            return False
+
+        canonical_mode = normalize_mode(block.mode)
+        self._state.current_mode = canonical_mode
+        self._state.source = CalendarSource.MANUAL
+        self._state.since = datetime.now()
+        self._state.active_block = block
+        self._state.current_actions = block.actions.copy()
+        self._update_permissions()
+
+        if self._system_bridge is not None:
+            try:
+                actions_str = f" actions={block.actions}" if block.actions else ""
+                print(f"[Calendar] FORCE_BLOCK → {canonical_mode}{actions_str}")
+                self._system_bridge.apply_calendar_state(canonical_mode, block.actions)
+            except Exception as e:
+                print(f"[Calendar] error applying force_block: {e}")
+
+        print(f"[CAL_BOOT] force_block applied: {block_id}")
+        return True
+
+    def force_block(self, block_id: str) -> bool:
+        """
+        Force a specific schedule block by block_id (MANUAL mode).
+
+        1. Locate block in loaded schedule
+        2. Set active_block, mode, actions
+        3. Apply via SystemBridge
+        4. Persist runtime_state
+
+        Dedup: if block already active, do nothing.
+
+        Args:
+            block_id: Deterministic block ID (day|from|to|mode)
+
+        Returns:
+            True if block was applied
+        """
+        with self._lock:
+            # Dedup: already active
+            if self._last_active_block_id == block_id and self._state.active_block is not None:
+                print(f"[CalendarManager] force_block: already active: {block_id}")
+                return True
+
+            block = self._find_block_by_id(block_id)
+            if not block:
+                print(f"[CalendarManager] force_block: block not found: {block_id}")
+                return False
+
+            canonical_mode = normalize_mode(block.mode)
+            self._state.current_mode = canonical_mode
+            self._state.source = CalendarSource.MANUAL
+            self._state.since = datetime.now()
+            self._state.active_block = block
+            self._state.current_actions = block.actions.copy()
+            self._update_permissions()
+            self._last_active_block_id = block_id
+
+            if self._system_bridge is not None:
+                try:
+                    actions_str = f" actions={block.actions}" if block.actions else ""
+                    print(f"[Calendar] FORCE_BLOCK → {canonical_mode}{actions_str}")
+                    self._system_bridge.apply_calendar_state(canonical_mode, block.actions)
+                except Exception as e:
+                    print(f"[Calendar] error applying force_block: {e}")
+
+        self._persist_runtime_state()
+        return True
 
     # ==================== GO MANUAL ====================
 
@@ -705,6 +940,7 @@ class CalendarManager:
                 **self._state.to_dict(),
                 "available_modes": CANONICAL_MODES.copy(),
                 "auto_mode_enabled": self._resolver.is_auto_mode_enabled(),
+                "control_mode": self._control_mode,
                 "override": self._override.to_dict(),
                 "next_change_display": next_change_str,
                 "time_remaining_display": self._format_time_remaining(time_remaining),
@@ -911,6 +1147,18 @@ class CalendarManager:
             # --- Reload schedule from disk ---
             self._resolver.reload_schedule()
             print(f"[CAL_RELOAD_OK] req_id={req_id}")
+
+            # --- MANUAL mode: save schedule but do NOT apply governance ---
+            if self._control_mode == self.CONTROL_MODE_MANUAL:
+                print(f"[CAL_RESOLVE] req_id={req_id} MANUAL mode — skipping governance")
+                return {
+                    "ok": True,
+                    "req_id": req_id,
+                    "applied": False,
+                    "mode": self._state.current_mode,
+                    "actions": list(self._state.current_actions),
+                    "reason": "manual_mode",
+                }
 
             # --- Resolve NOW ---
             old_mode = self._state.current_mode
