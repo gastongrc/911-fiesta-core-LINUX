@@ -12,6 +12,7 @@ from api.models import (
     CalendarGoRequest, CalendarExtendRequest,
     CalendarOverrideRequest, CalendarSaveRequest,
     CalendarControlModeRequest, CalendarForceBlockRequest,
+    CalendarForceManualRequest,
 )
 
 router = APIRouter()
@@ -259,6 +260,32 @@ async def calendar_force_block(request: CalendarForceBlockRequest):
         return {
             "success": True,
             "block_id": result.get("block_id"),
+            "calendar": result.get("calendar")
+        }
+    else:
+        return {
+            "success": False,
+            "error": result.get("error"),
+            "calendar": result.get("calendar")
+        }
+
+
+# ==================== FORCE MANUAL ====================
+
+@router.post("/calendar/force_manual")
+async def calendar_force_manual(request: CalendarForceManualRequest):
+    """
+    POST /api/v1/calendar/force_manual
+    Force mode + actions directly (MANUAL control mode).
+    """
+    result = await _forward_to_core("/core/calendar/force_manual", {
+        "mode": request.mode,
+        "actions": request.actions
+    })
+
+    if result.get("ok"):
+        return {
+            "success": True,
             "calendar": result.get("calendar")
         }
     else:

@@ -388,6 +388,12 @@ class CalendarForceBlockRequest(BaseModel):
     block_id: str = Field(..., min_length=1)
 
 
+class CalendarForceManualRequest(BaseModel):
+    """Request para forzar modo + acciones directamente (MANUAL mode)"""
+    mode: str = Field(..., min_length=1)
+    actions: List[str] = Field(default_factory=list)
+
+
 # ==================== ERROR MODELS ====================
 
 class ErrorResponse(BaseModel):

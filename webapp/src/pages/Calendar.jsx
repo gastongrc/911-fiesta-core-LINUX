@@ -616,10 +616,109 @@ function TabHorarios({ schedule, setSchedule, hasChanges, setHasChanges, onSave,
   );
 }
 
+// ==================== MANUAL PANEL ====================
+function ManualPanel({ onForceManual, apiOffline }) {
+  const [selClima, setSelClima] = useState(null);
+  const [selModo, setSelModo] = useState(null);
+  const [extras, setExtras] = useState({});
+
+  const climaModes = ['clima_1', 'clima_2', 'clima_3', 'clima_4'];
+  const modoModes = [
+    { key: 'boliche_inicio', label: 'BoLIni' },
+    { key: 'boliche_desarrollo', label: 'BoLDes' },
+    { key: 'boliche_fin', label: 'BoLFin' },
+    { key: 'apagado', label: 'Apagado' },
+  ];
+  const extraActions = [
+    { key: 'vision_haze', label: 'Haze' },
+    { key: 'vision_dj', label: 'DJ' },
+    { key: 'vision_artista', label: 'Artista' },
+  ];
+
+  const handleClima = (c) => { setSelClima(c); setSelModo(null); };
+  const handleModo = (m) => { setSelModo(m); setSelClima(null); };
+  const toggleExtra = (key) => setExtras(prev => ({ ...prev, [key]: !prev[key] }));
+
+  const selected = selClima || selModo;
+  const activeExtras = Object.entries(extras).filter(([, v]) => v).map(([k]) => k);
+
+  const modeBtn = (key, label, isActive, onClick) => {
+    const color = MODE_COLORS[key] || '#7f8c8d';
+    return (
+      <button
+        key={key}
+        onClick={onClick}
+        disabled={apiOffline}
+        style={{
+          flex: 1,
+          padding: '10px 8px',
+          borderRadius: '14px',
+          border: isActive ? 'none' : `1px solid ${color}40`,
+          background: isActive ? color : 'rgba(255,255,255,0.04)',
+          color: isActive ? '#fff' : 'var(--t2)',
+          fontWeight: isActive ? 700 : 400,
+          fontSize: '12px',
+          cursor: apiOffline ? 'not-allowed' : 'pointer',
+          transition: 'all 0.15s ease',
+        }}
+      >
+        {label}
+      </button>
+    );
+  };
+
+  return (
+    <div className="ctrl-card" style={{ borderColor: 'rgba(255,152,0,0.15)' }}>
+      <div style={{ fontFamily: 'var(--font-title)', fontSize: '14px', fontWeight: 700, letterSpacing: '1.5px', marginBottom: '16px' }}>
+        CONTROL MANUAL
+      </div>
+
+      {/* CLIMA group */}
+      <div className="t3 text-sm font-bold mb-2" style={{ letterSpacing: '1px' }}>CLIMA</div>
+      <div className="flex gap-2 mb-4">
+        {climaModes.map(c => modeBtn(c, c.replace('clima_', 'Clima '), selClima === c, () => handleClima(c)))}
+      </div>
+
+      {/* MODO group */}
+      <div className="t3 text-sm font-bold mb-2" style={{ letterSpacing: '1px' }}>MODO</div>
+      <div className="flex gap-2 mb-4">
+        {modoModes.map(m => modeBtn(m.key, m.label, selModo === m.key, () => handleModo(m.key)))}
+      </div>
+
+      {/* EXTRAS group */}
+      <div className="t3 text-sm font-bold mb-2" style={{ letterSpacing: '1px' }}>EXTRAS</div>
+      <div className="flex gap-2 mb-4">
+        {extraActions.map(a => (
+          <button
+            key={a.key}
+            onClick={() => toggleExtra(a.key)}
+            disabled={apiOffline}
+            className={extras[a.key] ? 'key' : 'key-2'}
+            style={{ flex: 1, padding: '10px 8px', borderRadius: '14px', fontSize: '12px' }}
+          >
+            {a.label}
+          </button>
+        ))}
+      </div>
+
+      {/* APLICAR */}
+      <button
+        onClick={() => selected && onForceManual(selected, activeExtras)}
+        disabled={apiOffline || !selected}
+        className="key"
+        style={{ width: '100%', padding: '14px', fontSize: '14px', fontWeight: 700, letterSpacing: '1px', opacity: selected ? 1 : 0.4 }}
+      >
+        APLICAR
+      </button>
+    </div>
+  );
+}
+
 // ==================== TAB CONTROL ====================
-function TabControl({ status, onGo, onExtend, onOverride, onClearOverride, apiOffline }) {
+function TabControl({ status, onGo, onExtend, onOverride, onClearOverride, onControlMode, onForceManual, controlMode, apiOffline }) {
   const [selectedMode, setSelectedMode] = useState('clima_1');
   const [overrideDuration, setOverrideDuration] = useState(30);
+  const isManual = controlMode === 'MANUAL';
 
   return (
     <div style={{ padding: '16px 28px' }}>
@@ -631,117 +730,157 @@ function TabControl({ status, onGo, onExtend, onOverride, onClearOverride, apiOf
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: '14px' }}>
-        {/* GO */}
-        <div className="ctrl-card" style={{ flex: 1 }}>
-          <div style={{ fontFamily: 'var(--font-title)', fontSize: '14px', fontWeight: 700, letterSpacing: '1.5px', marginBottom: '16px' }}>
-            GO — Cambiar Modo
-          </div>
-          <select
-            value={selectedMode}
-            onChange={(e) => setSelectedMode(e.target.value)}
-            style={{ width: '100%', marginBottom: '16px' }}
+      {/* CONTROL MODE SELECTOR */}
+      <div className="flex gap-3 mb-4">
+        {['AUTO', 'MANUAL'].map(m => (
+          <button
+            key={m}
+            onClick={() => onControlMode(m)}
+            disabled={apiOffline}
+            style={{
+              flex: 1,
+              padding: '12px',
+              borderRadius: '8px',
+              border: controlMode === m ? 'none' : '1px solid rgba(255,255,255,0.12)',
+              background: controlMode === m
+                ? (m === 'AUTO' ? 'linear-gradient(135deg, rgba(0,230,118,0.3), rgba(0,200,100,0.25))' : 'linear-gradient(135deg, rgba(230,126,34,0.3), rgba(243,156,18,0.25))')
+                : 'rgba(255,255,255,0.04)',
+              color: controlMode === m
+                ? (m === 'AUTO' ? 'var(--green)' : 'var(--orange)')
+                : 'var(--t3)',
+              fontFamily: 'var(--font-title)',
+              fontSize: '14px',
+              fontWeight: 700,
+              letterSpacing: '2px',
+              cursor: apiOffline ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s ease',
+              boxShadow: controlMode === m
+                ? (m === 'AUTO' ? '0 0 12px rgba(0,230,118,0.15)' : '0 0 12px rgba(230,126,34,0.15)')
+                : 'none',
+            }}
           >
-            {CANONICAL_MODES.map(m => <option key={m} value={m}>{MODE_LABELS[m] || m}</option>)}
-          </select>
+            {m}
+          </button>
+        ))}
+      </div>
 
-          <div className="flex gap-3" style={{ flexWrap: 'wrap' }}>
-            <button onClick={() => onGo(selectedMode, 0)} disabled={apiOffline} className="key" style={{ padding: '10px 20px' }}>
-              GO AHORA
-            </button>
-            <button onClick={() => onGo(selectedMode, 5)} disabled={apiOffline} className="key-2" style={{ padding: '10px 16px' }}>
-              +5 min
-            </button>
-            <button onClick={() => onGo(selectedMode, 10)} disabled={apiOffline} className="key-2" style={{ padding: '10px 16px' }}>
-              +10 min
-            </button>
-            <button onClick={() => onGo(selectedMode, 15)} disabled={apiOffline} className="key-2" style={{ padding: '10px 16px' }}>
-              +15 min
-            </button>
-          </div>
+      {/* MANUAL MODE: show ManualPanel */}
+      {isManual && <ManualPanel onForceManual={onForceManual} apiOffline={apiOffline} />}
 
-          {status?.pending_go && (
-            <div className="inset mt-3">
-              <span className="cyan text-sm font-bold">
-                GO PENDIENTE: {MODE_LABELS[status.pending_go.mode] || status.pending_go.mode} en {formatTime(status.pending_go.seconds_until)}
-              </span>
+      {/* AUTO MODE: show GO / Extend / Override */}
+      {!isManual && (
+        <div style={{ display: 'flex', gap: '14px' }}>
+          {/* GO */}
+          <div className="ctrl-card" style={{ flex: 1 }}>
+            <div style={{ fontFamily: 'var(--font-title)', fontSize: '14px', fontWeight: 700, letterSpacing: '1.5px', marginBottom: '16px' }}>
+              GO — Cambiar Modo
             </div>
-          )}
-        </div>
-
-        {/* Extend */}
-        <div className="ctrl-card" style={{ flex: 1 }}>
-          <div style={{ fontFamily: 'var(--font-title)', fontSize: '14px', fontWeight: 700, letterSpacing: '1.5px', marginBottom: '16px' }}>
-            Extender Bloque
-          </div>
-          <div className="flex gap-3" style={{ flexWrap: 'wrap' }}>
-            <button onClick={() => onExtend(5)} disabled={apiOffline} className="key-2" style={{ padding: '10px 16px' }}>
-              +5 min
-            </button>
-            <button onClick={() => onExtend(10)} disabled={apiOffline} className="key-2" style={{ padding: '10px 16px' }}>
-              +10 min
-            </button>
-            <button onClick={() => onExtend(15)} disabled={apiOffline} className="key-2" style={{ padding: '10px 16px' }}>
-              +15 min
-            </button>
-          </div>
-        </div>
-
-        {/* Override */}
-        <div className="ctrl-card" style={{ flex: 1, borderColor: 'rgba(255,152,0,0.15)' }}>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="led yellow" />
-            <div style={{ fontFamily: 'var(--font-title)', fontSize: '14px', fontWeight: 700, letterSpacing: '1.5px' }}>
-              Override Temporal
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 mb-4">
-            <span className="t3 text-sm">Duración</span>
-            <input
-              type="number"
-              min="5"
-              max="120"
-              value={overrideDuration}
-              onChange={(e) => setOverrideDuration(parseInt(e.target.value) || 30)}
-              style={{ width: '60px' }}
-            />
-            <span className="t3 text-sm">min</span>
-          </div>
-
-          <div className="flex gap-3" style={{ flexWrap: 'wrap' }}>
-            <button
-              onClick={() => onOverride(selectedMode, overrideDuration)}
-              disabled={apiOffline}
-              className="key-danger"
-              style={{ padding: '10px 20px' }}
+            <select
+              value={selectedMode}
+              onChange={(e) => setSelectedMode(e.target.value)}
+              style={{ width: '100%', marginBottom: '16px' }}
             >
-              Activar Override
-            </button>
-            {status?.override?.active && (
-              <button
-                onClick={onClearOverride}
-                disabled={apiOffline}
-                className="key-2"
-                style={{ padding: '10px 20px' }}
-              >
-                Limpiar
+              {CANONICAL_MODES.map(m => <option key={m} value={m}>{MODE_LABELS[m] || m}</option>)}
+            </select>
+
+            <div className="flex gap-3" style={{ flexWrap: 'wrap' }}>
+              <button onClick={() => onGo(selectedMode, 0)} disabled={apiOffline} className="key" style={{ padding: '10px 20px' }}>
+                GO AHORA
               </button>
+              <button onClick={() => onGo(selectedMode, 5)} disabled={apiOffline} className="key-2" style={{ padding: '10px 16px' }}>
+                +5 min
+              </button>
+              <button onClick={() => onGo(selectedMode, 10)} disabled={apiOffline} className="key-2" style={{ padding: '10px 16px' }}>
+                +10 min
+              </button>
+              <button onClick={() => onGo(selectedMode, 15)} disabled={apiOffline} className="key-2" style={{ padding: '10px 16px' }}>
+                +15 min
+              </button>
+            </div>
+
+            {status?.pending_go && (
+              <div className="inset mt-3">
+                <span className="cyan text-sm font-bold">
+                  GO PENDIENTE: {MODE_LABELS[status.pending_go.mode] || status.pending_go.mode} en {formatTime(status.pending_go.seconds_until)}
+                </span>
+              </div>
             )}
           </div>
 
-          {status?.override?.active && (
-            <div className="inset mt-4" style={{ borderColor: 'rgba(255,152,0,0.2)' }}>
-              <div className="flex items-center gap-2">
-                <div className="led-dot" style={{ background: 'var(--orange)', boxShadow: '0 0 6px var(--orange)' }} />
-                <span className="yellow text-sm font-semibold">
-                  OVERRIDE: {MODE_LABELS[status.override.mode] || status.override.mode} ({formatTime(status.override.remaining_seconds)} restantes)
-                </span>
+          {/* Extend */}
+          <div className="ctrl-card" style={{ flex: 1 }}>
+            <div style={{ fontFamily: 'var(--font-title)', fontSize: '14px', fontWeight: 700, letterSpacing: '1.5px', marginBottom: '16px' }}>
+              Extender Bloque
+            </div>
+            <div className="flex gap-3" style={{ flexWrap: 'wrap' }}>
+              <button onClick={() => onExtend(5)} disabled={apiOffline} className="key-2" style={{ padding: '10px 16px' }}>
+                +5 min
+              </button>
+              <button onClick={() => onExtend(10)} disabled={apiOffline} className="key-2" style={{ padding: '10px 16px' }}>
+                +10 min
+              </button>
+              <button onClick={() => onExtend(15)} disabled={apiOffline} className="key-2" style={{ padding: '10px 16px' }}>
+                +15 min
+              </button>
+            </div>
+          </div>
+
+          {/* Override */}
+          <div className="ctrl-card" style={{ flex: 1, borderColor: 'rgba(255,152,0,0.15)' }}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="led yellow" />
+              <div style={{ fontFamily: 'var(--font-title)', fontSize: '14px', fontWeight: 700, letterSpacing: '1.5px' }}>
+                Override Temporal
               </div>
             </div>
-          )}
+
+            <div className="flex items-center gap-3 mb-4">
+              <span className="t3 text-sm">Duración</span>
+              <input
+                type="number"
+                min="5"
+                max="120"
+                value={overrideDuration}
+                onChange={(e) => setOverrideDuration(parseInt(e.target.value) || 30)}
+                style={{ width: '60px' }}
+              />
+              <span className="t3 text-sm">min</span>
+            </div>
+
+            <div className="flex gap-3" style={{ flexWrap: 'wrap' }}>
+              <button
+                onClick={() => onOverride(selectedMode, overrideDuration)}
+                disabled={apiOffline}
+                className="key-danger"
+                style={{ padding: '10px 20px' }}
+              >
+                Activar Override
+              </button>
+              {status?.override?.active && (
+                <button
+                  onClick={onClearOverride}
+                  disabled={apiOffline}
+                  className="key-2"
+                  style={{ padding: '10px 20px' }}
+                >
+                  Limpiar
+                </button>
+              )}
+            </div>
+
+            {status?.override?.active && (
+              <div className="inset mt-4" style={{ borderColor: 'rgba(255,152,0,0.2)' }}>
+                <div className="flex items-center gap-2">
+                  <div className="led-dot" style={{ background: 'var(--orange)', boxShadow: '0 0 6px var(--orange)' }} />
+                  <span className="yellow text-sm font-semibold">
+                    OVERRIDE: {MODE_LABELS[status.override.mode] || status.override.mode} ({formatTime(status.override.remaining_seconds)} restantes)
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -757,6 +896,7 @@ export function Calendar() {
   const [warnings, setWarnings] = useState([]);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [gridRev, setGridRev] = useState(0);
+  const [controlMode, setControlMode] = useState('AUTO');
 
   const fetchWeek = async (force = false) => {
     if (hasChanges && !force) return;
@@ -781,6 +921,7 @@ export function Calendar() {
           const data = await res.json();
           setStatus(data);
           setApiOffline(!data.core_online);
+          if (data.control_mode) setControlMode(data.control_mode);
         } else {
           setApiOffline(true);
         }
@@ -866,6 +1007,31 @@ export function Calendar() {
       }
     } catch (e) {
       setLastError('AUTO_ERROR');
+    }
+  };
+
+  const handleControlMode = async (mode) => {
+    setControlMode(mode);
+    try {
+      const res = await apiPost('/calendar/control_mode', { mode });
+      if (res.ok) {
+        const data = await res.json();
+        if (!data.success) setLastError(data.error || 'CONTROL_MODE_FAILED');
+      }
+    } catch (e) {
+      setLastError('CONTROL_MODE_ERROR');
+    }
+  };
+
+  const handleForceManual = async (mode, actions) => {
+    try {
+      const res = await apiPost('/calendar/force_manual', { mode, actions });
+      if (res.ok) {
+        const data = await res.json();
+        if (!data.success) setLastError(data.error || 'FORCE_MANUAL_FAILED');
+      }
+    } catch (e) {
+      setLastError('FORCE_MANUAL_ERROR');
     }
   };
 
@@ -993,6 +1159,9 @@ export function Calendar() {
             onExtend={handleExtend}
             onOverride={handleOverride}
             onClearOverride={handleClearOverride}
+            onControlMode={handleControlMode}
+            onForceManual={handleForceManual}
+            controlMode={controlMode}
             apiOffline={apiOffline}
           />
         )}

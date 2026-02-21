@@ -452,6 +452,24 @@ class SnapshotServer:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def calendar_force_manual(self, mode: str, actions: list = None) -> dict:
+        """POST /core/calendar/force_manual - Force mode+actions directly."""
+        if not self.calendar_manager:
+            return {"ok": False, "error": "calendar_manager_not_available"}
+
+        if not mode:
+            return {"ok": False, "error": "mode_required"}
+
+        try:
+            success = self.calendar_manager.force_manual(mode, actions or [])
+            return {
+                "ok": success,
+                "error": None if success else "invalid_mode",
+                "calendar": self._calendar_snapshot(),
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def _detect_overlaps(self, week: dict) -> list:
         """Detecta solapamientos en el schedule."""
         warnings = []
@@ -542,6 +560,12 @@ class SnapshotServer:
 
                 elif self.path == "/core/calendar/force_block":
                     result = server_instance.calendar_force_block(data.get("block_id", ""))
+
+                elif self.path == "/core/calendar/force_manual":
+                    result = server_instance.calendar_force_manual(
+                        data.get("mode", ""),
+                        data.get("actions", [])
+                    )
 
                 else:
                     result = {"ok": False, "error": f"unknown_endpoint: {self.path}"}

@@ -696,6 +696,46 @@ class CalendarManager:
         self._persist_runtime_state()
         return True
 
+    def force_manual(self, mode: str, actions: list = None) -> bool:
+        """
+        Force a mode + actions directly (free-form, MANUAL mode).
+        Does not require a matching schedule block.
+
+        Args:
+            mode: Canonical mode string
+            actions: Optional list of extra action strings
+
+        Returns:
+            True if applied
+        """
+        canonical_mode = normalize_mode(mode)
+        if canonical_mode not in CANONICAL_MODES:
+            print(f"[CalendarManager] force_manual: invalid mode: {mode}")
+            return False
+
+        if actions is None:
+            actions = []
+
+        with self._lock:
+            self._state.current_mode = canonical_mode
+            self._state.source = CalendarSource.MANUAL
+            self._state.since = datetime.now()
+            self._state.active_block = None
+            self._state.current_actions = list(actions)
+            self._update_permissions()
+            self._last_active_block_id = None
+
+            if self._system_bridge is not None:
+                try:
+                    actions_str = f" actions={actions}" if actions else ""
+                    print(f"[Calendar] FORCE_MANUAL → {canonical_mode}{actions_str}")
+                    self._system_bridge.apply_calendar_state(canonical_mode, actions)
+                except Exception as e:
+                    print(f"[Calendar] error applying force_manual: {e}")
+
+        self._persist_runtime_state()
+        return True
+
     # ==================== GO MANUAL ====================
 
     def go(self, mode: str, source: CalendarSource = CalendarSource.MANUAL,

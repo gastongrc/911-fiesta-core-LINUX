@@ -613,7 +613,149 @@ class CalendarTab(QWidget):
         parent_layout.addWidget(self.actions_panel)
 
     def _create_controls(self, parent_layout):
-        """Controles GO y Override"""
+        """Controles GO y Override — with AUTO/MANUAL selector"""
+        # === CONTROL MODE SELECTOR ===
+        mode_selector_frame = QFrame()
+        mode_selector_frame.setStyleSheet("""
+            QFrame { background: #1e272e; border-radius: 8px; border: 1px solid #34495e; }
+        """)
+        mode_selector_layout = QVBoxLayout(mode_selector_frame)
+        mode_selector_layout.setContentsMargins(12, 10, 12, 10)
+        mode_selector_layout.setSpacing(8)
+
+        mode_selector_layout.addWidget(QLabel("MODO OPERATIVO"))
+
+        cm_row = QHBoxLayout()
+        cm_row.setSpacing(8)
+
+        self._ctrl_auto_btn = QPushButton("AUTO")
+        self._ctrl_auto_btn.setCheckable(True)
+        self._ctrl_auto_btn.setChecked(True)
+        self._ctrl_auto_btn.setFixedHeight(36)
+        self._ctrl_auto_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self._ctrl_auto_btn.clicked.connect(lambda: self._on_set_control_mode("AUTO"))
+        cm_row.addWidget(self._ctrl_auto_btn)
+
+        self._ctrl_manual_btn = QPushButton("MANUAL")
+        self._ctrl_manual_btn.setCheckable(True)
+        self._ctrl_manual_btn.setChecked(False)
+        self._ctrl_manual_btn.setFixedHeight(36)
+        self._ctrl_manual_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self._ctrl_manual_btn.clicked.connect(lambda: self._on_set_control_mode("MANUAL"))
+        cm_row.addWidget(self._ctrl_manual_btn)
+
+        mode_selector_layout.addLayout(cm_row)
+        parent_layout.addWidget(mode_selector_frame)
+
+        self._apply_control_mode_btn_styles("AUTO")
+
+        # === AUTO SECTIONS (hidden in MANUAL) ===
+        self._auto_sections = []
+
+        # === MANUAL PANEL (hidden in AUTO) ===
+        self._manual_panel = QFrame()
+        self._manual_panel.setStyleSheet("""
+            QFrame { background: #1e272e; border-radius: 8px; border: 1px solid #34495e; }
+        """)
+        mp_layout = QVBoxLayout(self._manual_panel)
+        mp_layout.setContentsMargins(12, 10, 12, 10)
+        mp_layout.setSpacing(10)
+
+        mp_layout.addWidget(QLabel("CONTROL MANUAL"))
+
+        # --- CLIMA group (exclusive) ---
+        clima_label = QLabel("CLIMA")
+        clima_label.setStyleSheet("color: #95a5a6; font-size: 10px; font-weight: bold;")
+        mp_layout.addWidget(clima_label)
+
+        clima_row = QHBoxLayout()
+        clima_row.setSpacing(6)
+        self._manual_clima_btns = {}
+        for clima in ["clima_1", "clima_2", "clima_3", "clima_4"]:
+            btn = QPushButton(clima.replace("clima_", "Clima "))
+            btn.setCheckable(True)
+            btn.setFixedHeight(32)
+            btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            color = MODE_COLORS.get(clima, "#7f8c8d")
+            btn.setStyleSheet(f"""
+                QPushButton {{ background: #2c3e50; color: #95a5a6; border: 1px solid #3d5266; border-radius: 14px; padding: 2px 8px; font-size: 11px; }}
+                QPushButton:checked {{ background: {color}; color: white; border: none; font-weight: bold; }}
+                QPushButton:hover:!checked {{ background: #34495e; border: 1px solid {color}; }}
+            """)
+            btn.clicked.connect(lambda checked, c=clima: self._on_manual_clima(c))
+            clima_row.addWidget(btn)
+            self._manual_clima_btns[clima] = btn
+        mp_layout.addLayout(clima_row)
+
+        # --- MODO group (exclusive) ---
+        modo_label = QLabel("MODO")
+        modo_label.setStyleSheet("color: #95a5a6; font-size: 10px; font-weight: bold;")
+        mp_layout.addWidget(modo_label)
+
+        modo_row = QHBoxLayout()
+        modo_row.setSpacing(6)
+        self._manual_modo_btns = {}
+        modo_items = [
+            ("boliche_inicio", "BoLIni"),
+            ("boliche_desarrollo", "BoLDes"),
+            ("boliche_fin", "BoLFin"),
+            ("apagado", "Apagado"),
+        ]
+        for mode_key, display in modo_items:
+            btn = QPushButton(display)
+            btn.setCheckable(True)
+            btn.setFixedHeight(32)
+            btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            color = MODE_COLORS.get(mode_key, "#7f8c8d")
+            btn.setStyleSheet(f"""
+                QPushButton {{ background: #2c3e50; color: #95a5a6; border: 1px solid #3d5266; border-radius: 14px; padding: 2px 8px; font-size: 11px; }}
+                QPushButton:checked {{ background: {color}; color: white; border: none; font-weight: bold; }}
+                QPushButton:hover:!checked {{ background: #34495e; border: 1px solid {color}; }}
+            """)
+            btn.clicked.connect(lambda checked, m=mode_key: self._on_manual_modo(m))
+            modo_row.addWidget(btn)
+            self._manual_modo_btns[mode_key] = btn
+        mp_layout.addLayout(modo_row)
+
+        # --- EXTRAS group (multi-select toggles) ---
+        extras_label = QLabel("EXTRAS")
+        extras_label.setStyleSheet("color: #95a5a6; font-size: 10px; font-weight: bold;")
+        mp_layout.addWidget(extras_label)
+
+        extras_row = QHBoxLayout()
+        extras_row.setSpacing(6)
+        self._manual_extra_btns = {}
+        for action, display in [("vision_haze", "Haze"), ("vision_dj", "DJ"), ("vision_artista", "Artista")]:
+            btn = QPushButton(display)
+            btn.setCheckable(True)
+            btn.setFixedHeight(32)
+            btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            btn.setStyleSheet("""
+                QPushButton { background: #283747; color: #6c7a89; border: 1px solid #2c3e50; border-radius: 14px; padding: 2px 8px; font-size: 11px; }
+                QPushButton:checked { background: #2980b9; color: #ecf0f1; border: none; font-weight: bold; }
+                QPushButton:hover:!checked { background: #34495e; color: #95a5a6; }
+            """)
+            extras_row.addWidget(btn)
+            self._manual_extra_btns[action] = btn
+        mp_layout.addLayout(extras_row)
+
+        # --- APLICAR button ---
+        self._manual_apply_btn = QPushButton("APLICAR")
+        self._manual_apply_btn.setFixedHeight(40)
+        self._manual_apply_btn.setStyleSheet("""
+            QPushButton { background: #27ae60; color: white; border: none; border-radius: 6px; padding: 8px 16px; font-weight: bold; font-size: 13px; }
+            QPushButton:hover { background: #2ecc71; }
+        """)
+        self._manual_apply_btn.clicked.connect(self._on_manual_apply)
+        mp_layout.addWidget(self._manual_apply_btn)
+
+        parent_layout.addWidget(self._manual_panel)
+        self._manual_panel.hide()
+
+        # Selected manual state
+        self._manual_selected_clima = None
+        self._manual_selected_modo = None
+
         # === GO SECTION ===
         go_frame = QFrame()
         go_frame.setStyleSheet("QFrame { background: #1e272e; border-radius: 8px; border: 1px solid #34495e; }")
@@ -681,6 +823,7 @@ class CalendarTab(QWidget):
         go_layout.addWidget(self.cancel_go_btn)
 
         parent_layout.addWidget(go_frame)
+        self._auto_sections.append(go_frame)
 
         # === OVERRIDE SECTION ===
         override_frame = QFrame()
@@ -727,6 +870,7 @@ class CalendarTab(QWidget):
         override_layout.addWidget(self.override_info)
 
         parent_layout.addWidget(override_frame)
+        self._auto_sections.append(override_frame)
 
         # === AUTO MODE SECTION ===
         auto_frame = QFrame()
@@ -748,6 +892,73 @@ class CalendarTab(QWidget):
         auto_layout.addWidget(self.auto_btn)
 
         parent_layout.addWidget(auto_frame)
+        self._auto_sections.append(auto_frame)
+
+    def _apply_control_mode_btn_styles(self, mode: str):
+        """Update AUTO/MANUAL button visual states."""
+        is_auto = mode == "AUTO"
+        self._ctrl_auto_btn.setChecked(is_auto)
+        self._ctrl_manual_btn.setChecked(not is_auto)
+        self._ctrl_auto_btn.setStyleSheet(f"""
+            QPushButton {{ background: {'#27ae60' if is_auto else '#2c3e50'}; color: {'white' if is_auto else '#95a5a6'}; border: {'none' if is_auto else '1px solid #3d5266'}; border-radius: 6px; font-weight: bold; font-size: 12px; }}
+            QPushButton:hover {{ background: {'#2ecc71' if is_auto else '#34495e'}; }}
+        """)
+        self._ctrl_manual_btn.setStyleSheet(f"""
+            QPushButton {{ background: {'#e67e22' if not is_auto else '#2c3e50'}; color: {'white' if not is_auto else '#95a5a6'}; border: {'none' if not is_auto else '1px solid #3d5266'}; border-radius: 6px; font-weight: bold; font-size: 12px; }}
+            QPushButton:hover {{ background: {'#f39c12' if not is_auto else '#34495e'}; }}
+        """)
+
+    def _update_control_mode_ui(self, control_mode: str):
+        """Show/hide sections based on control_mode."""
+        is_manual = control_mode == "MANUAL"
+        for section in self._auto_sections:
+            section.setVisible(not is_manual)
+        self._manual_panel.setVisible(is_manual)
+
+    def _on_set_control_mode(self, mode: str):
+        if not self._calendar:
+            return
+        self._calendar.set_control_mode(mode)
+        self._apply_control_mode_btn_styles(mode)
+        self._update_control_mode_ui(mode)
+        print(f"[CalendarTab] control_mode → {mode}")
+
+    def _on_manual_clima(self, clima: str):
+        """Exclusive selection in clima group."""
+        self._manual_selected_clima = clima
+        # Uncheck modo group (clima and modo are mutually exclusive selection contexts)
+        self._manual_selected_modo = None
+        for key, btn in self._manual_clima_btns.items():
+            btn.setChecked(key == clima)
+        for btn in self._manual_modo_btns.values():
+            btn.setChecked(False)
+
+    def _on_manual_modo(self, modo: str):
+        """Exclusive selection in modo group."""
+        self._manual_selected_modo = modo
+        self._manual_selected_clima = None
+        for key, btn in self._manual_modo_btns.items():
+            btn.setChecked(key == modo)
+        for btn in self._manual_clima_btns.values():
+            btn.setChecked(False)
+
+    def _on_manual_apply(self):
+        """Apply manual mode + actions."""
+        if not self._calendar:
+            return
+
+        # Determine selected mode
+        selected = self._manual_selected_clima or self._manual_selected_modo
+        if not selected:
+            QMessageBox.warning(self, "Error", "Selecciona un modo primero")
+            return
+
+        # Gather active extras
+        actions = [key for key, btn in self._manual_extra_btns.items() if btn.isChecked()]
+
+        self._calendar.force_manual(selected, actions)
+        actions_str = f" + {actions}" if actions else ""
+        print(f"[CalendarTab] MANUAL APPLY: {selected}{actions_str}")
 
     def _create_permissions(self, parent_layout):
         """Panel de permisos"""
@@ -923,6 +1134,7 @@ class CalendarTab(QWidget):
             self._update_override(state)
             self._update_pending_go(state)
             self._update_auto_mode(state)
+            self._update_control_mode(state)
             self._update_alert(state)
         except Exception as e:
             print(f"[CalendarTab] Error: {e}")
@@ -1146,6 +1358,11 @@ class CalendarTab(QWidget):
             self.auto_label.setText("Modo automatico: INACTIVO")
             self.auto_label.setStyleSheet("color: #e74c3c;")
             self.auto_btn.setText("Activar Auto")
+
+    def _update_control_mode(self, state):
+        cm = state.get("control_mode", "AUTO")
+        self._apply_control_mode_btn_styles(cm)
+        self._update_control_mode_ui(cm)
 
     def _update_alert(self, state):
         alert = state.get("alert")
