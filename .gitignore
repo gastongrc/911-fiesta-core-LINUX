@@ -54,3 +54,4 @@ env.bak/
 venv.bak/
 yolov8n.pt
 tatus
+.Xauthority

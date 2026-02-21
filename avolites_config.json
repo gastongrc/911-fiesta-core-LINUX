@@ -1,5 +1,5 @@
 {
-    "console_ip": "192.168.0.3",
+    "console_ip": "192.168.1.45",
     "console_port": 4430,
     "endpoint_type": "Titan",
     "auto_detect": false,
@@ -7,7 +7,7 @@
     "read_timeout": 2.0,
     "connection_timeout": 5,
     "last_successful_ip": null,
-    "local_ip": "Descripci¢n . . . . . . . . . . . . . . .",
+    "local_ip": "192.168.1.100",
     "transport": "http",
     "user_number_offset": 169,
     "titanid_mapping": {},

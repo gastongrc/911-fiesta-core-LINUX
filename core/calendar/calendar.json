@@ -27,15 +27,15 @@
     "thursday": [
       {
         "from": "20:00",
-        "to": "22:00",
-        "mode": "clima_1"
+        "to": "23:59",
+        "mode": "boliche_desarrollo"
       }
     ],
     "friday": [
       {
-        "from": "20:00",
-        "to": "22:00",
-        "mode": "clima_1"
+        "from": "00:00",
+        "to": "23:00",
+        "mode": "boliche_desarrollo"
       }
     ],
     "saturday": [
@@ -49,8 +49,7 @@
       {
         "from": "20:00",
         "to": "22:00",
-        "mode": "clima_1",
-        "actions": []
+        "mode": "clima_1"
       }
     ]
   }

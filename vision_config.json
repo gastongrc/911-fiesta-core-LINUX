@@ -54,37 +54,46 @@
   },
   "cameras": {
     "haze": {
-      "type": "mjpeg",
+      "type": "rtsp",
       "enabled": true,
-      "host": "192.168.1.110",
-      "path": "/axis-cgi/mjpg/video.cgi?fps=10",
-      "username": "root",
-      "password": "root",
+      "url_main": "rtsp://admin:12345@192.168.1.64:554/Streaming/Channels/101",
+      "url_sub": "rtsp://admin:12345@192.168.1.64:554/Streaming/Channels/102",
+      "preferred": "sub",
+      "username": "",
+      "password": "",
       "fps_target": 11,
       "timeout_s": 5.0,
-      "reconnect_s": 2.0
+      "reconnect_s": 2.0,
+      "transport": "udp",
+      "low_latency": true
     },
     "dj": {
-      "type": "mjpeg",
+      "type": "rtsp",
       "enabled": true,
-      "host": "192.168.1.110",
-      "path": "/axis-cgi/mjpg/video.cgi?fps=10",
-      "username": "root",
-      "password": "root",
+      "url_main": "rtsp://admin:12345@192.168.1.64:554/Streaming/Channels/101",
+      "url_sub": "rtsp://admin:12345@192.168.1.64:554/Streaming/Channels/102",
+      "preferred": "sub",
+      "username": "",
+      "password": "",
       "fps_target": 10,
       "timeout_s": 5.0,
-      "reconnect_s": 2.0
+      "reconnect_s": 2.0,
+      "transport": "udp",
+      "low_latency": true
     },
     "artist": {
-      "type": "mjpeg",
+      "type": "rtsp",
       "enabled": true,
-      "host": "192.168.1.110",
-      "path": "/axis-cgi/mjpg/video.cgi?fps=10",
-      "username": "root",
-      "password": "root",
+      "url_main": "rtsp://admin:12345@192.168.1.64:554/Streaming/Channels/101",
+      "url_sub": "rtsp://admin:12345@192.168.1.64:554/Streaming/Channels/102",
+      "preferred": "sub",
+      "username": "",
+      "password": "",
       "fps_target": 10,
       "timeout_s": 5.0,
-      "reconnect_s": 2.0
+      "reconnect_s": 2.0,
+      "transport": "udp",
+      "low_latency": true
     }
   },
   "dj": {
