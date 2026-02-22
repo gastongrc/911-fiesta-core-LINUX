@@ -72,6 +72,7 @@ async def get_calendar_status():
     return {
         "current_mode": cal.get("current_mode"),
         "next_mode": cal.get("next_mode"),
+        "current_actions": cal.get("current_actions", []),
         "source": cal.get("source", "AUTO"),
         "time_remaining_s": cal.get("time_remaining_s", -1),
         "time_to_next_s": cal.get("time_to_next_s", -1),

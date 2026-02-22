@@ -1364,6 +1364,37 @@ class CalendarTab(QWidget):
         self._apply_control_mode_btn_styles(cm)
         self._update_control_mode_ui(cm)
 
+        # Sync manual panel buttons from backend state
+        if cm == "MANUAL":
+            current_mode = state.get("current_mode")
+            current_actions = state.get("current_actions", [])
+
+            # Determine which group the mode belongs to
+            clima_modes = set(self._manual_clima_btns.keys())
+            modo_modes = set(self._manual_modo_btns.keys())
+
+            if current_mode in clima_modes:
+                if self._manual_selected_clima != current_mode:
+                    self._manual_selected_clima = current_mode
+                    self._manual_selected_modo = None
+                    for key, btn in self._manual_clima_btns.items():
+                        btn.setChecked(key == current_mode)
+                    for btn in self._manual_modo_btns.values():
+                        btn.setChecked(False)
+            elif current_mode in modo_modes:
+                if self._manual_selected_modo != current_mode:
+                    self._manual_selected_modo = current_mode
+                    self._manual_selected_clima = None
+                    for key, btn in self._manual_modo_btns.items():
+                        btn.setChecked(key == current_mode)
+                    for btn in self._manual_clima_btns.values():
+                        btn.setChecked(False)
+
+            # Sync extras
+            actions_set = set(current_actions)
+            for key, btn in self._manual_extra_btns.items():
+                btn.setChecked(key in actions_set)
+
     def _update_alert(self, state):
         alert = state.get("alert")
         if alert and not alert.get("acknowledged", False):

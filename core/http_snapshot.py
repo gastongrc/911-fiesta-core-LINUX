@@ -171,6 +171,7 @@ class SnapshotServer:
             "time": now.strftime("%H:%M:%S"),
             "current_mode": None,
             "next_mode": None,
+            "current_actions": [],
             "time_remaining_s": -1,
             "time_to_next_s": -1,
             "override_active": False,
@@ -194,6 +195,7 @@ class SnapshotServer:
                     calendar["time_to_next_s"] = state_data["time_to_next_s"]
 
                 calendar["control_mode"] = state_data.get("control_mode", "AUTO")
+                calendar["current_actions"] = state_data.get("current_actions", [])
 
                 # next_change_at
                 if state_data.get("next_change_at"):
@@ -259,6 +261,7 @@ class SnapshotServer:
             return {
                 "current_mode": state.get("current_mode"),
                 "next_mode": state.get("next_mode"),
+                "current_actions": state.get("current_actions", []),
                 "override_active": state.get("is_override", False),
                 "auto": state.get("auto_mode_enabled", True),
                 "control_mode": state.get("control_mode", "AUTO"),

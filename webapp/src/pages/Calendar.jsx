@@ -617,12 +617,9 @@ function TabHorarios({ schedule, setSchedule, hasChanges, setHasChanges, onSave,
 }
 
 // ==================== MANUAL PANEL ====================
-function ManualPanel({ onForceManual, apiOffline }) {
-  const [selClima, setSelClima] = useState(null);
-  const [selModo, setSelModo] = useState(null);
-  const [extras, setExtras] = useState({});
-
+function ManualPanel({ status, onForceManual, apiOffline }) {
   const climaModes = ['clima_1', 'clima_2', 'clima_3', 'clima_4'];
+  const modoModeKeys = ['boliche_inicio', 'boliche_desarrollo', 'boliche_fin', 'apagado'];
   const modoModes = [
     { key: 'boliche_inicio', label: 'BoLIni' },
     { key: 'boliche_desarrollo', label: 'BoLDes' },
@@ -635,9 +632,39 @@ function ManualPanel({ onForceManual, apiOffline }) {
     { key: 'vision_artista', label: 'Artista' },
   ];
 
-  const handleClima = (c) => { setSelClima(c); setSelModo(null); };
-  const handleModo = (m) => { setSelModo(m); setSelClima(null); };
-  const toggleExtra = (key) => setExtras(prev => ({ ...prev, [key]: !prev[key] }));
+  // Derive initial state from backend status
+  const backendMode = status?.current_mode || null;
+  const backendActions = status?.current_actions || [];
+  const initClima = climaModes.includes(backendMode) ? backendMode : null;
+  const initModo = modoModeKeys.includes(backendMode) ? backendMode : null;
+  const initExtras = {};
+  extraActions.forEach(a => { initExtras[a.key] = backendActions.includes(a.key); });
+
+  const [selClima, setSelClima] = useState(initClima);
+  const [selModo, setSelModo] = useState(initModo);
+  const [extras, setExtras] = useState(initExtras);
+  const [userTouched, setUserTouched] = useState(false);
+
+  // Sync from backend when status changes — only if user hasn't touched controls
+  useEffect(() => {
+    if (userTouched) return;
+    const cm = status?.current_mode || null;
+    const ca = status?.current_actions || [];
+    if (climaModes.includes(cm)) { setSelClima(cm); setSelModo(null); }
+    else if (modoModeKeys.includes(cm)) { setSelModo(cm); setSelClima(null); }
+    const newExtras = {};
+    extraActions.forEach(a => { newExtras[a.key] = ca.includes(a.key); });
+    setExtras(newExtras);
+  }, [status?.current_mode, JSON.stringify(status?.current_actions)]);
+
+  const handleClima = (c) => { setSelClima(c); setSelModo(null); setUserTouched(true); };
+  const handleModo = (m) => { setSelModo(m); setSelClima(null); setUserTouched(true); };
+  const toggleExtra = (key) => { setExtras(prev => ({ ...prev, [key]: !prev[key] })); setUserTouched(true); };
+
+  const handleApply = (mode, actions) => {
+    onForceManual(mode, actions);
+    setUserTouched(false); // Reset after apply so next poll syncs
+  };
 
   const selected = selClima || selModo;
   const activeExtras = Object.entries(extras).filter(([, v]) => v).map(([k]) => k);
@@ -703,7 +730,7 @@ function ManualPanel({ onForceManual, apiOffline }) {
 
       {/* APLICAR */}
       <button
-        onClick={() => selected && onForceManual(selected, activeExtras)}
+        onClick={() => selected && handleApply(selected, activeExtras)}
         disabled={apiOffline || !selected}
         className="key"
         style={{ width: '100%', padding: '14px', fontSize: '14px', fontWeight: 700, letterSpacing: '1px', opacity: selected ? 1 : 0.4 }}
@@ -765,7 +792,7 @@ function TabControl({ status, onGo, onExtend, onOverride, onClearOverride, onCon
       </div>
 
       {/* MANUAL MODE: show ManualPanel */}
-      {isManual && <ManualPanel onForceManual={onForceManual} apiOffline={apiOffline} />}
+      {isManual && <ManualPanel status={status} onForceManual={onForceManual} apiOffline={apiOffline} />}
 
       {/* AUTO MODE: show GO / Extend / Override */}
       {!isManual && (
