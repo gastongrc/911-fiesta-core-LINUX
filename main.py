@@ -153,10 +153,13 @@ from core.audio_monitor import AudioMonitor
 
 # MIL-Lite: Ponderador global determinista (kill-switch: ENABLE_MIL_LITE=0)
 ENABLE_MIL_LITE = int(os.environ.get("ENABLE_MIL_LITE", "0"))
+print(f"[MIL-Lite] ENABLE_MIL_LITE={ENABLE_MIL_LITE}")
 try:
     from music_intelligence_lite import MILLite
-except Exception:
+    print(f"[MIL-Lite] import OK, MILLite={MILLite}")
+except Exception as e:
     MILLite = None
+    print(f"[MIL-Lite] import FAILED: {e}")
 
 # V12: Neon Pro UI Styling
 try:
@@ -570,9 +573,11 @@ class Main(QMainWindow):
 
         # MIL-Lite: inicializar si ENABLE_MIL_LITE=1
         self.mil_lite = None
+        print(f"[MIL-Lite] init gate: flag={ENABLE_MIL_LITE}, class={MILLite}")
         if ENABLE_MIL_LITE and MILLite is not None:
             try:
                 self.mil_lite = MILLite(self.state_manager)
+                print(f"[MIL-Lite] OK: self.mil_lite={self.mil_lite}")
             except Exception as e:
                 print(f"[MIL-Lite] Fallo al inicializar: {e}")
                 self.mil_lite = None
