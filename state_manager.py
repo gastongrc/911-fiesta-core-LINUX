@@ -168,6 +168,10 @@ class StateManager:
         # Cuando un estado está aquí, su score efectivo = 0.0 para la selección
         self._disabled_states: set = set()
 
+        # MIL-Lite: Pesos por categoria (default 1.0 = sin efecto)
+        self._mil_weights = {"bajada": 1.0, "base_golpe": 1.0, "ataque": 1.0, "brake": 1.0}
+        self._mil_profile = ""  # Nombre de perfil activo (vacio = MIL inactivo)
+
         # Cache
         self._last_update_time = time.time()
         self._last_scores = {}
@@ -257,6 +261,22 @@ class StateManager:
     def get_current_preset(self) -> str:
         """V13: Retorna el nombre del preset actual."""
         return self._current_preset
+
+    # ====== MIL-LITE: PESOS ADAPTATIVOS ======
+    def set_mil_weights(self, weights: dict, profile: str = "") -> None:
+        """
+        MIL-Lite: Establece pesos por categoria para ponderar scores.
+        Todos los valores se clamean a [0.8, 1.2].
+        Con pesos en 1.0 el comportamiento es identico al original.
+        """
+        for k in ("bajada", "base_golpe", "ataque", "brake"):
+            v = float(weights.get(k, 1.0))
+            self._mil_weights[k] = max(0.8, min(1.2, v))
+        self._mil_profile = str(profile)
+
+    def get_mil_weights(self) -> dict:
+        """Retorna pesos MIL-Lite actuales."""
+        return self._mil_weights.copy()
 
     # ====== CALENDAR BRIDGE: CONTROL DE ESTADOS ======
     def set_disabled_states(self, states: list) -> None:
@@ -399,7 +419,11 @@ class StateManager:
         if modules_brake:
             active_brake = sum(1 for m in modules_brake if self._is_module_active(m))
             scores["brake"] = active_brake / len(modules_brake)
-        
+
+        # MIL-Lite: aplicar pesos por categoria (default 1.0 = sin efecto)
+        for k in scores:
+            scores[k] = min(1.0, scores[k] * self._mil_weights.get(k, 1.0))
+
         return self._apply_light_smoothing(scores)
     
     def _apply_light_smoothing(self, new_scores):
@@ -855,6 +879,8 @@ class StateManager:
                 "min_confidence": self.min_confidence,
                 "blocked_by_confidence": self.stats.get("blocked_by_confidence", 0)
             },
+            "mil_weights": self._mil_weights.copy(),
+            "mil_profile": self._mil_profile,
             "override_info": {
                 "atk_over80_count": self._atk_over80_count,
                 "atk_threshold": self.atk_override_threshold,
@@ -1088,6 +1114,36 @@ class StateMonitorWidget(QWidget):
         
         vb.addLayout(cnt_row, 4, 0, 1, 2)
         root.addWidget(vote_box)
+
+        # MIL-Lite section (visible only when active)
+        self._mil_box = QGroupBox("MUSIC INTELLIGENCE")
+        self._mil_box.setStyleSheet("QGroupBox { font-weight: bold; color: #4fc3f7; font-size:11px; }")
+        mil_lay = QGridLayout(self._mil_box)
+        mil_lay.setContentsMargins(12, 10, 12, 10)
+        mil_lay.setHorizontalSpacing(18)
+        mil_lay.setVerticalSpacing(6)
+
+        mil_lbl_style = "font-size:11px; color:#aaa;"
+        mil_val_style = "color:#ddd; font-size:11px;"
+
+        lbl_profile = QLabel("Perfil:")
+        lbl_profile.setStyleSheet(mil_lbl_style)
+        lbl_weights = QLabel("Pesos:")
+        lbl_weights.setStyleSheet(mil_lbl_style)
+
+        mil_lay.addWidget(lbl_profile, 0, 0)
+        mil_lay.addWidget(lbl_weights, 1, 0)
+
+        self._mil_profile_label = QLabel("--")
+        self._mil_profile_label.setStyleSheet("color:#4fc3f7; font-weight:700; font-size:11px;")
+        self._mil_weights_label = QLabel("--")
+        self._mil_weights_label.setStyleSheet(mil_val_style)
+
+        mil_lay.addWidget(self._mil_profile_label, 0, 1)
+        mil_lay.addWidget(self._mil_weights_label, 1, 1)
+
+        self._mil_box.setVisible(False)  # Oculto hasta que MIL-Lite este activo
+        root.addWidget(self._mil_box)
 
         # Botones de control
         btn_row = QHBoxLayout()
@@ -1329,6 +1385,25 @@ TRANSICIONES:
             self.lbl_interrupts.setText(intr_text)
         
         self.lbl_override.setText(f"Override ATQ: {overrides}")
+
+        # MIL-Lite section
+        mil_profile = st.get("mil_profile", "")
+        mil_weights = st.get("mil_weights", {})
+        if mil_profile:
+            if not self._mil_box.isVisible():
+                self._mil_box.setVisible(True)
+            profile_colors = {
+                "CALM": "#4CAF50", "RHYTHMIC": "#2196F3",
+                "INTENSE": "#FF5722", "NEUTRAL": "#aaa",
+            }
+            p_color = profile_colors.get(mil_profile, "#aaa")
+            self._mil_profile_label.setText(mil_profile)
+            self._mil_profile_label.setStyleSheet(f"color:{p_color}; font-weight:700; font-size:11px;")
+            w = mil_weights
+            self._mil_weights_label.setText(
+                f"BJ:{w.get('bajada', 1):.2f}  BG:{w.get('base_golpe', 1):.2f}  "
+                f"AT:{w.get('ataque', 1):.2f}  BR:{w.get('brake', 1):.2f}"
+            )
 
     def closeEvent(self, event):
         if hasattr(self, 'update_timer'):
