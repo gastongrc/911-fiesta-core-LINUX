@@ -1115,7 +1115,7 @@ class StateMonitorWidget(QWidget):
         vb.addLayout(cnt_row, 4, 0, 1, 2)
         root.addWidget(vote_box)
 
-        # MIL-Lite section (visible only when active)
+        # MIL-Lite section (always visible)
         self._mil_box = QGroupBox("MUSIC INTELLIGENCE")
         self._mil_box.setStyleSheet("QGroupBox { font-weight: bold; color: #4fc3f7; font-size:11px; }")
         mil_lay = QGridLayout(self._mil_box)
@@ -1126,23 +1126,31 @@ class StateMonitorWidget(QWidget):
         mil_lbl_style = "font-size:11px; color:#aaa;"
         mil_val_style = "color:#ddd; font-size:11px;"
 
+        lbl_status = QLabel("Status:")
+        lbl_status.setStyleSheet(mil_lbl_style)
         lbl_profile = QLabel("Perfil:")
         lbl_profile.setStyleSheet(mil_lbl_style)
         lbl_weights = QLabel("Pesos:")
         lbl_weights.setStyleSheet(mil_lbl_style)
 
-        mil_lay.addWidget(lbl_profile, 0, 0)
-        mil_lay.addWidget(lbl_weights, 1, 0)
+        mil_lay.addWidget(lbl_status, 0, 0)
+        mil_lay.addWidget(lbl_profile, 1, 0)
+        mil_lay.addWidget(lbl_weights, 2, 0)
 
+        self._mil_status_label = QLabel("--")
+        self._mil_status_label.setStyleSheet("color:#aaa; font-weight:700; font-size:11px;")
         self._mil_profile_label = QLabel("--")
         self._mil_profile_label.setStyleSheet("color:#4fc3f7; font-weight:700; font-size:11px;")
         self._mil_weights_label = QLabel("--")
         self._mil_weights_label.setStyleSheet(mil_val_style)
 
-        mil_lay.addWidget(self._mil_profile_label, 0, 1)
-        mil_lay.addWidget(self._mil_weights_label, 1, 1)
+        mil_lay.addWidget(self._mil_status_label, 0, 1)
+        mil_lay.addWidget(self._mil_profile_label, 1, 1)
+        mil_lay.addWidget(self._mil_weights_label, 2, 1)
 
-        self._mil_box.setVisible(False)  # Oculto hasta que MIL-Lite este activo
+        import os as _os
+        self._mil_env_enabled = int(_os.environ.get("ENABLE_MIL_LITE", "0"))
+
         root.addWidget(self._mil_box)
 
         # Botones de control
@@ -1386,12 +1394,35 @@ TRANSICIONES:
         
         self.lbl_override.setText(f"Override ATQ: {overrides}")
 
-        # MIL-Lite section
+        # MIL-Lite section (always rendered)
         mil_profile = st.get("mil_profile", "")
         mil_weights = st.get("mil_weights", {})
-        if mil_profile:
-            if not self._mil_box.isVisible():
-                self._mil_box.setVisible(True)
+
+        if not self._mil_env_enabled:
+            # ENABLE_MIL_LITE=0 in environment
+            self._mil_status_label.setText("DISABLED")
+            self._mil_status_label.setStyleSheet("color:#666; font-weight:700; font-size:11px;")
+            self._mil_profile_label.setText("--")
+            self._mil_profile_label.setStyleSheet("color:#666; font-size:11px;")
+            self._mil_weights_label.setText("--")
+        elif not mil_profile:
+            # Env=1 but no profile received yet — init error or waiting
+            has_any_weight = any(abs(v - 1.0) > 0.005 for v in mil_weights.values()) if mil_weights else False
+            if has_any_weight:
+                # Weights changed but no profile string — shouldn't happen, treat as active
+                self._mil_status_label.setText("ACTIVE")
+                self._mil_status_label.setStyleSheet("color:#4fc3f7; font-weight:700; font-size:11px;")
+            else:
+                # No weights changed — MIL never called set_mil_weights
+                self._mil_status_label.setText("INIT ERROR")
+                self._mil_status_label.setStyleSheet("color:#FF5722; font-weight:700; font-size:11px;")
+            self._mil_profile_label.setText("--")
+            self._mil_profile_label.setStyleSheet("color:#666; font-size:11px;")
+            self._mil_weights_label.setText("--")
+        else:
+            # Active with profile
+            self._mil_status_label.setText("ACTIVE")
+            self._mil_status_label.setStyleSheet("color:#4fc3f7; font-weight:700; font-size:11px;")
             profile_colors = {
                 "CALM": "#4CAF50", "RHYTHMIC": "#2196F3",
                 "INTENSE": "#FF5722", "NEUTRAL": "#aaa",
