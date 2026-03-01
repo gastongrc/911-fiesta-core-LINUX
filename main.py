@@ -151,6 +151,13 @@ from waveform_smooth import SmoothWaveform
 from state_manager import StateManager
 from core.audio_monitor import AudioMonitor
 
+# MIL-Lite: Ponderador global determinista (kill-switch: ENABLE_MIL_LITE=0)
+try:
+    from music_intelligence_lite import MILLite, ENABLE_MIL_LITE
+except Exception:
+    MILLite = None
+    ENABLE_MIL_LITE = 0
+
 # V12: Neon Pro UI Styling
 try:
     from neon_styles import (
@@ -560,6 +567,15 @@ class Main(QMainWindow):
             hysteresis_margin=0.6,
             cooldown_seconds=0.5
         )
+
+        # MIL-Lite: inicializar si ENABLE_MIL_LITE=1
+        self.mil_lite = None
+        if ENABLE_MIL_LITE and MILLite is not None:
+            try:
+                self.mil_lite = MILLite(self.state_manager)
+            except Exception as e:
+                print(f"[MIL-Lite] Fallo al inicializar: {e}")
+                self.mil_lite = None
 
         if CUE_ENGINE_MODULAR_AVAILABLE:
             try:
@@ -3945,6 +3961,18 @@ class Main(QMainWindow):
                 try:
                     module.process(block, sr)
                 except:
+                    pass
+
+            # MIL-Lite: actualizar perfil y pesos ANTES de StateManager
+            if self.mil_lite is not None:
+                try:
+                    self.mil_lite.tick(
+                        modules_bajada=self._get_active_modules(self.modules_bajada),
+                        modules_golpe=self._get_active_modules(self.modules_golpe),
+                        modules_ataque=self._get_active_modules(self.modules_ataque),
+                        modules_brake=self._get_active_modules(self.modules_brake),
+                    )
+                except Exception:
                     pass
 
             # State manager update uses ONLY Motor Real modules (not legacy)
