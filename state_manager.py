@@ -1414,8 +1414,8 @@ TRANSICIONES:
                 self._mil_status_label.setStyleSheet("color:#4fc3f7; font-weight:700; font-size:11px;")
             else:
                 # No weights changed — MIL never called set_mil_weights
-                self._mil_status_label.setText("INIT ERROR")
-                self._mil_status_label.setStyleSheet("color:#FF5722; font-weight:700; font-size:11px;")
+                self._mil_status_label.setText("WAITING / INIT")
+                self._mil_status_label.setStyleSheet("color:#FF9800; font-weight:700; font-size:11px;")
             self._mil_profile_label.setText("--")
             self._mil_profile_label.setStyleSheet("color:#666; font-size:11px;")
             self._mil_weights_label.setText("--")
