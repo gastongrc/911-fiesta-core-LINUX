@@ -1,16 +1,18 @@
 # music_intelligence_lite — Ponderador global determinista (sin ML)
 # ================================================================
-# Kill-switch: ENABLE_MIL_LITE=0 (default) → completamente inactivo
-# Cuando activo: detecta perfil musical y pondera scores por categoria
-# Pesos clamp 0.8–1.2. Perfil estable 1.5s antes de cambiar.
+# Activation read from config/mil_lite.json (file-based, deterministic).
+# Env var ENABLE_MIL_LITE overrides file if set.
 # ================================================================
-import os
-
-ENABLE_MIL_LITE = int(os.environ.get("ENABLE_MIL_LITE", "0"))
 
 MILLite = None
 
-if ENABLE_MIL_LITE:
+try:
+    from config.mil_lite_config import is_mil_lite_enabled
+    _enabled = is_mil_lite_enabled()
+except Exception:
+    _enabled = False
+
+if _enabled:
     try:
         from .mil_lite import MILLite  # noqa: F811
         print("[MIL-Lite] Music Intelligence Lite ACTIVADO")

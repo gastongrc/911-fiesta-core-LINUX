@@ -1148,8 +1148,11 @@ class StateMonitorWidget(QWidget):
         mil_lay.addWidget(self._mil_profile_label, 1, 1)
         mil_lay.addWidget(self._mil_weights_label, 2, 1)
 
-        import os as _os
-        self._mil_env_enabled = int(_os.environ.get("ENABLE_MIL_LITE", "0"))
+        try:
+            from config.mil_lite_config import is_mil_lite_enabled
+            self._mil_enabled = is_mil_lite_enabled()
+        except Exception:
+            self._mil_enabled = False
 
         root.addWidget(self._mil_box)
 
@@ -1398,7 +1401,7 @@ TRANSICIONES:
         mil_profile = st.get("mil_profile", "")
         mil_weights = st.get("mil_weights", {})
 
-        if not self._mil_env_enabled:
+        if not self._mil_enabled:
             # ENABLE_MIL_LITE=0 in environment
             self._mil_status_label.setText("DISABLED")
             self._mil_status_label.setStyleSheet("color:#666; font-weight:700; font-size:11px;")
