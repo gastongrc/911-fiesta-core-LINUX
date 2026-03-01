@@ -152,11 +152,11 @@ from state_manager import StateManager
 from core.audio_monitor import AudioMonitor
 
 # MIL-Lite: Ponderador global determinista (kill-switch: ENABLE_MIL_LITE=0)
+ENABLE_MIL_LITE = int(os.environ.get("ENABLE_MIL_LITE", "0"))
 try:
-    from music_intelligence_lite import MILLite, ENABLE_MIL_LITE
+    from music_intelligence_lite import MILLite
 except Exception:
     MILLite = None
-    ENABLE_MIL_LITE = 0
 
 # V12: Neon Pro UI Styling
 try:
