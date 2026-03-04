@@ -171,6 +171,7 @@ class StateManager:
         # MIL-Lite: Pesos por categoria (default 1.0 = sin efecto)
         self._mil_weights = {"bajada": 1.0, "base_golpe": 1.0, "ataque": 1.0, "brake": 1.0}
         self._mil_profile = ""  # Nombre de perfil activo (vacio = MIL inactivo)
+        self._mil_flag = False   # Set to True by main.py if MIL-Lite config is enabled
 
         # Cache
         self._last_update_time = time.time()
@@ -881,6 +882,7 @@ class StateManager:
             },
             "mil_weights": self._mil_weights.copy(),
             "mil_profile": self._mil_profile,
+            "mil_flag": self._mil_flag,
             "override_info": {
                 "atk_over80_count": self._atk_over80_count,
                 "atk_threshold": self.atk_override_threshold,
@@ -1148,12 +1150,6 @@ class StateMonitorWidget(QWidget):
         mil_lay.addWidget(self._mil_profile_label, 1, 1)
         mil_lay.addWidget(self._mil_weights_label, 2, 1)
 
-        try:
-            from config.mil_lite_config import is_mil_lite_enabled
-            self._mil_enabled = is_mil_lite_enabled()
-        except Exception:
-            self._mil_enabled = False
-
         root.addWidget(self._mil_box)
 
         # Botones de control
@@ -1398,10 +1394,11 @@ TRANSICIONES:
         self.lbl_override.setText(f"Override ATQ: {overrides}")
 
         # MIL-Lite section (always rendered)
+        mil_flag = st.get("mil_flag", False)
         mil_profile = st.get("mil_profile", "")
         mil_weights = st.get("mil_weights", {})
 
-        if not self._mil_enabled:
+        if not mil_flag:
             # ENABLE_MIL_LITE=0 in environment
             self._mil_status_label.setText("DISABLED")
             self._mil_status_label.setStyleSheet("color:#666; font-weight:700; font-size:11px;")

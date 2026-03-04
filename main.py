@@ -576,6 +576,7 @@ class Main(QMainWindow):
         )
 
         # MIL-Lite: inicializar si config/mil_lite.json {"enabled": true}
+        self.state_manager._mil_flag = bool(ENABLE_MIL_LITE)
         self.mil_lite = None
         if ENABLE_MIL_LITE and MILLite is not None:
             try:
