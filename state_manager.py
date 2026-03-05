@@ -168,10 +168,9 @@ class StateManager:
         # Cuando un estado está aquí, su score efectivo = 0.0 para la selección
         self._disabled_states: set = set()
 
-        # MIL-Lite: Pesos por categoria (default 1.0 = sin efecto)
-        self._mil_weights = {"bajada": 1.0, "base_golpe": 1.0, "ataque": 1.0, "brake": 1.0}
-        self._mil_profile = ""  # Nombre de perfil activo (vacio = MIL inactivo)
-        self._mil_flag = False   # Set to True by main.py if MIL-Lite config is enabled
+        # Music Structure Engine (MSE) state
+        self._mse_state = None  # MusicStructureState from MSE
+        self._mse_enabled = True
 
         # Cache
         self._last_update_time = time.time()
@@ -263,22 +262,14 @@ class StateManager:
         """V13: Retorna el nombre del preset actual."""
         return self._current_preset
 
-    # ====== MIL-LITE: PESOS ADAPTATIVOS ======
-    def set_mil_weights(self, weights: dict, profile: str = "") -> None:
-        """
-        MIL-Lite: Establece pesos por categoria para ponderar scores.
-        Todos los valores se clamean a [0.8, 1.2].
-        Con pesos en 1.0 el comportamiento es identico al original.
-        """
-        for k in ("bajada", "base_golpe", "ataque", "brake"):
-            v = float(weights.get(k, 1.0))
-            self._mil_weights[k] = max(0.8, min(1.2, v))
-        self._mil_profile = str(profile)
+    # ====== MUSIC STRUCTURE ENGINE (MSE) ======
+    def update_music_structure(self, music_state) -> None:
+        """Receive MusicStructureState from MSE."""
+        self._mse_state = music_state
 
-    def get_mil_weights(self) -> dict:
-        """Retorna pesos MIL-Lite actuales."""
-        return self._mil_weights.copy()
-
+    def get_mse_state(self):
+        """Return current MSE state (or None)."""
+        return self._mse_state
     # ====== CALENDAR BRIDGE: CONTROL DE ESTADOS ======
     def set_disabled_states(self, states: list) -> None:
         """
@@ -421,9 +412,18 @@ class StateManager:
             active_brake = sum(1 for m in modules_brake if self._is_module_active(m))
             scores["brake"] = active_brake / len(modules_brake)
 
-        # MIL-Lite: aplicar pesos por categoria (default 1.0 = sin efecto)
-        for k in scores:
-            scores[k] = min(1.0, scores[k] * self._mil_weights.get(k, 1.0))
+        # Music Structure Engine: blend probabilities with analyzer scores
+        if self._mse_enabled and self._mse_state is not None:
+            conf = getattr(self._mse_state, "confidence", 0)
+            if conf >= 0.4:
+                mse_probs = {
+                    "bajada": getattr(self._mse_state, "P_bajada", 0),
+                    "base_golpe": getattr(self._mse_state, "P_base", 0),
+                    "ataque": getattr(self._mse_state, "P_ataque", 0),
+                    "brake": getattr(self._mse_state, "P_brake", 0),
+                }
+                for k in scores:
+                    scores[k] = 0.65 * scores[k] + 0.35 * mse_probs.get(k, 0.0)
 
         return self._apply_light_smoothing(scores)
     
@@ -880,9 +880,8 @@ class StateManager:
                 "min_confidence": self.min_confidence,
                 "blocked_by_confidence": self.stats.get("blocked_by_confidence", 0)
             },
-            "mil_weights": self._mil_weights.copy(),
-            "mil_profile": self._mil_profile,
-            "mil_flag": self._mil_flag,
+            "mse_state": self._mse_state.to_dict() if self._mse_state and hasattr(self._mse_state, "to_dict") else None,
+            "mse_enabled": self._mse_enabled,
             "override_info": {
                 "atk_over80_count": self._atk_over80_count,
                 "atk_threshold": self.atk_override_threshold,
@@ -1116,41 +1115,29 @@ class StateMonitorWidget(QWidget):
         
         vb.addLayout(cnt_row, 4, 0, 1, 2)
         root.addWidget(vote_box)
+        # Music Structure Engine section
+        self._mse_box = QGroupBox("MUSIC STRUCTURE")
+        self._mse_box.setStyleSheet("QGroupBox { font-weight: bold; color: #4fc3f7; font-size:11px; }")
+        mse_lay = QGridLayout(self._mse_box)
+        mse_lay.setContentsMargins(12, 10, 12, 10)
+        mse_lay.setHorizontalSpacing(18)
+        mse_lay.setVerticalSpacing(4)
 
-        # MIL-Lite section (always visible)
-        self._mil_box = QGroupBox("MUSIC INTELLIGENCE")
-        self._mil_box.setStyleSheet("QGroupBox { font-weight: bold; color: #4fc3f7; font-size:11px; }")
-        mil_lay = QGridLayout(self._mil_box)
-        mil_lay.setContentsMargins(12, 10, 12, 10)
-        mil_lay.setHorizontalSpacing(18)
-        mil_lay.setVerticalSpacing(6)
+        mse_lbl_style = "font-size:10px; color:#aaa;"
+        mse_val_style = "color:#ddd; font-size:10px; font-weight:700;"
 
-        mil_lbl_style = "font-size:11px; color:#aaa;"
-        mil_val_style = "color:#ddd; font-size:11px;"
+        mse_labels = ["Tempo:", "Beat:", "Phrase:", "Energy:", "Transient:", "State:", "Drop:"]
+        self._mse_val_labels = []
+        for i, txt in enumerate(mse_labels):
+            lbl = QLabel(txt)
+            lbl.setStyleSheet(mse_lbl_style)
+            mse_lay.addWidget(lbl, i, 0)
+            val = QLabel("--")
+            val.setStyleSheet(mse_val_style)
+            mse_lay.addWidget(val, i, 1)
+            self._mse_val_labels.append(val)
 
-        lbl_status = QLabel("Status:")
-        lbl_status.setStyleSheet(mil_lbl_style)
-        lbl_profile = QLabel("Perfil:")
-        lbl_profile.setStyleSheet(mil_lbl_style)
-        lbl_weights = QLabel("Pesos:")
-        lbl_weights.setStyleSheet(mil_lbl_style)
-
-        mil_lay.addWidget(lbl_status, 0, 0)
-        mil_lay.addWidget(lbl_profile, 1, 0)
-        mil_lay.addWidget(lbl_weights, 2, 0)
-
-        self._mil_status_label = QLabel("--")
-        self._mil_status_label.setStyleSheet("color:#aaa; font-weight:700; font-size:11px;")
-        self._mil_profile_label = QLabel("--")
-        self._mil_profile_label.setStyleSheet("color:#4fc3f7; font-weight:700; font-size:11px;")
-        self._mil_weights_label = QLabel("--")
-        self._mil_weights_label.setStyleSheet(mil_val_style)
-
-        mil_lay.addWidget(self._mil_status_label, 0, 1)
-        mil_lay.addWidget(self._mil_profile_label, 1, 1)
-        mil_lay.addWidget(self._mil_weights_label, 2, 1)
-
-        root.addWidget(self._mil_box)
+        root.addWidget(self._mse_box)
 
         # Botones de control
         btn_row = QHBoxLayout()
@@ -1393,50 +1380,47 @@ TRANSICIONES:
         
         self.lbl_override.setText(f"Override ATQ: {overrides}")
 
-        # MIL-Lite section (always rendered)
-        mil_flag = st.get("mil_flag", False)
-        mil_profile = st.get("mil_profile", "")
-        mil_weights = st.get("mil_weights", {})
+        # Music Structure Engine section
+        mse = st.get("mse_state")
+        if mse and self._mse_val_labels:
+            tempo = mse.get("tempo", 0)
+            beat_phase = mse.get("beat_phase", 0)
+            beat_conf = mse.get("beat_confidence", 0)
+            bar_idx = mse.get("bar_index", 0)
+            phrase_idx = mse.get("phrase_index", 0)
+            phrase_pos = mse.get("phrase_position", 0)
+            e_level = mse.get("energy_level", 0)
+            e_trend = mse.get("energy_trend", "STABLE")
+            t_dens = mse.get("transient_density", 0)
+            sugg = mse.get("suggested_state", "--")
+            conf = mse.get("confidence", 0)
+            drop = mse.get("drop_state", "NONE")
 
-        if not mil_flag:
-            # ENABLE_MIL_LITE=0 in environment
-            self._mil_status_label.setText("DISABLED")
-            self._mil_status_label.setStyleSheet("color:#666; font-weight:700; font-size:11px;")
-            self._mil_profile_label.setText("--")
-            self._mil_profile_label.setStyleSheet("color:#666; font-size:11px;")
-            self._mil_weights_label.setText("--")
-        elif not mil_profile:
-            # Env=1 but no profile received yet — init error or waiting
-            has_any_weight = any(abs(v - 1.0) > 0.005 for v in mil_weights.values()) if mil_weights else False
-            if has_any_weight:
-                # Weights changed but no profile string — shouldn't happen, treat as active
-                self._mil_status_label.setText("ACTIVE")
-                self._mil_status_label.setStyleSheet("color:#4fc3f7; font-weight:700; font-size:11px;")
-            else:
-                # No weights changed — MIL never called set_mil_weights
-                self._mil_status_label.setText("WAITING / INIT")
-                self._mil_status_label.setStyleSheet("color:#FF9800; font-weight:700; font-size:11px;")
-            self._mil_profile_label.setText("--")
-            self._mil_profile_label.setStyleSheet("color:#666; font-size:11px;")
-            self._mil_weights_label.setText("--")
-        else:
-            # Active with profile
-            self._mil_status_label.setText("ACTIVE")
-            self._mil_status_label.setStyleSheet("color:#4fc3f7; font-weight:700; font-size:11px;")
-            profile_colors = {
-                "CALM": "#4CAF50", "RHYTHMIC": "#2196F3",
-                "INTENSE": "#FF5722", "NEUTRAL": "#aaa",
-            }
-            p_color = profile_colors.get(mil_profile, "#aaa")
-            self._mil_profile_label.setText(mil_profile)
-            self._mil_profile_label.setStyleSheet(f"color:{p_color}; font-weight:700; font-size:11px;")
-            w = mil_weights
-            self._mil_weights_label.setText(
-                f"BJ:{w.get('bajada', 1):.2f}  BG:{w.get('base_golpe', 1):.2f}  "
-                f"AT:{w.get('ataque', 1):.2f}  BR:{w.get('brake', 1):.2f}"
-            )
+            # 0: Tempo
+            self._mse_val_labels[0].setText(f"{tempo:.1f} BPM")
+            # 1: Beat
+            self._mse_val_labels[1].setText(f"{bar_idx+1}/4  phase={beat_phase:.2f}  conf={beat_conf:.2f}")
+            # 2: Phrase
+            self._mse_val_labels[2].setText(f"{phrase_idx+1}/4  pos={phrase_pos:.2f}")
+            # 3: Energy
+            trend_color = {"RISING": "#4CAF50", "FALLING": "#FF5722", "STABLE": "#aaa"}.get(e_trend, "#aaa")
+            self._mse_val_labels[3].setText(f"{e_level:.3f}  <span style=\x27color:{trend_color}\x27>{e_trend}</span>")
+            # 4: Transient
+            self._mse_val_labels[4].setText(f"{t_dens:.1f}")
+            # 5: State
+            state_colors = {"BAJADA": "#4CAF50", "BASE_GOLPE": "#2196F3", "ATAQUE": "#FF5722", "BRAKE": "#FF9800"}
+            s_color = state_colors.get(sugg, "#aaa")
+            self._mse_val_labels[5].setText(f"<span style=\x27color:{s_color}\x27>{sugg}</span>  conf={conf:.2f}")
+            # 6: Drop
+            drop_colors = {"NONE": "#666", "BUILD": "#FF9800", "PRE_DROP": "#E91E63", "DROP": "#FF5722"}
+            d_color = drop_colors.get(drop, "#666")
+            self._mse_val_labels[6].setText(f"<span style=\x27color:{d_color}\x27>{drop}</span>")
+        elif self._mse_val_labels:
+            for lbl in self._mse_val_labels:
+                lbl.setText("--")
 
     def closeEvent(self, event):
+
         if hasattr(self, 'update_timer'):
             self.update_timer.stop()
         event.accept()

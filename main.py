@@ -151,19 +151,15 @@ from waveform_smooth import SmoothWaveform
 from state_manager import StateManager
 from core.audio_monitor import AudioMonitor
 
-# MIL-Lite: Ponderador global determinista
-# Reads config/mil_lite.json (file-based, deterministic). Env var overrides if set.
+# Music Structure Engine (MSE) — replaces MIL-Lite
 try:
-    from config.mil_lite_config import is_mil_lite_enabled
-    ENABLE_MIL_LITE = is_mil_lite_enabled()
-except Exception:
-    ENABLE_MIL_LITE = False
-print(f"[MIL-Lite] enabled={ENABLE_MIL_LITE}")
-try:
-    from music_intelligence_lite import MILLite
+    from core.music_structure_engine import MusicStructureEngine
+    _MSE_AVAILABLE = True
 except Exception as e:
-    MILLite = None
-    print(f"[MIL-Lite] import FAILED: {e}")
+    MusicStructureEngine = None
+    _MSE_AVAILABLE = False
+    print(f"[MSE] import FAILED: {e}")
+print(f"[MSE] available={_MSE_AVAILABLE}")
 
 # V12: Neon Pro UI Styling
 try:
@@ -575,15 +571,14 @@ class Main(QMainWindow):
             cooldown_seconds=0.5
         )
 
-        # MIL-Lite: inicializar si config/mil_lite.json {"enabled": true}
-        self.state_manager._mil_flag = bool(ENABLE_MIL_LITE)
-        self.mil_lite = None
-        if ENABLE_MIL_LITE and MILLite is not None:
+        # Music Structure Engine (MSE)
+        self.music_structure_engine = None
+        if _MSE_AVAILABLE and MusicStructureEngine is not None:
             try:
-                self.mil_lite = MILLite(self.state_manager)
+                self.music_structure_engine = MusicStructureEngine()
             except Exception as e:
-                print(f"[MIL-Lite] Fallo al inicializar: {e}")
-                self.mil_lite = None
+                print(f"[MSE] init failed: {e}")
+                self.music_structure_engine = None
 
         if CUE_ENGINE_MODULAR_AVAILABLE:
             try:
@@ -3971,18 +3966,14 @@ class Main(QMainWindow):
                 except:
                     pass
 
-            # MIL-Lite: actualizar perfil y pesos ANTES de StateManager
-            if self.mil_lite is not None:
+            # Music Structure Engine: process audio BEFORE StateManager
+            if self.music_structure_engine is not None:
                 try:
-                    self.mil_lite.tick(
-                        modules_bajada=self._get_active_modules(self.modules_bajada),
-                        modules_golpe=self._get_active_modules(self.modules_golpe),
-                        modules_ataque=self._get_active_modules(self.modules_ataque),
-                        modules_brake=self._get_active_modules(self.modules_brake),
-                    )
+                    self.music_structure_engine.process(block, sr)
+                    mse_state = self.music_structure_engine.get_state()
+                    self.state_manager.update_music_structure(mse_state)
                 except Exception:
                     pass
-
             # State manager update uses ONLY Motor Real modules (not legacy)
             try:
                 self.state_manager.update(
