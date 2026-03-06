@@ -104,6 +104,13 @@ class BaseGolpeModule:
         # Flag interno para saber si estamos en BASE_GOLPE (para release en EXIT)
         self._dimmer_requested: bool = False
 
+        # Round-robin index per energy level (replaces timestamp-based selection)
+        self._rr_index: Dict[str, int] = {
+            "BAJA": 0,
+            "MEDIA": 0,
+            "ALTA": 0,
+        }
+
         # V11: Voting flags for kick detection (10 flags)
         self.flags: Dict[str, bool] = {
             "hits": False,
@@ -133,21 +140,24 @@ class BaseGolpeModule:
 
         print("[BASE_GOLPE] init (EVENT-DRIVEN canonical + V11 voting + V12 kick_pulse)")
 
-    def _select_cue(self, cues: List[int]) -> int:
+    def _select_cue(self, cues: List[int], energy: str) -> int:
         """
-        Selección determinística sin memoria.
-        Basado en timestamp × 10 para variación sub-segundo.
+        Selección round-robin con memoria por energía.
+        Garantiza rotación C1→C2→C3→C1 sin repetición inmediata.
 
         Args:
             cues: Lista de cues disponibles
+            energy: Nivel de energía para tracking RR
 
         Returns:
             int: Cue seleccionado
         """
         if not cues:
             return None
-        idx = int(time.time() * 10) % len(cues)
-        return cues[idx]
+        idx = self._rr_index.get(energy, 0) % len(cues)
+        cue = cues[idx]
+        self._rr_index[energy] = idx + 1
+        return cue
 
     def _get_family_for_energy(self, energy: str) -> str:
         """
@@ -235,7 +245,7 @@ class BaseGolpeModule:
         if is_entry:
             family = self._get_family_for_energy(energy)
             cues = self._get_cues_for_energy(energy)
-            cue = self._select_cue(cues)
+            cue = self._select_cue(cues, energy)
 
             if cue is None:
                 print(f"[BASE_GOLPE] ENTRY energy={energy} family={family} — NO CUES")
@@ -294,6 +304,8 @@ class BaseGolpeModule:
 
         self._last_state_seen = None
         self._dimmer_requested = False
+        # Reset RR indices
+        self._rr_index = {"BAJA": 0, "MEDIA": 0, "ALTA": 0}
         # V11: Reset flags
         for key in self.flags:
             self.flags[key] = False

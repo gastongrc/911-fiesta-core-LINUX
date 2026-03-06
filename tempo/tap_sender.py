@@ -45,6 +45,10 @@ class TapSenderConfig:
     diff_ms: float = float(os.environ.get("TAP_DIFF_MS", "12"))
     diff_ratio: float = float(os.environ.get("TAP_DIFF_RATIO", "0.03"))
 
+    # BPM scale factor: 0.5 = console receives half the detected BPM
+    # e.g. 100 BPM detected → 50 BPM sent to console
+    bpm_scale_factor: float = float(os.environ.get("TAP_BPM_SCALE", "0.5"))
+
     # HTTP timeouts (seconds)
     connect_timeout: float = 0.8
     read_timeout: float = 0.8
@@ -114,9 +118,10 @@ class TapTempoSender:
 
         status = "ENABLED" if self._cfg.enabled else "DISABLED (TAP_SENDER_ENABLED=0)"
         print(
-            f"[TapSender] v3.0 {status} → {self._cfg.titan_ip}:{self._cfg.titan_port} "
+            f"[TapSender] v3.1 {status} → {self._cfg.titan_ip}:{self._cfg.titan_port} "
             f"macro={self._cfg.macro_id} burst={self._cfg.burst_count} "
-            f"diff={self._cfg.diff_ms}ms/{self._cfg.diff_ratio*100:.0f}%"
+            f"diff={self._cfg.diff_ms}ms/{self._cfg.diff_ratio*100:.0f}% "
+            f"bpm_scale={self._cfg.bpm_scale_factor}"
         )
 
     # =================================================================
@@ -200,17 +205,25 @@ class TapTempoSender:
         self._last_sent_interval_ms = interval_ms
         self._bursts += 1
         bpm = 60000.0 / interval_ms if interval_ms > 0 else 0
+        scale = self._cfg.bpm_scale_factor
+        scaled_bpm = bpm * scale if scale > 0 else bpm
         print(
-            f"[TapSender] BURST bpm={bpm:.1f} interval_ms={interval_ms:.1f} "
-            f"count={self._cfg.burst_count} reason={reason}"
+            f"[TapSender] BURST detected={bpm:.1f}BPM → console={scaled_bpm:.1f}BPM "
+            f"(scale={scale}) count={self._cfg.burst_count} reason={reason}"
         )
 
     def _execute_burst(self, interval_ms: float):
         """
-        Send burst_count taps spaced at interval_ms using monotonic clock.
+        Send burst_count taps spaced at scaled interval using monotonic clock.
         Cancels immediately on lock loss or stop.
         """
-        wait_s = interval_ms / 1000.0 if interval_ms > 0 else 0.5
+        # Apply BPM scale: larger interval = slower BPM sent to console
+        scale = self._cfg.bpm_scale_factor
+        if scale > 0:
+            scaled_ms = interval_ms / scale
+        else:
+            scaled_ms = interval_ms
+        wait_s = scaled_ms / 1000.0 if scaled_ms > 0 else 0.5
 
         while self._burst_remaining > 0 and not self._stop.is_set():
             t0 = time.monotonic()

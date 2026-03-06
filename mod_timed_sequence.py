@@ -97,6 +97,9 @@ class TimedSequenceModule:
         # TIMING FIX: ventana de gracia tras cambio de estado
         self._defer_until: float = 0.0
 
+        # Block AUX re-fire for start_after seconds after state change
+        self._blocked_until: float = 0.0
+
         # Configurar aux si existe
         if self.aux is not None:
             self.aux.set_aux_sequence(self.cues)
@@ -289,7 +292,10 @@ class TimedSequenceModule:
         self._last_kill_ts = self._now()
         self.last_slot_index_seen = -1
 
-        print("[TIMED_SEQ] FORCE EXIT — all auxiliaries killed")
+        # Block re-fire for start_after seconds (prevents immediate AUX re-trigger)
+        self._blocked_until = time.time() + self.start_after
+
+        print(f"[TIMED_SEQ] FORCE EXIT — all auxiliaries killed, blocked for {self.start_after}s")
 
     # =========================================================================
     # RUN PRINCIPAL
@@ -325,6 +331,10 @@ class TimedSequenceModule:
 
         # 3. Guard de defer bloquea fires
         if time.time() < self._defer_until:
+            return
+
+        # 3b. Block guard: no re-fire until blocked_until expires
+        if time.time() < self._blocked_until:
             return
 
         # 4. Calcular dwell y slot

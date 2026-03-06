@@ -90,6 +90,24 @@ class ControlDimmerModule:
             except Exception:
                 pass
 
+    def has_c41_reasons(self) -> bool:
+        """Returns True if there are active reasons to keep C41 OFF."""
+        return len(self._reasons) > 0
+
+    def ensure_c41_on(self) -> None:
+        """
+        Watchdog: Re-fire C41 if no reasons exist and Titan reports it inactive.
+        Called periodically (~10s) from CueEngine to recover from Titan reconnects.
+        """
+        if not self.has_c41_reasons():
+            try:
+                if not self.av.is_active(41):
+                    self.av.fire_cue(41)
+                    self._is_dim_off = False
+                    print("[CONTROL_DIMMER] WATCHDOG: C41 re-fired (was inactive)")
+            except Exception:
+                pass
+
     def run(self, state: str, energy: str) -> None:
         """
         NO-OP.

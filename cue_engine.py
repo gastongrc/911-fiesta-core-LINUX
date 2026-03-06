@@ -13,8 +13,8 @@
 #
 # FLUJO DETERMINÍSTICO:
 #   1. Lee estado/energía de StateManager (única fuente de verdad)
-#   2. Si cambió estado → off_now_for_state(estado_anterior)
-#   3. Ejecuta módulos en orden estricto (cada módulo maneja SU familia)
+#   2. Ejecuta módulos en orden estricto (FIRE nuevo estado)
+#   3. Si cambió estado → off_now_for_state(estado_anterior) (KILL después)
 # ===========================================================================
 
 import time
@@ -92,7 +92,7 @@ class CueEngine:
         state_manager,
         energy_detector,
         auto_update: bool = True,
-        interval: float = 0.20,
+        interval: float = 0.05,
     ):
         self.av = avolites_controller
         self.sm = state_manager
@@ -173,7 +173,7 @@ class CueEngine:
         self._family_manager = None
 
         # Loop automático
-        self.interval = max(0.12, float(interval))
+        self.interval = max(0.05, float(interval))
         self._auto = bool(auto_update)
         self._running = False
         self._auto_update_running = False
@@ -572,13 +572,14 @@ class CueEngine:
 
         FLUJO:
           1. Leer estado/energía de StateManager
-          2. Si cambió estado → OFF familia saliente
-          3. Ejecutar módulos en orden (cada uno decide qué hacer según estado)
+          2. Ejecutar módulos en orden (FIRE nuevo estado primero)
+          3. Si cambió estado → OFF familia saliente (KILL después de FIRE)
 
         GARANTÍAS:
           - No hay auto-advance
           - No hay decisiones internas
           - Solo ejecuta lo que StateManager ordena
+          - FIRE antes de KILL minimiza oscuridad en transiciones
         """
         try:
             # ===== PASO 1: LEER ESTADO Y ENERGÍA =====
@@ -615,12 +616,11 @@ class CueEngine:
             state_changed = (effective_state != self.last_state)
             energy_changed = (current_energy != self.last_energy)
 
-            # ===== PASO 2: OFF FAMILIA SALIENTE (si cambió estado) =====
+            # ===== PASO 2: CAPTURAR ESTADO ANTERIOR PARA KILL POSTERIOR =====
+            previous_state = self.last_state if state_changed else None
             if state_changed and self.last_state is not None:
                 t_change_ms = time.time() * 1000
                 print(f"t={t_change_ms:.0f} [ENGINE] STATE CHANGE: {self.last_state} → {effective_state}")
-                # OFF inmediato de familia saliente ANTES de ejecutar módulos
-                self.off_now_for_state(self.last_state)
 
             # Actualizar tracking
             if state_changed:
@@ -633,7 +633,7 @@ class CueEngine:
 
             # ===== PASO 3: EJECUTAR MÓDULOS EN ORDEN ESTRICTO =====
             # Cada módulo recibe (state, energy) y decide qué hacer con SU familia
-            # NOTA: Se usa effective_state que ya tiene aplicadas las reglas del calendario
+            # FIRE del nuevo estado PRIMERO para minimizar oscuridad
             modules_in_order = [
                 ("control_dimmer", self.m_control),
                 ("break", self.m_break),
@@ -654,10 +654,22 @@ class CueEngine:
                     self.stats["specialist_errors"] = self.stats.get("specialist_errors", 0) + 1
                     self.last_error = str(e)
                     print(f"[CueEngine] Error en módulo {name}: {e}")
+
+            # ===== PASO 4: KILL FAMILIA SALIENTE (después de fire nuevo) =====
+            # OFF inmediato de familia saliente DESPUÉS de ejecutar módulos
+            if previous_state is not None:
+                self.off_now_for_state(previous_state)
             
             self.stats["updates"] = self.stats.get("updates", 0) + 1
             self.stats["total_updates"] = self.stats.get("total_updates", 0) + 1
             self.last_update_time = time.time()
+
+            # C41 WATCHDOG: every 200 ticks (~10s at 50ms interval)
+            if self.stats["updates"] % 200 == 0:
+                try:
+                    self.m_control.ensure_c41_on()
+                except Exception:
+                    pass
             
         except Exception as e:
             self.last_error = str(e)
@@ -1008,7 +1020,7 @@ def create_cue_engine(
     state_manager,
     energy_detector,
     auto_update: bool = True,
-    interval: float = 0.20,
+    interval: float = 0.05,
 ):
     """
     Factory function para crear instancia de CueEngine.

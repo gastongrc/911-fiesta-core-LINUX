@@ -121,7 +121,7 @@ class QueueConfig:
     rate_limit_ms: float = 60.0  # Minimo ms entre requests
     max_retries: int = 3
     retry_delay_ms: float = 100.0
-    dedup_window_ms: float = 300.0  # Ventana anti-duplicado
+    dedup_window_ms: float = 50.0  # Ventana anti-duplicado (v1.5: 300→50ms)
     kill_block_on_fail: bool = True  # Bloquear cola si KILL falla
     fire_timeout_ms: float = 5000.0  # Timeout para FIRE en cola
 

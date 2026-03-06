@@ -115,8 +115,9 @@ class BajadaModule:
         mins.sort(key=lambda t: t[1])
         candidates = [c for c, u in mins if u == mins[0][1]]
 
-        if len(candidates) > 1 and self._last_col_used in candidates:
-            candidates = [c for c in candidates if c != self._last_col_used] or candidates
+        # Anti-repetition: always skip last used color if alternatives exist
+        if self._last_col_used in candidates and len(candidates) > 1:
+            candidates = [c for c in candidates if c != self._last_col_used]
 
         chosen = candidates[0]
         self._color_usage[chosen] += 1
@@ -163,8 +164,9 @@ class BajadaModule:
         mins.sort(key=lambda t: t[1])
         candidates = [c for c, u in mins if u == mins[0][1]]
 
-        if len(candidates) > 1 and self._last_pos_used in candidates:
-            candidates = [c for c in candidates if c != self._last_pos_used] or candidates
+        # Anti-repetition: always skip last used position if alternatives exist
+        if self._last_pos_used in candidates and len(candidates) > 1:
+            candidates = [c for c in candidates if c != self._last_pos_used]
 
         chosen = candidates[0]
         self._pos_usage[chosen] += 1
