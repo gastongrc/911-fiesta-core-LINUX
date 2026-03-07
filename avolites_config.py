@@ -47,7 +47,7 @@ from core.transport import (
 # ===== CONFIGURACION =====
 CONFIG_FILE = "avolites_config.json"
 
-DEDUP_WINDOW_MS = 600
+DEDUP_WINDOW_MS = 50
 FAMILY_COOLDOWN_MS = 120
 ZERO_REINFORCE_FRAMES = 2
 
@@ -869,18 +869,20 @@ class AvolitesController:
 
         return self._titan_queue.kill(cue_id)
 
-    def kill_pool(self, cue_ids: List[int]) -> bool:
-        """Mata multiples cues. LEGACY MODE: Sin bloqueo."""
+    def kill_pool(self, cue_ids: List[int], priority_boost: bool = False) -> bool:
+        """Mata multiples cues. LEGACY MODE: Sin bloqueo.
+        priority_boost=True bypasses dedup in TitanQueue (for state transitions).
+        """
         if not cue_ids:
             return False
 
-        print(f"[AvolitesBridge] KILL_POOL cues={cue_ids}")
+        print(f"[AvolitesBridge] KILL_POOL cues={cue_ids} prio={priority_boost}")
 
         with self._active_lock:
             for cue_id in cue_ids:
                 self._active_cues.discard(cue_id)
 
-        return self._titan_queue.kill_pool(cue_ids) == len(cue_ids)
+        return self._titan_queue.kill_pool(cue_ids, priority_boost=priority_boost) == len(cue_ids)
 
     # ===== CRITICAL FAST-PATH =====
     # Cues críticos que requieren latencia mínima (<100ms):

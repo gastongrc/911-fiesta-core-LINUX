@@ -461,16 +461,34 @@ class CueEngine:
             else:
                 print("[CueEngine] 📅 Todos los estados HABILITADOS")
 
-        # Si "ALL" está en la lista, hard kill ALL musical cues immediately
+        # Si "ALL" está en la lista, hard kill ALL cues immediately
         if "ALL" in self._disabled_states:
-            print("[CueEngine] HARD OFF: ALL detected - killing all musical cues")
+            print("[CueEngine] HARD OFF: ALL detected - killing ALL cues")
+            # 1) Kill all musical cues (priority_boost bypasses dedup)
             all_musical_cues = []
             for family_cues in FAMILY_CUE_RANGES.values():
                 all_musical_cues.extend(family_cues)
             active = [c for c in all_musical_cues if self.av.is_active(c)]
             if active:
-                self.av.kill_pool(active)
-                print(f"[CueEngine] HARD OFF: killed {active}")
+                self.av.kill_pool(active, priority_boost=True)
+                print(f"[CueEngine] HARD OFF: killed musical {active}")
+            # 2) Kill C41 (dimmer) — not in FAMILY_CUE_RANGES
+            try:
+                self.av.kill_cue(41)
+            except Exception:
+                pass
+            # 3) Kill AUX C45-C50 via force_exit
+            try:
+                self.m_timed.force_exit()
+            except Exception:
+                pass
+            # 4) Reset module internal state
+            if self.m_control:
+                try:
+                    self.m_control._reasons.clear()
+                    self.m_control._is_dim_off = False
+                except Exception:
+                    pass
             # Clear all family tracking
             for family in list(self.active_by_family.keys()):
                 self.active_by_family[family] = None
@@ -558,8 +576,8 @@ class CueEngine:
         
         print(f"t={t_start_ms:.0f} [ENGINE] OFF_NOW family={family} ids={ids_list}")
         
-        # Driver ya tiene PRIORITY_KILL y flush inmediato
-        self.av.kill_pool(ids_list)
+        # priority_boost=True bypasses dedup in TitanQueue
+        self.av.kill_pool(ids_list, priority_boost=True)
         
         # 3) Invalidar active_by_family
         if family in self.active_by_family:
@@ -635,15 +653,25 @@ class CueEngine:
             # ===== CALENDAR BRIDGE: VERIFICAR ESTADOS DESHABILITADOS =====
             # HARD OFF: "ALL" disabled = kill everything, skip ALL module execution
             if "ALL" in self._disabled_states:
-                # Kill any remaining active musical cues (periodic enforcement)
-                if self.stats.get("updates", 0) % 40 == 0:  # Every ~2s
+                # Kill any remaining cues (periodic enforcement every ~2s)
+                if self.stats.get("updates", 0) % 40 == 0:
                     all_musical_cues = []
                     for family_cues in FAMILY_CUE_RANGES.values():
                         all_musical_cues.extend(family_cues)
                     active = [c for c in all_musical_cues if self.av.is_active(c)]
                     if active:
-                        self.av.kill_pool(active)
+                        self.av.kill_pool(active, priority_boost=True)
                         print(f"[CueEngine] HARD OFF: killed residual cues {active}")
+                    # Also enforce C41 off and AUX off
+                    try:
+                        self.av.kill_cue(41)
+                    except Exception:
+                        pass
+                    try:
+                        if self.m_timed.last_fired_cue is not None:
+                            self.m_timed.force_exit()
+                    except Exception:
+                        pass
 
                 self.last_state = "OFF"
                 self.last_energy = current_energy
