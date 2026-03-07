@@ -39,7 +39,10 @@ class TapSenderConfig:
     macro_id: str = os.environ.get("TAP_MACRO_ID", "Avolites.Macros.TapBPM1")
 
     # Burst config
-    burst_count: int = int(os.environ.get("TAP_BURST_COUNT", "3"))
+    burst_count: int = int(os.environ.get("TAP_BURST_COUNT", "4"))
+
+    # Fixed tap spacing in burst (milliseconds) — NOT derived from BPM
+    tap_spacing_ms: float = float(os.environ.get("TAP_SPACING_MS", "100"))
 
     # Tempo change detection thresholds (2% triggers immediate burst)
     diff_ms: float = float(os.environ.get("TAP_DIFF_MS", "8"))
@@ -120,8 +123,9 @@ class TapTempoSender:
 
         status = "ENABLED" if self._cfg.enabled else "DISABLED (TAP_SENDER_ENABLED=0)"
         print(
-            f"[TapSender] v3.2 {status} → {self._cfg.titan_ip}:{self._cfg.titan_port} "
+            f"[TapSender] v3.3 {status} → {self._cfg.titan_ip}:{self._cfg.titan_port} "
             f"macro={self._cfg.macro_id} burst={self._cfg.burst_count} "
+            f"spacing={self._cfg.tap_spacing_ms}ms "
             f"diff={self._cfg.diff_ms}ms/{self._cfg.diff_ratio*100:.0f}% "
             f"bpm_scale={self._cfg.bpm_scale_factor}"
         )
@@ -237,16 +241,12 @@ class TapTempoSender:
 
     def _execute_burst(self, interval_ms: float):
         """
-        Send burst_count taps spaced at scaled interval using monotonic clock.
+        Send burst_count taps spaced at FIXED tap_spacing_ms using monotonic clock.
+        Fixed spacing ensures <1s console BPM update regardless of detected BPM.
         Cancels immediately on lock loss or stop.
         """
-        # Apply BPM scale: larger interval = slower BPM sent to console
-        scale = self._cfg.bpm_scale_factor
-        if scale > 0:
-            scaled_ms = interval_ms / scale
-        else:
-            scaled_ms = interval_ms
-        wait_s = scaled_ms / 1000.0 if scaled_ms > 0 else 0.5
+        # Fixed tap spacing — NOT derived from BPM interval
+        wait_s = self._cfg.tap_spacing_ms / 1000.0
 
         while self._burst_remaining > 0 and not self._stop.is_set():
             t0 = time.monotonic()

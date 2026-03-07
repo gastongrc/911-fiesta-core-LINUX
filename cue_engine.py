@@ -200,15 +200,19 @@ class CueEngine:
         self.update()
 
     # ====== FIRE CENTRALIZADO (VISION/FAMILY PIPELINE) ======
+    def _resolve_family(self, cue_id: int) -> Optional[str]:
+        """Resolve which family a cue belongs to (for exclusivity enforcement)."""
+        for family, cue_ids in FAMILY_CUE_RANGES.items():
+            if cue_id in cue_ids:
+                return family
+        return None
+
     def fire(self, cue_id: int, source: str = "", meta: Optional[Dict[str, Any]] = None) -> bool:
         """
         Dispara un cue de forma centralizada (para Vision y FamilyManager).
 
-        Este método unifica el pipeline de disparos para:
-        - Vision modules (HazeDetector, DJ, Artist)
-        - FamilyManager (CLIMA, HAZE, DJ, ARTIST, TRACKING)
-
         Garantiza:
+        - KILL-BEFORE-FIRE: mata todos los otros cues de la misma familia antes de disparar
         - Registro en fire_history para CueMonitor
         - Logs determinísticos con source y meta
         - Envío a Avolites via av.fire_cue()
@@ -224,6 +228,14 @@ class CueEngine:
         if not self.av:
             print(f"[CueEngine] FIRE BLOCKED: no controller (C{cue_id}, source={source})")
             return False
+
+        # ===== FAMILY EXCLUSIVITY: kill-before-fire =====
+        family = self._resolve_family(cue_id)
+        if family:
+            siblings = [c for c in FAMILY_CUE_RANGES[family] if c != cue_id and self.av.is_active(c)]
+            if siblings:
+                self.av.kill_pool(siblings)
+                print(f"[CueEngine] EXCLUSIVITY kill {siblings} before fire C{cue_id} (family={family})")
 
         # Registrar en historial para CueMonitor
         event = {
@@ -449,12 +461,19 @@ class CueEngine:
             else:
                 print("[CueEngine] 📅 Todos los estados HABILITADOS")
 
-        # Si "ALL" está en la lista, apagar todo
+        # Si "ALL" está en la lista, hard kill ALL musical cues immediately
         if "ALL" in self._disabled_states:
-            print("[CueEngine] 📅 ALL detected - sistema en modo seguro")
-            # Apagar todas las familias activas
+            print("[CueEngine] HARD OFF: ALL detected - killing all musical cues")
+            all_musical_cues = []
+            for family_cues in FAMILY_CUE_RANGES.values():
+                all_musical_cues.extend(family_cues)
+            active = [c for c in all_musical_cues if self.av.is_active(c)]
+            if active:
+                self.av.kill_pool(active)
+                print(f"[CueEngine] HARD OFF: killed {active}")
+            # Clear all family tracking
             for family in list(self.active_by_family.keys()):
-                self.off_now_for_family(family)
+                self.active_by_family[family] = None
 
     def is_state_disabled(self, state: str) -> bool:
         """
@@ -480,6 +499,19 @@ class CueEngine:
         return sorted(list(self._disabled_states))
 
     # ====== OFF INSTANTÁNEO PRIORITARIO ======
+    def _enforce_family_exclusivity(self) -> None:
+        """
+        Periodic sanity check: max 1 cue active per family.
+        If >1 found, kill all except the most recently fired.
+        """
+        for family, cue_ids in FAMILY_CUE_RANGES.items():
+            active = [c for c in cue_ids if self.av.is_active(c)]
+            if len(active) > 1:
+                # Keep last one (highest cue ID as proxy for most recent)
+                to_kill = active[:-1]
+                self.av.kill_pool(to_kill)
+                print(f"[ENGINE] EXCLUSIVITY FIX: family={family} killed {to_kill}, kept C{active[-1]}")
+
     def off_now_for_family(self, family: str, extra_ids: Optional[List[int]] = None) -> None:
         """
         Apaga una familia de cues INMEDIATAMENTE sin contar contra rate limiting.
@@ -601,6 +633,25 @@ class CueEngine:
                     self._last_no_state_log = now
 
             # ===== CALENDAR BRIDGE: VERIFICAR ESTADOS DESHABILITADOS =====
+            # HARD OFF: "ALL" disabled = kill everything, skip ALL module execution
+            if "ALL" in self._disabled_states:
+                # Kill any remaining active musical cues (periodic enforcement)
+                if self.stats.get("updates", 0) % 40 == 0:  # Every ~2s
+                    all_musical_cues = []
+                    for family_cues in FAMILY_CUE_RANGES.values():
+                        all_musical_cues.extend(family_cues)
+                    active = [c for c in all_musical_cues if self.av.is_active(c)]
+                    if active:
+                        self.av.kill_pool(active)
+                        print(f"[CueEngine] HARD OFF: killed residual cues {active}")
+
+                self.last_state = "OFF"
+                self.last_energy = current_energy
+                self.stats["updates"] = self.stats.get("updates", 0) + 1
+                self.stats["total_updates"] = self.stats.get("total_updates", 0) + 1
+                self.last_update_time = time.time()
+                return  # NO module execution at all
+
             # Si el estado actual está deshabilitado por el calendario,
             # tratarlo como BAJADA (estado seguro por defecto)
             effective_state = current_state
@@ -608,7 +659,7 @@ class CueEngine:
                 effective_state = "BAJADA"
                 # Log solo la primera vez que se bloquea
                 if not hasattr(self, '_last_blocked_state') or self._last_blocked_state != current_state:
-                    print(f"[CueEngine] 📅 Estado {current_state} BLOQUEADO por calendario → usando BAJADA")
+                    print(f"[CueEngine] Estado {current_state} BLOQUEADO por calendario → usando BAJADA")
                     self._last_blocked_state = current_state
             else:
                 self._last_blocked_state = None
@@ -656,7 +707,11 @@ class CueEngine:
                     self.last_error = str(e)
                     print(f"[CueEngine] Error en módulo {name}: {e}")
             
+            # ===== FAMILY EXCLUSIVITY CHECK (every 20 ticks = ~1s) =====
             self.stats["updates"] = self.stats.get("updates", 0) + 1
+            if self.stats["updates"] % 20 == 0:
+                self._enforce_family_exclusivity()
+
             self.stats["total_updates"] = self.stats.get("total_updates", 0) + 1
             self.last_update_time = time.time()
 

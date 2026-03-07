@@ -423,7 +423,7 @@ class StateManager:
                     "brake": getattr(self._mse_state, "P_brake", 0),
                 }
                 for k in scores:
-                    scores[k] = 0.65 * scores[k] + 0.35 * mse_probs.get(k, 0.0)
+                    scores[k] = 0.45 * scores[k] + 0.55 * mse_probs.get(k, 0.0)
 
         return self._apply_light_smoothing(scores)
     

@@ -27,6 +27,7 @@
 # ===========================================================================
 
 import time
+import random
 from typing import Dict, Any, List, Optional
 
 PIN_SECONDS = 10.0  # Estabilidad post-fire (club mode: 30→10s)
@@ -44,6 +45,7 @@ class MovimientoModule:
     """
 
     SUB = {"BAJA": [28, 29, 30], "MEDIA": [31, 32, 33], "ALTA": [34, 35, 36]}
+    ALL_CUES = list(range(28, 37))  # C28-C36, all 9 movement cues
 
     def __init__(self, avolites):
         self.av = avolites
@@ -56,18 +58,14 @@ class MovimientoModule:
         self.paused_by_positions: bool = False
         self.paused_cue: Optional[int] = None
 
-        # Round-robin por energía (PERSISTE)
-        self.idx = {"BAJA": 0, "MEDIA": 0, "ALTA": 0}
+        # Shuffle-bag: use ALL 9 cues before repeating any
+        self._bag: List[int] = []
+        self._last_n: List[int] = []  # Last N cues played (anti-repeat buffer)
+        self._ANTI_REPEAT = 2  # Avoid repeating last 2 cues at bag boundary
 
         # Detección de cambio de estado
         self.last_state_seen: Optional[str] = None
         self._cycle_due: bool = False
-
-        # UNION V1: anti-repetición con puente
-        self._cycle_count = {"BAJA": 0, "MEDIA": 0, "ALTA": 0}
-        self._rr_len = {"BAJA": 3, "MEDIA": 3, "ALTA": 3}
-        self._rr_used = {"BAJA": set(), "MEDIA": set(), "ALTA": set()}
-        self._bridge_due = {"BAJA": False, "MEDIA": False, "ALTA": False}
 
     # =========================================================================
     # API DESDE BAJADA
@@ -125,53 +123,41 @@ class MovimientoModule:
     # HELPERS
     # =========================================================================
 
-    def _sub_for_energy(self, energy: str) -> List[int]:
-        """Retorna subgrupo de cues para una energía."""
-        return self.SUB.get((energy or "MEDIA").upper(), self.SUB["MEDIA"])
-
-    def _neighbor_energy(self, e: str) -> str:
-        """UNION V1: Retorna subgrupo vecino (BAJA↔MEDIA↔ALTA)."""
-        e = e.upper()
-        if e == "BAJA":
-            return "MEDIA"
-        elif e == "MEDIA":
-            return "ALTA"
-        else:
-            return "MEDIA"
-
-    def _next_rr(self, energy: str, avoid: Optional[int] = None) -> int:
+    def _shuffle_pick(self, avoid: Optional[int] = None) -> int:
         """
-        Round-robin con UNION V1.
-        Registra uso y detecta ciclos completos.
-        Tras 2 ciclos, activa puente.
+        Shuffle-bag across ALL 9 cues (C28-C36).
+        Guarantees all 9 cues used before any repeats.
+        Avoids last N cues at bag refill boundary.
 
         Args:
-            energy: Nivel de energía
-            avoid: Cue a evitar (current_cue) — si RR lo retorna, avanza una más
+            avoid: Cue to avoid (current_cue) — skipped if possible
         """
-        e = (energy or "MEDIA").upper()
-        seq = self._sub_for_energy(e)
-        i = self.idx[e] % len(seq)
-        choice = seq[i]
-        self.idx[e] = (i + 1) % len(seq)
+        if not self._bag:
+            # Refill bag: all 9 cues, shuffled, avoiding recent cues at start
+            new_bag = list(self.ALL_CUES)
+            random.shuffle(new_bag)
 
-        # Skip-same-cue: if RR returned the cue to avoid, advance once more
-        if avoid is not None and choice == avoid and len(seq) > 1:
-            i2 = self.idx[e] % len(seq)
-            choice = seq[i2]
-            self.idx[e] = (i2 + 1) % len(seq)
+            # Move any cue from _last_n to end of bag (avoid repeat at boundary)
+            if self._last_n:
+                front = [c for c in new_bag if c not in self._last_n]
+                back = [c for c in new_bag if c in self._last_n]
+                new_bag = front + back
 
-        # Registrar uso
-        self._rr_used[e].add(choice)
+            self._bag = new_bag
 
-        # Detectar ciclo completo
-        if len(self._rr_used[e]) == self._rr_len[e]:
-            self._cycle_count[e] += 1
-            self._rr_used[e].clear()
+        # Pick first cue from bag, skip avoid if possible
+        choice = self._bag[0]
+        if avoid is not None and choice == avoid and len(self._bag) > 1:
+            # Swap with next available
+            choice = self._bag[1]
+            self._bag.pop(1)
+        else:
+            self._bag.pop(0)
 
-            # Activar puente tras 2 ciclos
-            if self._cycle_count[e] >= 2:
-                self._bridge_due[e] = True
+        # Update anti-repeat buffer
+        self._last_n.append(choice)
+        if len(self._last_n) > self._ANTI_REPEAT:
+            self._last_n.pop(0)
 
         return choice
 
@@ -227,20 +213,7 @@ class MovimientoModule:
 
         # Si no hay cue (arranque o post-pausa) → fire inicial
         if self.current_cue is None:
-            e = energy or "MEDIA"
-
-            # UNION V1: verificar puente
-            if self._bridge_due.get(e, False):
-                e_bridge = self._neighbor_energy(e)
-                choice = self._next_rr(e_bridge)
-                if self._fire_cue(choice):
-                    print(f"[MOVIMIENTO] BRIDGE C{choice} (pin {PIN_SECONDS:.0f}s)")
-                    self._bridge_due[e] = False
-                    self._cycle_count[e] = 0
-                    return choice
-
-            # Caso normal
-            choice = self._next_rr(e)
+            choice = self._shuffle_pick()
             if self._fire_cue(choice):
                 print(f"[MOVIMIENTO] ON C{choice} (pin {PIN_SECONDS:.0f}s)")
                 return choice
@@ -248,21 +221,7 @@ class MovimientoModule:
 
         # Si rotación pendiente Y PIN expiró → rotar
         if self._cycle_due and not self._pin_active():
-            e = energy or "MEDIA"
-
-            # UNION V1: verificar puente (avoid current to guarantee rotation)
-            if self._bridge_due.get(e, False):
-                e_bridge = self._neighbor_energy(e)
-                choice = self._next_rr(e_bridge, avoid=self.current_cue)
-                if self._fire_cue(choice):
-                    print(f"[MOVIMIENTO] BRIDGE C{choice} (pin {PIN_SECONDS:.0f}s)")
-                    self._bridge_due[e] = False
-                    self._cycle_count[e] = 0
-                    self._cycle_due = False
-                    return choice
-
-            # Caso normal (avoid current to guarantee rotation)
-            choice = self._next_rr(e, avoid=self.current_cue)
+            choice = self._shuffle_pick(avoid=self.current_cue)
             if self._fire_cue(choice):
                 print(f"[MOVIMIENTO] ROTATE → C{choice} (pin {PIN_SECONDS:.0f}s)")
                 self._cycle_due = False
@@ -283,7 +242,7 @@ class MovimientoModule:
     def get_status(self) -> Dict[str, Any]:
         """Telemetría."""
         return {
-            "mode": "STATEFUL",
+            "mode": "SHUFFLE_BAG",
             "current_cue": self.current_cue,
             "pin_remaining_s": round(max(0.0, self.pin_until - time.time()), 2),
             "pin_seconds": PIN_SECONDS,
@@ -291,17 +250,16 @@ class MovimientoModule:
             "paused_cue": self.paused_cue,
             "last_state_seen": self.last_state_seen,
             "cycle_due": self._cycle_due,
-            "idx": dict(self.idx),
-            "cycle_count": dict(self._cycle_count),
-            "bridge_due": dict(self._bridge_due),
+            "bag_remaining": len(self._bag),
+            "last_n": list(self._last_n),
             "active_cues": self.get_active_cues(),
         }
 
     def reset(self, hard: bool = True):
         """
         Reset del módulo.
-        hard=True: Reset completo incluyendo RR indices
-        hard=False: Conserva RR indices (persistencia)
+        hard=True: Reset completo incluyendo shuffle bag
+        hard=False: Conserva shuffle bag (persistencia)
         """
         self.current_cue = None
         self.pin_until = 0.0
@@ -311,9 +269,7 @@ class MovimientoModule:
         self._cycle_due = False
 
         if hard:
-            self.idx = {"BAJA": 0, "MEDIA": 0, "ALTA": 0}
-            self._cycle_count = {"BAJA": 0, "MEDIA": 0, "ALTA": 0}
-            self._rr_used = {"BAJA": set(), "MEDIA": set(), "ALTA": set()}
-            self._bridge_due = {"BAJA": False, "MEDIA": False, "ALTA": False}
+            self._bag = []
+            self._last_n = []
 
         print(f"[MOVIMIENTO] Reset ({'hard' if hard else 'soft'})")
