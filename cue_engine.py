@@ -13,8 +13,8 @@
 #
 # FLUJO DETERMINÍSTICO:
 #   1. Lee estado/energía de StateManager (única fuente de verdad)
-#   2. Ejecuta módulos en orden estricto (FIRE nuevo estado)
-#   3. Si cambió estado → off_now_for_state(estado_anterior) (KILL después)
+#   2. Si cambió estado → off_now_for_state(estado_anterior) (KILL primero)
+#   3. Ejecuta módulos en orden estricto (FIRE nuevo estado)
 # ===========================================================================
 
 import time
@@ -572,14 +572,14 @@ class CueEngine:
 
         FLUJO:
           1. Leer estado/energía de StateManager
-          2. Ejecutar módulos en orden (FIRE nuevo estado primero)
-          3. Si cambió estado → OFF familia saliente (KILL después de FIRE)
+          2. Si cambió estado → OFF familia saliente (KILL primero)
+          3. Ejecutar módulos en orden (FIRE nuevo estado)
 
         GARANTÍAS:
           - No hay auto-advance
           - No hay decisiones internas
           - Solo ejecuta lo que StateManager ordena
-          - FIRE antes de KILL minimiza oscuridad en transiciones
+          - KILL antes de FIRE garantiza máximo 1 cue por familia
         """
         try:
             # ===== PASO 1: LEER ESTADO Y ENERGÍA =====
@@ -616,11 +616,12 @@ class CueEngine:
             state_changed = (effective_state != self.last_state)
             energy_changed = (current_energy != self.last_energy)
 
-            # ===== PASO 2: CAPTURAR ESTADO ANTERIOR PARA KILL POSTERIOR =====
-            previous_state = self.last_state if state_changed else None
+            # ===== PASO 2: KILL FAMILIA SALIENTE PRIMERO (si cambió estado) =====
+            # KILL antes de FIRE: garantiza máximo 1 cue por familia en todo momento
             if state_changed and self.last_state is not None:
                 t_change_ms = time.time() * 1000
                 print(f"t={t_change_ms:.0f} [ENGINE] STATE CHANGE: {self.last_state} → {effective_state}")
+                self.off_now_for_state(self.last_state)
 
             # Actualizar tracking
             if state_changed:
@@ -633,7 +634,7 @@ class CueEngine:
 
             # ===== PASO 3: EJECUTAR MÓDULOS EN ORDEN ESTRICTO =====
             # Cada módulo recibe (state, energy) y decide qué hacer con SU familia
-            # FIRE del nuevo estado PRIMERO para minimizar oscuridad
+            # FIRE del nuevo estado DESPUÉS del KILL (sin overlap)
             modules_in_order = [
                 ("control_dimmer", self.m_control),
                 ("break", self.m_break),
@@ -654,11 +655,6 @@ class CueEngine:
                     self.stats["specialist_errors"] = self.stats.get("specialist_errors", 0) + 1
                     self.last_error = str(e)
                     print(f"[CueEngine] Error en módulo {name}: {e}")
-
-            # ===== PASO 4: KILL FAMILIA SALIENTE (después de fire nuevo) =====
-            # OFF inmediato de familia saliente DESPUÉS de ejecutar módulos
-            if previous_state is not None:
-                self.off_now_for_state(previous_state)
             
             self.stats["updates"] = self.stats.get("updates", 0) + 1
             self.stats["total_updates"] = self.stats.get("total_updates", 0) + 1

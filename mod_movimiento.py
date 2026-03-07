@@ -29,7 +29,7 @@
 import time
 from typing import Dict, Any, List, Optional
 
-PIN_SECONDS = 30.0  # Estabilidad post-fire (CANÓNICO)
+PIN_SECONDS = 10.0  # Estabilidad post-fire (club mode: 30→10s)
 
 
 class MovimientoModule:
@@ -139,17 +139,27 @@ class MovimientoModule:
         else:
             return "MEDIA"
 
-    def _next_rr(self, energy: str) -> int:
+    def _next_rr(self, energy: str, avoid: Optional[int] = None) -> int:
         """
         Round-robin con UNION V1.
         Registra uso y detecta ciclos completos.
         Tras 2 ciclos, activa puente.
+
+        Args:
+            energy: Nivel de energía
+            avoid: Cue a evitar (current_cue) — si RR lo retorna, avanza una más
         """
         e = (energy or "MEDIA").upper()
         seq = self._sub_for_energy(e)
         i = self.idx[e] % len(seq)
         choice = seq[i]
         self.idx[e] = (i + 1) % len(seq)
+
+        # Skip-same-cue: if RR returned the cue to avoid, advance once more
+        if avoid is not None and choice == avoid and len(seq) > 1:
+            i2 = self.idx[e] % len(seq)
+            choice = seq[i2]
+            self.idx[e] = (i2 + 1) % len(seq)
 
         # Registrar uso
         self._rr_used[e].add(choice)
@@ -240,20 +250,20 @@ class MovimientoModule:
         if self._cycle_due and not self._pin_active():
             e = energy or "MEDIA"
 
-            # UNION V1: verificar puente
+            # UNION V1: verificar puente (avoid current to guarantee rotation)
             if self._bridge_due.get(e, False):
                 e_bridge = self._neighbor_energy(e)
-                choice = self._next_rr(e_bridge)
-                if choice != self.current_cue and self._fire_cue(choice):
+                choice = self._next_rr(e_bridge, avoid=self.current_cue)
+                if self._fire_cue(choice):
                     print(f"[MOVIMIENTO] BRIDGE C{choice} (pin {PIN_SECONDS:.0f}s)")
                     self._bridge_due[e] = False
                     self._cycle_count[e] = 0
                     self._cycle_due = False
                     return choice
 
-            # Caso normal
-            choice = self._next_rr(e)
-            if choice != self.current_cue and self._fire_cue(choice):
+            # Caso normal (avoid current to guarantee rotation)
+            choice = self._next_rr(e, avoid=self.current_cue)
+            if self._fire_cue(choice):
                 print(f"[MOVIMIENTO] ROTATE → C{choice} (pin {PIN_SECONDS:.0f}s)")
                 self._cycle_due = False
                 return choice

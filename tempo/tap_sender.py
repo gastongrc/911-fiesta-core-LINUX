@@ -41,9 +41,9 @@ class TapSenderConfig:
     # Burst config
     burst_count: int = int(os.environ.get("TAP_BURST_COUNT", "3"))
 
-    # Tempo change detection thresholds
-    diff_ms: float = float(os.environ.get("TAP_DIFF_MS", "12"))
-    diff_ratio: float = float(os.environ.get("TAP_DIFF_RATIO", "0.03"))
+    # Tempo change detection thresholds (2% triggers immediate burst)
+    diff_ms: float = float(os.environ.get("TAP_DIFF_MS", "8"))
+    diff_ratio: float = float(os.environ.get("TAP_DIFF_RATIO", "0.02"))
 
     # BPM scale factor: 0.5 = console receives half the detected BPM
     # e.g. 100 BPM detected → 50 BPM sent to console
@@ -75,7 +75,7 @@ class TapTempoSender:
     """
 
     # Worker poll interval when idle (seconds)
-    _POLL_S = 0.2
+    _POLL_S = 0.05  # 50ms poll for fast tempo change detection
 
     def __init__(self, config: Optional[TapSenderConfig] = None):
         self._cfg = config or TapSenderConfig()
@@ -84,6 +84,7 @@ class TapTempoSender:
         self._lock = threading.Lock()
         self._lock_state: str = "UNLOCKED"
         self._interval_ms: float = 0.0
+        self._prev_interval_ms: float = 0.0  # For change detection in update()
 
         # --- Worker-only state ---
         self._sender_state = SenderState.IDLE
@@ -93,6 +94,7 @@ class TapTempoSender:
 
         # --- Thread control ---
         self._stop = threading.Event()
+        self._wake = threading.Event()  # Wakes worker immediately on tempo change
 
         # --- HTTP session ---
         self._session = requests.Session()
@@ -118,7 +120,7 @@ class TapTempoSender:
 
         status = "ENABLED" if self._cfg.enabled else "DISABLED (TAP_SENDER_ENABLED=0)"
         print(
-            f"[TapSender] v3.1 {status} → {self._cfg.titan_ip}:{self._cfg.titan_port} "
+            f"[TapSender] v3.2 {status} → {self._cfg.titan_ip}:{self._cfg.titan_port} "
             f"macro={self._cfg.macro_id} burst={self._cfg.burst_count} "
             f"diff={self._cfg.diff_ms}ms/{self._cfg.diff_ratio*100:.0f}% "
             f"bpm_scale={self._cfg.bpm_scale_factor}"
@@ -130,14 +132,27 @@ class TapTempoSender:
     # =================================================================
 
     def update(self, lock_state: str, interval_ms: float):
-        """Write state for worker. O(1), never blocks."""
+        """Write state for worker. O(1), never blocks.
+        Wakes worker immediately if tempo changed >2% while LOCKED."""
+        wake_needed = False
         with self._lock:
             self._lock_state = lock_state
             self._interval_ms = interval_ms
+            # Detect significant change while locked → wake worker
+            if (lock_state == "LOCKED" and self._prev_interval_ms > 0
+                    and interval_ms > 0):
+                diff = abs(interval_ms - self._prev_interval_ms)
+                threshold = self._prev_interval_ms * self._cfg.diff_ratio
+                if diff >= max(threshold, self._cfg.diff_ms):
+                    wake_needed = True
+            self._prev_interval_ms = interval_ms
+        if wake_needed:
+            self._wake.set()
 
     def stop(self):
         """Graceful shutdown."""
         self._stop.set()
+        self._wake.set()  # Unblock worker if waiting
         if self._thread.is_alive():
             self._thread.join(timeout=2.0)
         try:
@@ -165,6 +180,9 @@ class TapTempoSender:
                 self._stop.wait(timeout=2.0)
                 continue
 
+            # Clear wake flag (consume any pending wake)
+            self._wake.clear()
+
             # Read shared state (single lock acquire per iteration)
             with self._lock:
                 lock_state = self._lock_state
@@ -179,7 +197,10 @@ class TapTempoSender:
                 self._sender_state = SenderState.IDLE
                 self._was_locked = False
                 self._burst_remaining = 0
-                self._stop.wait(timeout=self._POLL_S)
+                # Wait on wake OR stop (wake allows instant response)
+                self._wake.wait(timeout=self._POLL_S)
+                if self._stop.is_set():
+                    break
                 continue
 
             # --- LOCK JUST ACHIEVED → BURST ---
@@ -195,8 +216,10 @@ class TapTempoSender:
                 self._execute_burst(interval_ms)
                 continue
 
-            # --- LOCKED, no change: just poll ---
-            self._stop.wait(timeout=self._POLL_S)
+            # --- LOCKED, no change: wait for wake or poll timeout ---
+            self._wake.wait(timeout=self._POLL_S)
+            if self._stop.is_set():
+                break
 
     def _start_burst(self, interval_ms: float, reason: str):
         """Initialize a burst. Worker-only."""
