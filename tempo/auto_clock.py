@@ -1,5 +1,8 @@
 # tempo/auto_clock.py
-# AutoClock v13 - Tempo stability: keep 8 hits, smooth 0.12
+# AutoClock v14 - Dual-mode ACQUIRE/LOCK for fast convergence
+# V14: ACQUIRE mode (alpha=0.6, period=0.5s) locks tempo in 2-3 beats.
+#      LOCK mode (alpha=0.15, period=3.0s) maintains stability.
+#      Transition: 3 consecutive intervals within 3% = LOCK.
 # V13: Keep 8 hits in apply_correction (was 2 → random walk). EMA smooth 0.12 (was 0.30).
 # V12: LOCKED requires 5 consecutive valid intervals + variance<=15%. Anti-flap: 3 strikes.
 # V11: Unified monotonic timestamps (fix time.time/monotonic mix) + get_ui_state() + quiet logs
@@ -113,6 +116,18 @@ class AutoClock:
         self._consecutive_valid = 0   # V12: intervalos válidos consecutivos
         self._unlock_strikes = 0      # V12: intervalos malos consecutivos (anti-flap)
 
+        # V14: Dual-mode ACQUIRE/LOCK convergence
+        # ACQUIRE: fast alpha to lock tempo in 2-3 beats
+        # LOCK: slow alpha to maintain stability
+        self._tempo_mode = "ACQUIRE"  # "ACQUIRE" or "LOCK"
+        self._acquire_alpha = 0.6     # Fast convergence (2-3 beats)
+        self._lock_alpha = 0.15       # Stable maintenance
+        self._acquire_period = 0.5    # Correct every 0.5s in ACQUIRE
+        self._lock_period = 3.0       # Correct every 3.0s in LOCK
+        self._stable_count = 0        # Consecutive stable intervals
+        self._stable_threshold = 0.03 # 3% max deviation for stability
+        self._stable_required = 3     # 3 consecutive stable = LOCK mode
+
         # Parámetros configurables (sliders)
         self.params = {
             "peak_thresh": 0.20,
@@ -121,7 +136,7 @@ class AutoClock:
             "low_cut": 40,
             "high_cut": 120,
             "min_hit_ms": 140,      # Era 180, ahora 140 (debounce ~143 BPM max)
-            "smooth": 0.12,          # FIX 4: was 0.30 — slower EMA for stability
+            "smooth": 0.12,          # Legacy default (overridden by dual-mode)
             "interval_min_ms": 333,  # 180 BPM max
             "interval_max_ms": 1000, # 60 BPM min (más estricto)
         }
@@ -473,8 +488,16 @@ class AutoClock:
 
     def apply_correction(self):
         """
-        V8.1: Aplica correccion suave basada en historial de kicks.
-        Llamar periodicamente (~1Hz).
+        V14: Dual-mode correction — ACQUIRE (fast) / LOCK (stable).
+
+        ACQUIRE mode:
+          - alpha=0.6, period=0.5s → converges in 2-3 beats
+          - Transitions to LOCK when 3 consecutive intervals differ < 3%
+
+        LOCK mode:
+          - alpha=0.15, period=3.0s → maintains stability
+          - Falls back to ACQUIRE if intervals diverge > 3% for 3 beats
+
         NO aplica si hay TAP manual activo.
         Usa intervalos filtrados por MAD para robustez.
         """
@@ -484,7 +507,9 @@ class AutoClock:
         if self._is_manual_active():
             return
 
-        if (now - self.last_correction_ts) < self.correction_period:
+        # V14: Use mode-dependent correction period
+        period = self._acquire_period if self._tempo_mode == "ACQUIRE" else self._lock_period
+        if (now - self.last_correction_ts) < period:
             return
 
         # V8.1: Usar intervalos filtrados por MAD
@@ -496,9 +521,14 @@ class AutoClock:
         # V8.1: Usar mediana en lugar de promedio (más robusto)
         target_interval = float(np.median(intervals))
 
-        # EMA smoothing (exponential moving average)
-        s = self.params["smooth"]
-        self.interval_ms = (self.interval_ms * (1 - s)) + (target_interval * s)
+        # V14: Evaluate stability for mode transitions
+        self._update_tempo_mode(intervals, target_interval)
+
+        # V14: Use mode-dependent alpha
+        alpha = self._acquire_alpha if self._tempo_mode == "ACQUIRE" else self._lock_alpha
+
+        # EMA smoothing with mode-dependent alpha
+        self.interval_ms = (self.interval_ms * (1 - alpha)) + (target_interval * alpha)
 
         # Clamps
         p = self.params
@@ -513,6 +543,46 @@ class AutoClock:
         if len(self.hit_times) > 8:
             self.hit_times = self.hit_times[-8:]
         self.last_correction_ts = now
+
+    def _update_tempo_mode(self, intervals: list, target_interval: float):
+        """
+        V14: Evaluate whether to switch between ACQUIRE and LOCK modes.
+
+        ACQUIRE → LOCK: last 3 intervals within 3% of median
+        LOCK → ACQUIRE: intervals diverge beyond 3% for 3 consecutive beats
+        """
+        if len(intervals) < 3 or target_interval <= 0:
+            self._stable_count = 0
+            if self._tempo_mode != "ACQUIRE":
+                self._tempo_mode = "ACQUIRE"
+                print("[AutoClock] V14: → ACQUIRE (insufficient intervals)")
+            return
+
+        # Check last 3 intervals for stability
+        recent = intervals[-3:]
+        median_recent = np.median(recent)
+        if median_recent <= 0:
+            return
+
+        all_stable = all(
+            abs(iv - median_recent) / median_recent < self._stable_threshold
+            for iv in recent
+        )
+
+        prev_mode = self._tempo_mode
+
+        if all_stable:
+            self._stable_count += 1
+            if self._stable_count >= self._stable_required and self._tempo_mode == "ACQUIRE":
+                self._tempo_mode = "LOCK"
+                bpm = 60000.0 / target_interval if target_interval > 0 else 0
+                print(f"[AutoClock] V14: ACQUIRE→LOCK bpm={bpm:.1f} (stable×{self._stable_count})")
+        else:
+            self._stable_count = 0
+            if self._tempo_mode == "LOCK":
+                self._tempo_mode = "ACQUIRE"
+                bpm = 60000.0 / target_interval if target_interval > 0 else 0
+                print(f"[AutoClock] V14: LOCK→ACQUIRE bpm={bpm:.1f} (drift detected)")
 
     # ============================================================
     # TAP - Sincronizacion manual
@@ -612,6 +682,8 @@ class AutoClock:
             "hits_in_buffer": len(self.hit_times),
             "lock_state": self.get_lock_state().value,
             "is_locked": self.is_locked(),
+            "tempo_mode": self._tempo_mode,
+            "stable_count": self._stable_count,
             "params": self.params.copy(),
         }
 
@@ -628,6 +700,9 @@ class AutoClock:
         self._consecutive_valid = 0
         self._unlock_strikes = 0
         self.last_hit_ts = 0.0
+        # V14: Reset dual-mode state
+        self._tempo_mode = "ACQUIRE"
+        self._stable_count = 0
         print("[AutoClock] Reset complete")
 
 
