@@ -40,7 +40,7 @@ CONFLICT_FAMILIES = {
 
 # ✅ Mapeo de estados a familias para OFF prioritario
 STATE_TO_FAMILY = {
-    "BAJADA": ["bajada", "posiciones"],
+    "BAJADA": ["bajada_colores", "bajada_posiciones"],
     "BASE_GOLPE": ["base_golpe"],
     "ATAQUE": ["ataque"],
     "BRAKE": ["brake"],
@@ -48,8 +48,8 @@ STATE_TO_FAMILY = {
 
 # ✅ Rangos de cues por familia para OFF rápido
 FAMILY_CUE_RANGES = {
-    "bajada": list(range(10, 28)),  # C10-27: Colores + Posiciones
-    "posiciones": list(range(19, 28)),  # C19-27: Posiciones
+    "bajada_colores": list(range(10, 19)),  # C10-18: Colores
+    "bajada_posiciones": list(range(19, 28)),  # C19-27: Posiciones
     "base_golpe": list(range(1, 10)) + list(range(51, 60)),  # C1-9, C51-59
     "ataque": [37, 38, 39],  # C37-39
     "brake": [42, 43, 44],  # C42-44
@@ -78,7 +78,7 @@ class CueEngine:
       2. break (C42-44)
       3. ataque (C37-39)
       4. base_golpe (C1-9, C51-59)
-      5. bajada (C10-27)
+      5. bajada (C10-18 colores, C19-27 posiciones)
       6. movimiento (C28-36)
       7. timed (C45-50)
 
@@ -146,12 +146,12 @@ class CueEngine:
         
         # ✅ Tracking de cues activos por familia
         self.active_by_family: Dict[str, Optional[int]] = {
-            "base_golpe": None, 
-            "bajada": None, 
-            "ataque": None, 
+            "base_golpe": None,
+            "bajada_colores": None,
+            "bajada_posiciones": None,
+            "ataque": None,
             "brake": None,
             "movimiento": None,
-            "posiciones": None,
             "posiciones_fijas": None
         }
         
@@ -542,7 +542,7 @@ class CueEngine:
         - Logging con timestamps ms para medir latencia
         
         Args:
-            family: Nombre de la familia ("bajada", "ataque", etc.)
+            family: Nombre de la familia ("bajada_colores", "ataque", etc.)
             extra_ids: IDs adicionales a apagar (opcional)
         """
         if not family:
