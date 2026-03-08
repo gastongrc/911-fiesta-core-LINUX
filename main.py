@@ -527,6 +527,47 @@ else:
         def record_error(self, source, message):
             pass
 
+def wait_for_audio_device(keywords=None, timeout=15.0, poll_interval=1.0):
+    """
+    Wait for a USB audio device to appear in ALSA/PortAudio.
+
+    Args:
+        keywords: list of substrings to match in device name (e.g. ["PS22", "Maono"])
+        timeout: max seconds to wait (default 15)
+        poll_interval: seconds between polls (default 1)
+
+    Returns:
+        (device_index, device_name) if found, (None, None) if timeout
+    """
+    if not keywords:
+        keywords = ["PS22", "Maono"]
+    keywords_lower = [k.lower() for k in keywords]
+    print(f"[AUDIO] Waiting for audio device ({', '.join(keywords)})...")
+    t0 = time.time()
+    attempt = 0
+    while time.time() - t0 < timeout:
+        attempt += 1
+        try:
+            devices = sd.query_devices()
+            for i, d in enumerate(devices):
+                if d.get('max_input_channels', 0) <= 0:
+                    continue
+                name = d.get('name', '')
+                name_lower = name.lower()
+                if any(kw in name_lower for kw in keywords_lower):
+                    elapsed = time.time() - t0
+                    print(f"[AUDIO] Device detected: #{i} '{name}' (attempt {attempt}, {elapsed:.1f}s)")
+                    return i, name
+        except Exception as e:
+            print(f"[AUDIO] Error querying devices (attempt {attempt}): {e}")
+        if time.time() - t0 + poll_interval < timeout:
+            time.sleep(poll_interval)
+        else:
+            break
+    print(f"[AUDIO] WARNING: device not found after {timeout}s ({attempt} attempts)")
+    return None, None
+
+
 class Main(QMainWindow):
     def __init__(self):
         global API_AVAILABLE
@@ -2539,31 +2580,35 @@ class Main(QMainWindow):
             print(f"[PROFILE] loaded net_panel from {self.preset_path}")
             print(f"[NIC] loaded: name={nic_cfg.get('local_nic_name')} ip={nic_cfg.get('local_ip')} id={nic_cfg.get('local_nic_id')}")
 
-            # Apply audio config
+            # Apply audio config (with wait for USB device)
             audio_cfg = net.get("audio", {})
             if audio_cfg.get("auto_connect", True):
                 device_name = audio_cfg.get("input_device_name")
                 device_idx = audio_cfg.get("input_device_index")
 
-                # Find device
-                target_idx = None
+                # Build search keywords from saved device name
+                keywords = ["PS22", "Maono"]
                 if device_name:
-                    for i, d in enumerate(sd.query_devices()):
-                        if d.get('max_input_channels', 0) > 0 and device_name in d['name']:
-                            target_idx = i
-                            break
+                    keywords = [device_name] + keywords
+
+                # Wait for USB audio device to appear in ALSA
+                target_idx, found_name = wait_for_audio_device(
+                    keywords=keywords, timeout=15.0, poll_interval=1.0
+                )
+
+                # Fallback to saved index if wait didn't find by name
                 if target_idx is None and device_idx is not None:
+                    print(f"[AUDIO] Falling back to saved device index #{device_idx}")
                     target_idx = device_idx
 
                 if target_idx is not None:
                     try:
-                        # Use canonical start() - initializes full pipeline:
-                        # engine + AudioMonitor + waveform + _clock + _acc + t_frame
-                        self.start(device_index=target_idx)
+                        # Use canonical start() with retry
+                        self._start_with_retry(device_index=target_idx, max_retries=10, retry_interval=2.0)
 
                         if self.engine:
                             sr = getattr(self.engine, 'samplerate', None) or getattr(self.engine, 'sr', None) or 48000
-                            print(f"[PROFILE] audio pipeline started: device=#{target_idx} sr={sr} t_frame=running")
+                            print(f"[AUDIO] Audio engine started: device=#{target_idx} sr={sr}")
 
                             # Update Red/Consola UI labels
                             if hasattr(self, 'cmb_audio_device'):
@@ -2575,9 +2620,11 @@ class Main(QMainWindow):
                                 self.lbl_audio_status.setStyleSheet("color:#27ae60; font-weight:700;")
                                 self.lbl_audio_sr.setText(f"SR: {sr} Hz")
                         else:
-                            print(f"[PROFILE] audio connect failed for device #{target_idx}")
+                            print(f"[AUDIO] Audio connect failed for device #{target_idx}")
                     except Exception as e:
-                        print(f"[PROFILE] audio connect error: {e}")
+                        print(f"[AUDIO] Audio connect error: {e}")
+                else:
+                    print("[AUDIO] WARNING: No audio device available. System running without audio.")
 
             # Apply Avolites config (without connecting yet)
             console_ip = net.get("console_ip", "10.0.0.1")
@@ -3556,6 +3603,35 @@ class Main(QMainWindow):
         self._acc = {k: 0.0 for k in self.CADENCE.keys()}
         self.t_frame.start()
         print(f"[AUDIO] t_frame started (main loop) sr={sr} bs={bs}")
+
+    def _start_with_retry(self, device_index, max_retries=10, retry_interval=2.0):
+        """Start audio engine with retry logic for USB devices.
+
+        If the first start() fails (device not ready), retries up to max_retries
+        times with retry_interval seconds between attempts.
+        """
+        for attempt in range(1, max_retries + 1):
+            try:
+                self.start(device_index=device_index)
+                if self.engine:
+                    return  # success
+            except Exception as e:
+                print(f"[AUDIO] Init attempt {attempt}/{max_retries} failed: {e}")
+
+            if attempt < max_retries:
+                print(f"[AUDIO] Retrying in {retry_interval}s...")
+                time.sleep(retry_interval)
+
+                # Clean up failed engine
+                if self.engine:
+                    try:
+                        self.engine.stop()
+                    except Exception:
+                        pass
+                    self.engine = None
+
+        if not self.engine:
+            print(f"[AUDIO] WARNING: Failed to start after {max_retries} attempts")
 
     def stop(self):
         self.t_frame.stop()
