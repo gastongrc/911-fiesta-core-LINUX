@@ -527,12 +527,19 @@ else:
         def record_error(self, source, message):
             pass
 
+_GENERIC_DEVICE_NAMES = {"default", "hw:", "plughw:", "pulse", "sysdefault", "dmix"}
+
 def wait_for_audio_device(keywords=None, timeout=15.0, poll_interval=1.0):
     """
-    Wait for a USB audio device to appear in ALSA/PortAudio.
+    Wait for a specific USB audio device to appear in ALSA/PortAudio.
+
+    Polls sd.query_devices() every poll_interval seconds looking for an input
+    device whose name contains any of the given keywords.
+    Generic names ("default", "hw:", "pulse", etc.) are always excluded.
 
     Args:
-        keywords: list of substrings to match in device name (e.g. ["PS22", "Maono"])
+        keywords: list of substrings to match (e.g. ["PS22", "Maono"]).
+                  Generic entries are silently stripped.
         timeout: max seconds to wait (default 15)
         poll_interval: seconds between polls (default 1)
 
@@ -541,8 +548,12 @@ def wait_for_audio_device(keywords=None, timeout=15.0, poll_interval=1.0):
     """
     if not keywords:
         keywords = ["PS22", "Maono"]
+    # Strip generic keywords that would match onboard/system devices
+    keywords = [k for k in keywords if k.lower() not in _GENERIC_DEVICE_NAMES]
+    if not keywords:
+        keywords = ["PS22", "Maono"]
     keywords_lower = [k.lower() for k in keywords]
-    print(f"[AUDIO] Waiting for audio device ({', '.join(keywords)})...")
+    print(f"[AUDIO] Waiting for Maono PS22 (keywords={keywords}, timeout={timeout}s)...")
     t0 = time.time()
     attempt = 0
     while time.time() - t0 < timeout:
@@ -564,7 +575,7 @@ def wait_for_audio_device(keywords=None, timeout=15.0, poll_interval=1.0):
             time.sleep(poll_interval)
         else:
             break
-    print(f"[AUDIO] WARNING: device not found after {timeout}s ({attempt} attempts)")
+    print(f"[AUDIO] WARNING: Maono PS22 not found after {timeout}s ({attempt} attempts)")
     return None, None
 
 
@@ -2584,31 +2595,28 @@ class Main(QMainWindow):
             audio_cfg = net.get("audio", {})
             if audio_cfg.get("auto_connect", True):
                 device_name = audio_cfg.get("input_device_name")
-                device_idx = audio_cfg.get("input_device_index")
+                print(f"[AUDIO] Preset audio config: name='{device_name}' idx={audio_cfg.get('input_device_index')}")
 
-                # Build search keywords from saved device name
+                # Build search keywords — only use saved name if it's specific
+                # (not "default", "hw:", etc.). Always include hardware identifiers.
                 keywords = ["PS22", "Maono"]
-                if device_name:
+                if device_name and device_name.lower() not in _GENERIC_DEVICE_NAMES:
                     keywords = [device_name] + keywords
 
                 # Wait for USB audio device to appear in ALSA
+                # NOTE: input_device_index is intentionally ignored — ALSA indices
+                # are volatile across reboots and would select the wrong device.
                 target_idx, found_name = wait_for_audio_device(
                     keywords=keywords, timeout=15.0, poll_interval=1.0
                 )
 
-                # Fallback to saved index if wait didn't find by name
-                if target_idx is None and device_idx is not None:
-                    print(f"[AUDIO] Falling back to saved device index #{device_idx}")
-                    target_idx = device_idx
-
                 if target_idx is not None:
                     try:
-                        # Use canonical start() with retry
                         self._start_with_retry(device_index=target_idx, max_retries=10, retry_interval=2.0)
 
                         if self.engine:
                             sr = getattr(self.engine, 'samplerate', None) or getattr(self.engine, 'sr', None) or 48000
-                            print(f"[AUDIO] Audio engine started: device=#{target_idx} sr={sr}")
+                            print(f"[AUDIO] Audio engine started: device=#{target_idx} '{found_name}' sr={sr}")
 
                             # Update Red/Consola UI labels
                             if hasattr(self, 'cmb_audio_device'):
@@ -2624,7 +2632,8 @@ class Main(QMainWindow):
                     except Exception as e:
                         print(f"[AUDIO] Audio connect error: {e}")
                 else:
-                    print("[AUDIO] WARNING: No audio device available. System running without audio.")
+                    print("[AUDIO] WARNING: Maono PS22 not found. System running without audio.")
+                    print("[AUDIO] Connect the device and use Red/Consola tab to start manually.")
 
             # Apply Avolites config (without connecting yet)
             console_ip = net.get("console_ip", "10.0.0.1")
