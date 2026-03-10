@@ -17,7 +17,7 @@ import {
   updateAvolitesConfig,
   updateModulesConfig,
 } from '../api/config';
-import { setNetworkInterface } from '../api/network';
+import { getNetworkInterfaces, setNetworkInterface } from '../api/network';
 
 const TABS = [
   'Bajada',
@@ -31,6 +31,7 @@ const TABS = [
 export function ConfigPro() {
   const [activeTab, setActiveTab] = useState('Red/Consola');
   const [avolitesConfig, setAvolitesConfig] = useState(null);
+  const [networkConfig, setNetworkConfig] = useState(null);
   const [modulesConfig, setModulesConfig] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
@@ -52,24 +53,38 @@ export function ConfigPro() {
 
   const loadConfigs = async () => {
     setLoading(true);
-    try {
-      const [avolitesRes, modulesRes] = await Promise.all([
-        getAvolitesConfig(),
-        getModulesConfig(),
-      ]);
 
-      const avoData = avolitesRes.data?.data || {};
+    // Fetch each section independently — graceful per-section failure
+    const results = await Promise.allSettled([
+      getAvolitesConfig(),
+      getModulesConfig(),
+      getNetworkInterfaces(),
+    ]);
+
+    const [avolitesRes, modulesRes, networkRes] = results;
+
+    // Avolites config: GET /api/v1/config/avolites
+    if (avolitesRes.status === 'fulfilled') {
+      const avoData = avolitesRes.value.data?.data || {};
       setAvolitesConfig(avoData);
-      setModulesConfig(modulesRes.data?.data || {});
-
       if (avoData.console_ip) setConsoleIp(avoData.console_ip);
       if (avoData.console_port) setConsolePort(String(avoData.console_port));
       if (avoData.cue_offset !== undefined) setCueOffset(avoData.cue_offset);
-    } catch (error) {
-      showMessage('Error cargando config', 'error');
-    } finally {
-      setLoading(false);
     }
+
+    // Modules config: GET /api/v1/config/modules
+    if (modulesRes.status === 'fulfilled') {
+      setModulesConfig(modulesRes.value.data?.data || {});
+    }
+
+    // Network interfaces: GET /api/v1/network/interfaces
+    if (networkRes.status === 'fulfilled') {
+      const netData = networkRes.value.data || {};
+      setNetworkConfig(netData);
+      if (netData.current_interface) setNic(netData.current_interface);
+    }
+
+    setLoading(false);
   };
 
   const handleSaveAvolites = async () => {
@@ -211,14 +226,25 @@ export function ConfigPro() {
           <div style={{ marginBottom: '16px' }}>
             <label className="t3 text-sm mb-2" style={{ display: 'block' }}>Interfaz de Red</label>
             <select value={nic} onChange={(e) => setNic(e.target.value)}>
-              <option>eth0</option>
-              <option>wlan0</option>
+              {(networkConfig?.interfaces || []).length > 0
+                ? networkConfig.interfaces.map(iface => (
+                    <option key={iface.name} value={iface.name}>{iface.name}</option>
+                  ))
+                : <>
+                    <option>eth0</option>
+                    <option>wlan0</option>
+                  </>
+              }
             </select>
           </div>
           <div className="inset mb-3">
             <div className="flex justify-between mb-2">
               <span className="t3 text-sm">IP Efectiva</span>
               <span className="mono text-sm">{avolitesConfig?.local_ip || '---'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="t3 text-sm">Interfaz Activa</span>
+              <span className="mono text-sm">{networkConfig?.current_interface || '---'}</span>
             </div>
           </div>
           <button className="key w-full" onClick={handleApplyNic} disabled={loading}>
