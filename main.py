@@ -554,11 +554,29 @@ def wait_for_audio_device(keywords=None, timeout=15.0, poll_interval=1.0):
         keywords = ["PS22", "Maono"]
     keywords_lower = [k.lower() for k in keywords]
     print(f"[AUDIO] Waiting for Maono PS22 (keywords={keywords}, timeout={timeout}s)...")
+
+    # Force PortAudio to rebuild its device list from ALSA.
+    # Without this, PortAudio caches the device list from process init time
+    # and never sees USB devices that appeared after Python started.
+    try:
+        sd._terminate()
+        sd._initialize()
+        print("[AUDIO] PortAudio re-initialized (cache cleared)")
+    except Exception as e:
+        print(f"[AUDIO] PortAudio re-init warning: {e}")
+
     t0 = time.time()
     attempt = 0
     while time.time() - t0 < timeout:
         attempt += 1
         try:
+            # Re-scan ALSA on every poll cycle so newly-appeared USB devices
+            # are visible to sd.query_devices().
+            try:
+                sd._terminate()
+                sd._initialize()
+            except Exception:
+                pass
             devices = sd.query_devices()
             for i, d in enumerate(devices):
                 if d.get('max_input_channels', 0) <= 0:
