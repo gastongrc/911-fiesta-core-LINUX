@@ -1,7 +1,7 @@
 /**
  * Layout — Sidebar + Main (matches UI contract)
  *
- * Sidebar: 3 nav buttons (Home, Calendar, Config/Sliders)
+ * Sidebar: 4 nav buttons (Home, Calendar, Monitor, Config)
  * Icons match docs/ui-contract/icons.svg exactly
  */
 import { Link, useLocation } from 'react-router-dom';
@@ -23,6 +23,16 @@ const navItems = [
         <line x1="16" y1="2" x2="16" y2="6" />
         <line x1="8" y1="2" x2="8" y2="6" />
         <line x1="3" y1="10" x2="21" y2="10" />
+      </svg>
+    ),
+  },
+  {
+    path: '/analyze',
+    icon: (
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="3" width="20" height="14" rx="2" />
+        <line x1="8" y1="21" x2="16" y2="21" />
+        <line x1="12" y1="17" x2="12" y2="21" />
       </svg>
     ),
   },

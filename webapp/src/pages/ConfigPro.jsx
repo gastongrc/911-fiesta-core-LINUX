@@ -17,6 +17,7 @@ import {
   updateAvolitesConfig,
   updateModulesConfig,
 } from '../api/config';
+import { setNetworkInterface } from '../api/network';
 
 const TABS = [
   'Bajada',
@@ -26,8 +27,6 @@ const TABS = [
   'Red/Consola',
   'Calendario',
 ];
-
-const CAMERA_TEMPLATES = ['Axis', 'Hikvision', 'Dahua', 'Custom'];
 
 export function ConfigPro() {
   const [activeTab, setActiveTab] = useState('Red/Consola');
@@ -40,16 +39,7 @@ export function ConfigPro() {
   const [consoleIp, setConsoleIp] = useState('');
   const [consolePort, setConsolePort] = useState('');
   const [cueOffset, setCueOffset] = useState(0);
-  const [protocol, setProtocol] = useState('HTTP');
-  const [timeout, setTimeout_] = useState('');
-  const [nic, setNic] = useState('Auto');
-
-  // Camera form state
-  const [cameras, setCameras] = useState({
-    haze: { enabled: true, template: 'Axis', host: '' },
-    dj: { enabled: true, template: 'Axis', host: '' },
-    artist: { enabled: true, template: 'Axis', host: '' },
-  });
+  const [nic, setNic] = useState('eth0');
 
   useEffect(() => {
     loadConfigs();
@@ -126,11 +116,17 @@ export function ConfigPro() {
     }
   };
 
-  const updateCamera = (cam, field, value) => {
-    setCameras(prev => ({
-      ...prev,
-      [cam]: { ...prev[cam], [field]: value },
-    }));
+  const handleApplyNic = async () => {
+    setLoading(true);
+    try {
+      await setNetworkInterface(nic);
+      showMessage(`Interfaz ${nic} aplicada`);
+      loadConfigs();
+    } catch (error) {
+      showMessage('Error aplicando interfaz', 'error');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Module list for current tab (Bajada, Base Golpe, etc.)
@@ -217,7 +213,6 @@ export function ConfigPro() {
             <select value={nic} onChange={(e) => setNic(e.target.value)}>
               <option>eth0</option>
               <option>wlan0</option>
-              <option>Auto</option>
             </select>
           </div>
           <div className="inset mb-3">
@@ -225,36 +220,26 @@ export function ConfigPro() {
               <span className="t3 text-sm">IP Efectiva</span>
               <span className="mono text-sm">{avolitesConfig?.local_ip || '---'}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="t3 text-sm">MAC</span>
-              <span className="mono text-sm">---</span>
-            </div>
           </div>
-          <button className="key w-full">Aplicar NIC</button>
+          <button className="key w-full" onClick={handleApplyNic} disabled={loading}>
+            {loading ? 'Aplicando...' : 'Aplicar NIC'}
+          </button>
         </div>
 
-        {/* — Transporte — */}
+        {/* — Transporte (read-only, configured via CORE) — */}
         <div className="g">
           <h3 className="font-bold mb-4">Transporte</h3>
-          <div style={{ marginBottom: '16px' }}>
-            <label className="t3 text-sm mb-2" style={{ display: 'block' }}>Protocolo</label>
-            <select value={protocol} onChange={(e) => setProtocol(e.target.value)}>
-              <option>HTTP</option>
-              <option>sACN</option>
-              <option>Art-Net</option>
-              <option>DMX</option>
-            </select>
+          <div className="inset mb-3">
+            <div className="flex justify-between mb-2">
+              <span className="t3 text-sm">Protocolo</span>
+              <span className="mono text-sm">HTTP</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="t3 text-sm">Timeout</span>
+              <span className="mono text-sm">{avolitesConfig?.timeout_ms || '5000'}ms</span>
+            </div>
           </div>
-          <div style={{ marginBottom: '16px' }}>
-            <label className="t3 text-sm mb-2" style={{ display: 'block' }}>Timeout (ms)</label>
-            <input
-              type="number"
-              placeholder="5000"
-              value={timeout}
-              onChange={(e) => setTimeout_(e.target.value)}
-            />
-          </div>
-          <button className="key w-full">Guardar</button>
+          <div className="t4 text-sm" style={{ opacity: 0.5 }}>Configurado desde CORE</div>
         </div>
 
         {/* — Offset de Cues — */}
@@ -278,52 +263,22 @@ export function ConfigPro() {
           </button>
         </div>
 
-        {/* — Vision Pro - Cámaras (full width) — */}
+        {/* — Vision Pro - Cámaras (read-only, configured via Qt UI) — */}
         <div className="g" style={{ gridColumn: '1 / -1' }}>
-          <h3 className="font-bold mb-4">Vision Pro - Cámaras</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold">Vision Pro - Cámaras</h3>
+            <div className="t4 text-sm" style={{ opacity: 0.5 }}>Configurado via Qt UI</div>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
-
-            {[
-              { key: 'haze', label: 'HAZE Camera' },
-              { key: 'dj', label: 'DJ Camera' },
-              { key: 'artist', label: 'ARTIST Camera' },
-            ].map(cam => (
-              <div key={cam.key} className="inset">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="font-semibold">{cam.label}</div>
-                  <input
-                    type="checkbox"
-                    checked={cameras[cam.key].enabled}
-                    onChange={(e) => updateCamera(cam.key, 'enabled', e.target.checked)}
-                  />
+            {['HAZE', 'DJ', 'ARTIST'].map(cam => (
+              <div key={cam} className="inset">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="font-semibold">{cam}</div>
+                  <div className="b gray">CORE</div>
                 </div>
-                <div style={{ marginBottom: '12px' }}>
-                  <label className="t3 text-sm mb-1" style={{ display: 'block' }}>Template</label>
-                  <select
-                    style={{ width: '100%' }}
-                    value={cameras[cam.key].template}
-                    onChange={(e) => updateCamera(cam.key, 'template', e.target.value)}
-                  >
-                    {CAMERA_TEMPLATES.map(t => <option key={t}>{t}</option>)}
-                  </select>
-                </div>
-                <div style={{ marginBottom: '12px' }}>
-                  <label className="t3 text-sm mb-1" style={{ display: 'block' }}>Host</label>
-                  <input
-                    type="text"
-                    placeholder="192.168.1.x"
-                    value={cameras[cam.key].host}
-                    onChange={(e) => updateCamera(cam.key, 'host', e.target.value)}
-                  />
-                </div>
-                <button className="key-2 w-full">Test</button>
+                <div className="t4 text-sm">Cámara gestionada desde el sistema CORE</div>
               </div>
             ))}
-
-          </div>
-          <div className="flex gap-3" style={{ marginTop: '20px' }}>
-            <button className="key w-full">Guardar Todo</button>
-            <button className="key-2 w-full">Test Todas</button>
           </div>
         </div>
 

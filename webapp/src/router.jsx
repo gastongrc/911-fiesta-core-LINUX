@@ -1,15 +1,17 @@
 /**
- * Router — 3 Panel Navigation
+ * Router — 4 Panel Navigation
  *
- * Panels (matching UI contract):
- * - Home: Control Room + Status Dashboard (merged)
- * - Calendar: Calendar scheduling + control
- * - Config: Config PRO panel
+ * Panels:
+ * - /           Control Room + Status Dashboard
+ * - /calendar   Calendar scheduling + control
+ * - /analyze    System Monitor (engine health)
+ * - /config     Config PRO panel
  */
 import { createBrowserRouter } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
 import { Calendar } from './pages/Calendar';
+import { Analyze } from './pages/Analyze';
 import { ConfigPro } from './pages/ConfigPro';
 
 export const router = createBrowserRouter([
@@ -20,6 +22,10 @@ export const router = createBrowserRouter([
   {
     path: '/calendar',
     element: <Layout><Calendar /></Layout>,
+  },
+  {
+    path: '/analyze',
+    element: <Layout><Analyze /></Layout>,
   },
   {
     path: '/config',

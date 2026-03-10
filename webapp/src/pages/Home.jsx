@@ -9,7 +9,7 @@
  * SSE/polling hook preserved for live data
  */
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { getApiBase } from '../lib/apiBase';
+import { getApiBase, apiPost } from '../lib/apiBase';
 
 // Hook para SSE con fallback a polling y reconexión
 function useUnifiedStatus() {
@@ -142,12 +142,21 @@ function ledColor(online) {
 
 export function Home() {
   const { status, connectionType, error } = useUnifiedStatus();
+  const [actionLoading, setActionLoading] = useState(null);
 
   const s = status || {};
   const sys = s.system || {};
   const avo = s.avolites || {};
   const audio = s.audio || {};
   const cal = s.calendar || {};
+
+  const handleReconectar = async () => {
+    setActionLoading('reconectar');
+    try {
+      await apiPost('/config/avolites', { data: { console_ip: avo.console_ip, console_port: avo.console_port || 4430 } });
+    } catch (e) {}
+    setActionLoading(null);
+  };
 
   const isConnected = connectionType === 'sse' || connectionType === 'polling';
 
@@ -167,7 +176,7 @@ export function Home() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 28px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <h1 style={{ fontFamily: 'var(--font-title)', fontSize: '24px', fontWeight: 700 }}>Control Room</h1>
-          <div className="b gray">v8.0</div>
+          <div className="b gray">{val(s.version, 'v---')}</div>
         </div>
         <div className="b">
           <div className={`led-dot${isConnected ? '' : ' off'}`} />
@@ -247,7 +256,9 @@ export function Home() {
                 <div className="green mono font-bold">{val(avo.errors, '0')}</div>
               </div>
             </div>
-            <button className="key w-full mt-3">Reconectar</button>
+            <button className="key w-full mt-3" onClick={handleReconectar} disabled={actionLoading === 'reconectar'}>
+              {actionLoading === 'reconectar' ? 'Reconectando...' : 'Reconectar'}
+            </button>
           </div>
 
           {/* — Audio Input + Placa de Sonido (merged) — */}
@@ -291,7 +302,7 @@ export function Home() {
           <div className="g">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold">Red Local</h3>
-              <LED color="green" />
+              <LED color={ledColor(s.network?.ip != null)} />
             </div>
             <div className="inset mb-2">
               <div className="flex justify-between">
@@ -405,6 +416,28 @@ export function Home() {
             </div>
           </div>
 
+          {/* — Current State — */}
+          <div className="g">
+            <h3 className="font-bold mb-3">Current State</h3>
+            <div className="inset mb-3" style={{ textAlign: 'center' }}>
+              <div className="green" style={{ fontSize: '28px', fontWeight: 700, fontFamily: 'var(--font-title)' }}>
+                {val(s.state)}
+              </div>
+              <div className="t3 text-sm mt-2">Energy: {val(s.energy)}</div>
+            </div>
+          </div>
+
+          {/* — Last Cue — */}
+          <div className="g">
+            <h3 className="font-bold mb-3">Last Cue</h3>
+            <div className="inset mb-3" style={{ textAlign: 'center' }}>
+              <div className="cyan" style={{ fontSize: '28px', fontWeight: 700, fontFamily: 'var(--font-title)' }}>
+                {val(s.last_cue)}
+              </div>
+              <div className="t3 text-sm mt-2">Último cue disparado</div>
+            </div>
+          </div>
+
           {/* — Vision Pro — Cámaras (full width, from status_dashboard) — */}
           <div className="g" style={{ gridColumn: '1 / -1' }}>
             <div className="flex items-center justify-between mb-4">
@@ -418,24 +451,23 @@ export function Home() {
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
-              {['HAZE', 'DJ', 'ARTIST'].map(cam => {
-                const camData = (s.vision?.cameras || []).find(c => c.name?.toUpperCase() === cam) || {};
-                return (
-                  <div key={cam} className="inset">
+              {(s.vision?.cameras || []).length > 0
+                ? (s.vision.cameras).map(cam => (
+                  <div key={cam.name} className="inset">
                     <div className="flex items-center justify-between mb-2">
-                      <div className="font-bold">{cam}</div>
-                      <div className={`b${camData.online ? '' : ' gray'}`}>
-                        {camData.online ? 'OK' : 'OFF'}
+                      <div className="font-bold">{(cam.name || '').toUpperCase()}</div>
+                      <div className={`b${cam.online ? '' : ' gray'}`}>
+                        {cam.online ? 'OK' : 'OFF'}
                       </div>
                     </div>
                     <div className="t3 mono text-sm">
-                      {camData.online ? `${camData.fps || '---'} fps` : 'No disponible'}
+                      {cam.online ? `${cam.fps || '---'} fps` : 'No disponible'}
                     </div>
                   </div>
-                );
-              })}
+                ))
+                : <div className="inset t3 text-sm">Sin cámaras detectadas</div>
+              }
             </div>
-            <button className="key w-full mt-3">Restart</button>
           </div>
 
         </div>
