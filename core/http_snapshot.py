@@ -38,6 +38,10 @@ class SnapshotServer:
         self.calendar_manager = None
         self.energy_detector = None
         self.audio_monitor = None
+        self.bpm_detector = None
+
+        # Uptime: timestamp de inicio del server
+        self._start_time = time.time()
 
     def set_managers(
         self,
@@ -49,6 +53,7 @@ class SnapshotServer:
         calendar_manager=None,
         energy_detector=None,
         audio_monitor=None,
+        bpm_detector=None,
     ):
         """Setea referencias a los managers del CORE."""
         self.state_manager = state_manager
@@ -59,6 +64,7 @@ class SnapshotServer:
         self.calendar_manager = calendar_manager
         self.energy_detector = energy_detector
         self.audio_monitor = audio_monitor
+        self.bpm_detector = bpm_detector
 
     def get_snapshot(self) -> Dict[str, Any]:
         """
@@ -115,10 +121,27 @@ class SnapshotServer:
             except Exception as e:
                 print(f"[HTTP_SNAPSHOT] AudioEngine error: {e}")
 
+        # ====== BPM (dentro de audio) ======
+        if self.bpm_detector:
+            try:
+                if hasattr(self.bpm_detector, 'get_current_bpm'):
+                    bpm = self.bpm_detector.get_current_bpm()
+                else:
+                    bpm = getattr(self.bpm_detector, 'current_bpm', 0.0)
+                if bpm and bpm > 0:
+                    audio["bpm"] = round(float(bpm), 1)
+                else:
+                    audio["bpm"] = None
+            except Exception as e:
+                audio["bpm"] = None
+                print(f"[HTTP_SNAPSHOT] BPM error: {e}")
+        else:
+            audio["bpm"] = None
+
         # ====== AVOLITES ======
         avolites = {
             "connected": False,
-            "ip": "",
+            "console_ip": "",
             "port": 4430,
             "latency_ms": None,
             "last_error": None,
@@ -128,11 +151,11 @@ class SnapshotServer:
             try:
                 status = self.avolites.get_status()
                 avolites["connected"] = status.get("is_connected", False)
-                avolites["ip"] = status.get("console_ip", "")
+                avolites["console_ip"] = status.get("console_ip", "")
                 avolites["port"] = status.get("console_port", 4430)
                 avolites["last_error"] = status.get("last_error")
 
-                latency = status.get("latency_ms")
+                latency = status.get("last_send_ms")
                 if latency is not None:
                     avolites["latency_ms"] = int(latency)
             except Exception as e:
@@ -208,13 +231,56 @@ class SnapshotServer:
                 print(f"[HTTP_SNAPSHOT] Calendar error: {e}")
 
         # ====== SYSTEM ======
-        system = {"cpu": 0, "ram": 0, "gpu": 0, "temp": 0}
+        system = {"cpu": 0, "ram": 0, "gpu": 0, "temp": 0, "uptime_s": 0}
         try:
             import psutil
             system["cpu"] = int(psutil.cpu_percent(interval=None))
             system["ram"] = int(psutil.virtual_memory().percent)
         except:
             pass
+        system["uptime_s"] = int(time.time() - self._start_time)
+
+        # ====== NETWORK ======
+        network = {"ip": None, "interface": None, "mac": None}
+        try:
+            from network_utils import list_interfaces
+            ifaces = list_interfaces()
+            if ifaces:
+                name, ip, mac, up = ifaces[0]
+                network["ip"] = ip
+                network["interface"] = name
+                network["mac"] = mac
+        except Exception as e:
+            print(f"[HTTP_SNAPSHOT] Network error: {e}")
+
+        # ====== LAST CUE ======
+        last_cue = None
+        if self.cue_engine:
+            try:
+                status = self.cue_engine.get_status()
+                last_cue = status.get("last_fired_cue") or status.get("last_cue")
+                if last_cue is None:
+                    # Buscar en modulos individuales
+                    for mod_name in ["m_timed", "m_bajada", "m_basegolpe", "m_ataque", "m_break"]:
+                        mod = getattr(self.cue_engine, mod_name, None)
+                        if mod:
+                            lfc = getattr(mod, 'last_fired_cue', None)
+                            if lfc is not None:
+                                last_cue = lfc
+                                break
+            except Exception as e:
+                print(f"[HTTP_SNAPSHOT] CueEngine error: {e}")
+
+        # ====== TRANSPORT ======
+        transport = {"mode": None, "timeout": None}
+        if self.avolites:
+            try:
+                avo_status = self.avolites.get_status()
+                transport["mode"] = avo_status.get("transport", "http")
+                queue_stats = avo_status.get("queue_stats", {})
+                transport["timeout"] = int(queue_stats.get("fire_timeout_ms", 0)) or None
+            except Exception as e:
+                print(f"[HTTP_SNAPSHOT] Transport error: {e}")
 
         # ====== CORE STATUS ======
         core_online = self.state_manager is not None
@@ -236,6 +302,9 @@ class SnapshotServer:
             "cameras": cameras,
             "calendar": calendar,
             "system": system,
+            "network": network,
+            "last_cue": last_cue,
+            "transport": transport,
         }
 
     # ==================== CALENDAR COMMANDS ====================
@@ -631,6 +700,7 @@ def start_snapshot_server(
     calendar_manager=None,
     energy_detector=None,
     audio_monitor=None,
+    bpm_detector=None,
     port: int = 8010,
 ):
     """
@@ -648,6 +718,7 @@ def start_snapshot_server(
         calendar_manager=calendar_manager,
         energy_detector=energy_detector,
         audio_monitor=audio_monitor,
+        bpm_detector=bpm_detector,
     )
     server.start()
     return server

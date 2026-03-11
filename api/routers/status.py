@@ -220,6 +220,9 @@ async def _build_unified_status_async() -> dict:
         "cameras": snapshot.get("cameras"),
         "system": snapshot.get("system"),
         "calendar": snapshot.get("calendar"),
+        "network": snapshot.get("network"),
+        "last_cue": snapshot.get("last_cue"),
+        "transport": snapshot.get("transport"),
     }
 
 
