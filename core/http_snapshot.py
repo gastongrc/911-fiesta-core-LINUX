@@ -126,6 +126,8 @@ class SnapshotServer:
             try:
                 if hasattr(self.bpm_detector, 'get_current_bpm'):
                     bpm = self.bpm_detector.get_current_bpm()
+                elif hasattr(self.bpm_detector, 'get_bpm'):
+                    bpm = self.bpm_detector.get_bpm()
                 else:
                     bpm = getattr(self.bpm_detector, 'current_bpm', 0.0)
                 if bpm and bpm > 0:
@@ -155,9 +157,12 @@ class SnapshotServer:
                 avolites["port"] = status.get("console_port", 4430)
                 avolites["last_error"] = status.get("last_error")
 
-                latency = status.get("last_send_ms")
-                if latency is not None:
-                    avolites["latency_ms"] = int(latency)
+                # Latency: read from transport layer stats (last_send_ms is never populated)
+                queue_stats = status.get("queue_stats", {})
+                transport_stats = queue_stats.get("transport_stats", {})
+                latency = transport_stats.get("last_latency_ms")
+                if latency is not None and latency > 0:
+                    avolites["latency_ms"] = round(latency, 1)
             except Exception as e:
                 print(f"[HTTP_SNAPSHOT] Avolites error: {e}")
 
@@ -257,11 +262,13 @@ class SnapshotServer:
         last_cue = None
         if self.cue_engine:
             try:
-                status = self.cue_engine.get_status()
-                last_cue = status.get("last_fired_cue") or status.get("last_cue")
+                # m_timed tracks the last fired cue directly
+                m_timed = getattr(self.cue_engine, 'm_timed', None)
+                if m_timed:
+                    last_cue = getattr(m_timed, 'last_fired_cue', None)
+                # Fallback: check other modules
                 if last_cue is None:
-                    # Buscar en modulos individuales
-                    for mod_name in ["m_timed", "m_bajada", "m_basegolpe", "m_ataque", "m_break"]:
+                    for mod_name in ["m_bajada", "m_basegolpe", "m_ataque", "m_break"]:
                         mod = getattr(self.cue_engine, mod_name, None)
                         if mod:
                             lfc = getattr(mod, 'last_fired_cue', None)
@@ -277,8 +284,14 @@ class SnapshotServer:
             try:
                 avo_status = self.avolites.get_status()
                 transport["mode"] = avo_status.get("transport", "http")
-                queue_stats = avo_status.get("queue_stats", {})
-                transport["timeout"] = int(queue_stats.get("fire_timeout_ms", 0)) or None
+                # fire_timeout_ms lives on TitanQueueConfig, not in get_stats()
+                titan_queue = getattr(self.avolites, '_titan_queue', None)
+                if titan_queue:
+                    cfg = getattr(titan_queue, 'config', None)
+                    if cfg:
+                        timeout = getattr(cfg, 'fire_timeout_ms', None)
+                        if timeout and timeout > 0:
+                            transport["timeout"] = int(timeout)
             except Exception as e:
                 print(f"[HTTP_SNAPSHOT] Transport error: {e}")
 

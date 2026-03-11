@@ -942,6 +942,7 @@ class Main(QMainWindow):
                         calendar_manager=self.calendar_manager if hasattr(self, 'calendar_manager') else None,
                         energy_detector=self.energy_detector,
                         audio_monitor=self.audio_monitor if hasattr(self, 'audio_monitor') else None,
+                        bpm_detector=self.auto_clock if hasattr(self, 'auto_clock') else None,
                         port=8010
                     )
                     print("[MAIN] HTTP Snapshot Server started at http://127.0.0.1:8010")

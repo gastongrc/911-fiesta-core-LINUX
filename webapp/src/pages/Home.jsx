@@ -212,7 +212,7 @@ export function Home() {
             </div>
             <div className="inset">
               <div className="t3 text-sm">BPM</div>
-              <div className="green text-xl font-bold mono">{val(s.bpm, '---')}</div>
+              <div className="green text-xl font-bold mono">{val(audio.bpm, '---')}</div>
             </div>
             <div className="inset">
               <div className="t3 text-sm">Uptime</div>
