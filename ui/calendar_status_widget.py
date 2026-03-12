@@ -22,14 +22,14 @@ from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QFont
 
 
-# Colores por modo
+# Colores por modo — aligned with WEB design
 MODE_COLORS = {
-    "OFF": "#e74c3c",       # Rojo
-    "BOLICHE": "#f39c12",   # Naranja
-    "ARTISTA": "#2ecc71",   # Verde
-    "TEATRO": "#3498db",    # Azul
-    "ESCENA": "#9b59b6",    # Púrpura
-    "CLIMA": "#1abc9c",     # Turquesa
+    "OFF": "#ff5252",       # WEB: --red
+    "BOLICHE": "#ff9800",   # WEB: --orange
+    "ARTISTA": "#00e676",   # WEB: --green
+    "TEATRO": "#42a5f5",    # WEB: --blue
+    "ESCENA": "#9945ff",    # Purple
+    "CLIMA": "#4dd0e1",     # WEB: --cyan
 }
 
 # Iconos de permisos (texto simple)
@@ -74,7 +74,7 @@ class CalendarStatusWidget(QWidget):
         # ===== ESTADO ACTUAL =====
         state_frame = QFrame()
         state_frame.setFrameShape(QFrame.StyledPanel)
-        state_frame.setStyleSheet("QFrame { background-color: #2c3e50; border-radius: 5px; }")
+        state_frame.setStyleSheet("QFrame { background-color: #141418; border: 1px solid #2e2e38; border-radius: 16px; }")
         state_layout = QVBoxLayout(state_frame)
         state_layout.setContentsMargins(10, 8, 10, 8)
         state_layout.setSpacing(4)
@@ -89,7 +89,7 @@ class CalendarStatusWidget(QWidget):
         # Fuente
         self.source_label = QLabel("Fuente: MANUAL")
         self.source_label.setAlignment(Qt.AlignCenter)
-        self.source_label.setStyleSheet("color: #95a5a6; font-size: 10px;")
+        self.source_label.setStyleSheet("color: #a6a6a6; font-size: 10px;")
         state_layout.addWidget(self.source_label)
 
         layout.addWidget(state_frame)
@@ -105,7 +105,7 @@ class CalendarStatusWidget(QWidget):
 
         self.clock_label = QLabel("---")
         self.clock_label.setFont(QFont("", 12, QFont.Bold))
-        self.clock_label.setStyleSheet("color: #ecf0f1;")
+        self.clock_label.setStyleSheet("color: #f0f0f0;")
         clock_layout.addWidget(self.clock_label)
 
         clock_layout.addStretch()
@@ -119,7 +119,7 @@ class CalendarStatusWidget(QWidget):
         timeline_layout.setSpacing(4)
 
         timeline_title = QLabel("Timeline")
-        timeline_title.setStyleSheet("color: #7f8c8d; font-size: 10px;")
+        timeline_title.setStyleSheet("color: #8a8a8a; font-size: 10px;")
         timeline_layout.addWidget(timeline_title)
 
         self.timeline_bar = QProgressBar()
@@ -129,18 +129,19 @@ class CalendarStatusWidget(QWidget):
         self.timeline_bar.setMaximumHeight(12)
         self.timeline_bar.setStyleSheet("""
             QProgressBar {
-                background-color: #34495e;
-                border-radius: 4px;
+                background-color: #0a0a0f;
+                border: 1px solid #2e2e38;
+                border-radius: 3px;
             }
             QProgressBar::chunk {
-                background-color: #3498db;
-                border-radius: 4px;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #00e676, stop:1 #4dd0e1);
+                border-radius: 3px;
             }
         """)
         timeline_layout.addWidget(self.timeline_bar)
 
         self.timeline_info = QLabel("Timeline no disponible")
-        self.timeline_info.setStyleSheet("color: #95a5a6; font-size: 9px;")
+        self.timeline_info.setStyleSheet("color: #a6a6a6; font-size: 9px;")
         self.timeline_info.setAlignment(Qt.AlignCenter)
         timeline_layout.addWidget(self.timeline_info)
 
@@ -154,7 +155,7 @@ class CalendarStatusWidget(QWidget):
         perms_layout.setSpacing(4)
 
         perms_title = QLabel("Permisos Activos")
-        perms_title.setStyleSheet("color: #7f8c8d; font-size: 10px;")
+        perms_title.setStyleSheet("color: #8a8a8a; font-size: 10px;")
         perms_layout.addWidget(perms_title)
 
         # Grid de permisos
@@ -170,7 +171,7 @@ class CalendarStatusWidget(QWidget):
 
             icon = PERMISSION_ICONS.get(perm, "•")
             label = QLabel(f"{icon} {perm.replace('_', ' ').title()}")
-            label.setStyleSheet("color: #7f8c8d; font-size: 9px;")
+            label.setStyleSheet("color: #8a8a8a; font-size: 9px;")
             self.perm_labels[perm] = label
             perms_grid.addWidget(label, row, col)
 
@@ -179,7 +180,7 @@ class CalendarStatusWidget(QWidget):
 
         # ===== DESDE =====
         self.since_label = QLabel("Desde: ---")
-        self.since_label.setStyleSheet("color: #7f8c8d; font-size: 9px;")
+        self.since_label.setStyleSheet("color: #8a8a8a; font-size: 9px;")
         self.since_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.since_label)
 
@@ -227,14 +228,14 @@ class CalendarStatusWidget(QWidget):
     def _set_disconnected_state(self):
         """Muestra estado desconectado"""
         self.mode_label.setText("---")
-        self.mode_label.setStyleSheet("color: #7f8c8d;")
+        self.mode_label.setStyleSheet("color: #8a8a8a;")
         self.source_label.setText("Fuente: No conectado")
         self.timeline_info.setText("Calendario no conectado")
         self.timeline_bar.setValue(0)
         self.since_label.setText("Desde: ---")
 
         for label in self.perm_labels.values():
-            label.setStyleSheet("color: #7f8c8d; font-size: 9px;")
+            label.setStyleSheet("color: #8a8a8a; font-size: 9px;")
 
     def _update_mode(self, state: Dict[str, Any]):
         """Actualiza el modo y fuente"""

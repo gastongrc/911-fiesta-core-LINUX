@@ -457,13 +457,13 @@ class EnergyMonitorWidget(QWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
         title = QLabel("ENERGY DETECTOR")
-        title.setStyleSheet("font-weight:700; color:#ddd; font-size:12px;")
+        title.setStyleSheet("font-weight:700; color:#f0f0f0; font-size:12px;")
         layout.addWidget(title)
         self.energy_main = QLabel("MEDIA")
         self.energy_main.setAlignment(Qt.AlignCenter)
         self.energy_main.setStyleSheet(
             "color:#FF9800; font-weight:700; font-size:18px; "
-            "background:#0a0a0a; border:1px solid #333; border-radius:6px; padding:8px;"
+            "background:#0a0a0f; border:1px solid #2e2e38; border-radius:12px; padding:8px;"
         )
         layout.addWidget(self.energy_main)
         info_layout = QHBoxLayout()
@@ -471,21 +471,21 @@ class EnergyMonitorWidget(QWidget):
         score_lbl.setStyleSheet("QLabel{font-size:11px;}")
         info_layout.addWidget(score_lbl)
         self.score_label = QLabel("0.5")
-        self.score_label.setStyleSheet("color:#bbb; font-weight:700; font-size:11px;")
+        self.score_label.setStyleSheet("color:#a6a6a6; font-weight:700; font-size:11px;")
         info_layout.addWidget(self.score_label)
         info_layout.addStretch()
         layout.addLayout(info_layout)
         self.btn_reset = QPushButton("Reset Calibración")
         self.btn_reset.setStyleSheet(
-            "QPushButton{background:#333; border:1px solid #555; border-radius:4px; "
-            "padding:6px; color:#ccc; font-size:11px;} QPushButton:hover{background:#444;}"
+            "QPushButton{background:#2e2e38; border:1px solid #2e2e38; border-radius:10px; "
+            "padding:6px; color:#f0f0f0; font-size:11px;} QPushButton:hover{background:#2e2e38;}"
         )
         self.btn_reset.clicked.connect(self.reset_calibration)
         layout.addWidget(self.btn_reset)
         layout.addStretch()
         self.setStyleSheet(
-            "QWidget{background:#151515; border:1px solid #333; border-radius:6px;} "
-            "QLabel{color:#ccc;}"
+            "QWidget{background:#141418; border:1px solid #2e2e38; border-radius:12px;} "
+            "QLabel{color:#f0f0f0;}"
         )
 
     def update_display(self):
@@ -500,7 +500,7 @@ class EnergyMonitorWidget(QWidget):
                 self._last_color = color
                 self.energy_main.setStyleSheet(
                     f"color:{color}; font-weight:700; font-size:18px; "
-                    "background:#0a0a0a; border:1px solid #333; border-radius:6px; padding:8px;"
+                    "background:#0a0a0f; border:1px solid #2e2e38; border-radius:12px; padding:8px;"
                 )
             score = self.energy_detector.get_energy_score()
             self.score_label.setText(f"{score:.3f}")
@@ -1419,7 +1419,7 @@ class Main(QMainWindow):
 
         # Legacy title
         legacy_title = QLabel("ANALIZADORES ADICIONALES / LEGACY")
-        legacy_title.setStyleSheet("font-weight:700; color:#00d4ff; font-size:14px; padding:8px;")
+        legacy_title.setStyleSheet("font-weight:700; color:#00e676; font-family:'Space Grotesk','Inter',sans-serif; font-size:14px; padding:8px;")
         layout_legacy.addWidget(legacy_title)
 
         legacy_desc = QLabel("Estos analizadores no participan en el motor de estados activo.\nSe mantienen para experimentación y monitoreo adicional.")
@@ -1486,20 +1486,20 @@ class Main(QMainWindow):
         layout_monitor.addWidget(self.waveform_hosts["monitor"])
         
         vu_section = QFrame()
-        vu_section.setStyleSheet("QFrame{background:#1a1a1a; border:1px solid #333; border-radius:6px;}")
+        vu_section.setStyleSheet("QFrame{background:#141418; border:1px solid #2e2e38; border-radius:12px;}")
         vu_layout = QVBoxLayout(vu_section)
         vu_layout.setContentsMargins(8, 8, 8, 8)
         vu_layout.setSpacing(4)
         vu_lbl = QLabel("VU PRINCIPAL")
-        vu_lbl.setStyleSheet("QLabel{font-size:12px; font-weight:700; color:#ddd;}")
+        vu_lbl.setStyleSheet("QLabel{font-size:12px; font-weight:700; color:#f0f0f0;}")
         vu_layout.addWidget(vu_lbl)
         self.vu_main = QProgressBar()
         self.vu_main.setRange(0, 1000)
         self.vu_main.setTextVisible(False)
         self.vu_main.setFixedHeight(20)
         self.vu_main.setStyleSheet(
-            "QProgressBar{background:#111; border:1px solid #333; border-radius:8px;} "
-            "QProgressBar::chunk{background:#22aa88; border-radius:8px;}"
+            "QProgressBar{background:#0a0a0f; border:1px solid #2e2e38; border-radius:16px;} "
+            "QProgressBar::chunk{background:#22aa88; border-radius:16px;}"
         )
         vu_layout.addWidget(self.vu_main)
         layout_monitor.addWidget(vu_section)
@@ -1511,7 +1511,7 @@ class Main(QMainWindow):
         # Vision System - Vertical Haze Bar (Phase 6)
         if VISION_AVAILABLE:
             haze_container = QFrame()
-            haze_container.setStyleSheet("QFrame{background:#1a1a1a; border:1px solid #333; border-radius:6px;}")
+            haze_container.setStyleSheet("QFrame{background:#141418; border:1px solid #2e2e38; border-radius:12px;}")
             haze_container.setFixedWidth(40)
             haze_container.setMinimumHeight(260)
             haze_layout = QVBoxLayout(haze_container)
@@ -1519,7 +1519,7 @@ class Main(QMainWindow):
             haze_layout.setSpacing(4)
 
             haze_lbl = QLabel("HAZE")
-            haze_lbl.setStyleSheet("QLabel{font-size:10px; font-weight:700; color:#ddd;}")
+            haze_lbl.setStyleSheet("QLabel{font-size:10px; font-weight:700; color:#f0f0f0;}")
             haze_lbl.setAlignment(Qt.AlignCenter)
             haze_layout.addWidget(haze_lbl)
 
@@ -1530,9 +1530,9 @@ class Main(QMainWindow):
             self.haze_bar.setTextVisible(False)
             self.haze_bar.setFixedWidth(20)
             self.haze_bar.setStyleSheet(
-                "QProgressBar{background:#111; border:1px solid #333; border-radius:4px;} "
+                "QProgressBar{background:#0a0a0f; border:1px solid #2e2e38; border-radius:10px;} "
                 "QProgressBar::chunk{background:qlineargradient(x1:0, y1:1, x2:0, y2:0, "
-                "stop:0 #4a90e2, stop:0.5 #7ec8e3, stop:1 #aaddff); border-radius:4px;}"
+                "stop:0 #4a90e2, stop:0.5 #7ec8e3, stop:1 #aaddff); border-radius:10px;}"
             )
             haze_layout.addWidget(self.haze_bar, 1)
             widgets_row.addWidget(haze_container)
@@ -1589,12 +1589,12 @@ class Main(QMainWindow):
         layout_monitor.addLayout(widgets_row)
 
         status_section = QFrame()
-        status_section.setStyleSheet("QFrame{background:#1a1a1a; border:1px solid #333; border-radius:6px;}")
+        status_section.setStyleSheet("QFrame{background:#141418; border:1px solid #2e2e38; border-radius:12px;}")
         status_layout = QVBoxLayout(status_section)
         status_layout.setContentsMargins(10, 10, 10, 10)
         status_layout.setSpacing(8)
         status_title = QLabel("ESTADO DE MÓDULOS")
-        status_title.setStyleSheet("QLabel{font-size:12px; font-weight:700; color:#ddd;}")
+        status_title.setStyleSheet("QLabel{font-size:12px; font-weight:700; color:#f0f0f0;}")
         status_layout.addWidget(status_title)
         status_layout.addWidget(self.status_bajada_box)
         status_layout.addWidget(self.status_golpe_box)
@@ -1614,7 +1614,7 @@ class Main(QMainWindow):
 
         # === Sección: LOAD SHOW (Perfil Único) ===
         show_frame = QFrame()
-        show_frame.setStyleSheet("QFrame{background:#2a1a2a; border:1px solid #4a2a4a; border-radius:6px;}")
+        show_frame.setStyleSheet("QFrame{background:#1a141a; border:1px solid #4a2a4a; border-radius:12px;}")
         show_layout = QVBoxLayout(show_frame)
         show_layout.setContentsMargins(12, 12, 12, 12)
         show_layout.setSpacing(8)
@@ -1627,18 +1627,18 @@ class Main(QMainWindow):
         self.txt_show_path = QLineEdit()
         self.txt_show_path.setText(self.preset_path)
         self.txt_show_path.setReadOnly(True)
-        self.txt_show_path.setStyleSheet("background:#222; border:1px solid #444; border-radius:4px; padding:4px; color:#ccc;")
+        self.txt_show_path.setStyleSheet("background:#0e0e14; border:1px solid #2e2e38; border-radius:10px; padding:4px; color:#f0f0f0;")
         row_show_path.addWidget(self.txt_show_path, 2)
         self.btn_show_browse = QPushButton("Elegir...")
-        self.btn_show_browse.setStyleSheet("QPushButton{background:#444; border:1px solid #666; border-radius:4px; padding:6px; color:#fff;} QPushButton:hover{background:#555;}")
+        self.btn_show_browse.setStyleSheet("QPushButton{background:#2e2e38; border:1px solid #2e2e38; border-radius:10px; padding:6px; color:#f0f0f0;} QPushButton:hover{background:#2e2e38;}")
         row_show_path.addWidget(self.btn_show_browse)
         show_layout.addLayout(row_show_path)
 
         row_show_btns = QHBoxLayout()
         self.btn_show_load = QPushButton("Cargar Perfil")
-        self.btn_show_load.setStyleSheet("QPushButton{background:#27ae60; border:1px solid #229954; border-radius:4px; padding:8px 16px; color:#fff; font-weight:700;} QPushButton:hover{background:#2ecc71;}")
+        self.btn_show_load.setStyleSheet("QPushButton{background:#27ae60; border:1px solid #229954; border-radius:10px; padding:8px 16px; color:#fff; font-weight:700;} QPushButton:hover{background:#2ecc71;}")
         self.btn_show_save = QPushButton("Guardar Perfil")
-        self.btn_show_save.setStyleSheet("QPushButton{background:#3498db; border:1px solid #2980b9; border-radius:4px; padding:8px 16px; color:#fff; font-weight:700;} QPushButton:hover{background:#5dade2;}")
+        self.btn_show_save.setStyleSheet("QPushButton{background:#3498db; border:1px solid #2980b9; border-radius:10px; padding:8px 16px; color:#fff; font-weight:700;} QPushButton:hover{background:#5dade2;}")
         row_show_btns.addWidget(self.btn_show_load)
         row_show_btns.addWidget(self.btn_show_save)
         row_show_btns.addStretch()
@@ -1647,7 +1647,7 @@ class Main(QMainWindow):
 
         # === Sección: AUDIO DEVICE ===
         audio_frame = QFrame()
-        audio_frame.setStyleSheet("QFrame{background:#1a2a1a; border:1px solid #2a4a2a; border-radius:6px;}")
+        audio_frame.setStyleSheet("QFrame{background:#141a14; border:1px solid #2a4a2a; border-radius:12px;}")
         audio_layout = QVBoxLayout(audio_frame)
         audio_layout.setContentsMargins(12, 12, 12, 12)
         audio_layout.setSpacing(8)
@@ -1669,19 +1669,19 @@ class Main(QMainWindow):
 
         row_audio_info = QHBoxLayout()
         self.lbl_audio_sr = QLabel("SR: —")
-        self.lbl_audio_sr.setStyleSheet("color:#888;")
+        self.lbl_audio_sr.setStyleSheet("color:#8a8a8a;")
         row_audio_info.addWidget(self.lbl_audio_sr)
         self.lbl_audio_db = QLabel("dBFS: —")
-        self.lbl_audio_db.setStyleSheet("color:#888;")
+        self.lbl_audio_db.setStyleSheet("color:#8a8a8a;")
         row_audio_info.addWidget(self.lbl_audio_db)
         row_audio_info.addStretch()
         audio_layout.addLayout(row_audio_info)
 
         row_audio_btns = QHBoxLayout()
         self.btn_audio_connect = QPushButton("Conectar Audio")
-        self.btn_audio_connect.setStyleSheet("QPushButton{background:#27ae60; border:1px solid #229954; border-radius:4px; padding:6px; color:#fff;} QPushButton:hover{background:#2ecc71;}")
+        self.btn_audio_connect.setStyleSheet("QPushButton{background:#27ae60; border:1px solid #229954; border-radius:10px; padding:6px; color:#fff;} QPushButton:hover{background:#2ecc71;}")
         self.btn_audio_disconnect = QPushButton("Desconectar")
-        self.btn_audio_disconnect.setStyleSheet("QPushButton{background:#e74c3c; border:1px solid #c0392b; border-radius:4px; padding:6px; color:#fff;} QPushButton:hover{background:#ec7063;}")
+        self.btn_audio_disconnect.setStyleSheet("QPushButton{background:#e74c3c; border:1px solid #c0392b; border-radius:10px; padding:6px; color:#fff;} QPushButton:hover{background:#ec7063;}")
         row_audio_btns.addWidget(self.btn_audio_connect)
         row_audio_btns.addWidget(self.btn_audio_disconnect)
         row_audio_btns.addStretch()
@@ -1690,20 +1690,20 @@ class Main(QMainWindow):
 
         # Encabezado con estado
         header_frame = QFrame()
-        header_frame.setStyleSheet("QFrame{background:#1a1a1a; border:1px solid #333; border-radius:6px; padding:8px;}")
+        header_frame.setStyleSheet("QFrame{background:#141418; border:1px solid #2e2e38; border-radius:12px; padding:8px;}")
         header_layout = QHBoxLayout(header_frame)
         self.net_status_badge = QLabel("● Desconectado")
         self.net_status_badge.setStyleSheet("color:#e74c3c; font-weight:700; font-size:14px;")
         header_layout.addWidget(self.net_status_badge)
         self.net_latency_label = QLabel("")
-        self.net_latency_label.setStyleSheet("color:#888; font-size:11px;")
+        self.net_latency_label.setStyleSheet("color:#8a8a8a; font-size:11px;")
         header_layout.addWidget(self.net_latency_label)
         header_layout.addStretch()
         self.btn_net_reconnect = QPushButton("Reconectar")
         self.btn_net_stop = QPushButton("Detener")
         self.btn_net_refresh = QPushButton("Refrescar")
         for btn in [self.btn_net_reconnect, self.btn_net_stop, self.btn_net_refresh]:
-            btn.setStyleSheet("QPushButton{background:#333; border:1px solid #555; border-radius:4px; padding:6px; color:#ccc;} QPushButton:hover{background:#444;}")
+            btn.setStyleSheet("QPushButton{background:#2e2e38; border:1px solid #2e2e38; border-radius:10px; padding:6px; color:#a6a6a6;} QPushButton:hover{background:#2e2e38;}")
             header_layout.addWidget(btn)
         ln.addWidget(header_frame)
         
@@ -1712,20 +1712,20 @@ class Main(QMainWindow):
         # Contiene: Destino + NIC local + Transporte + Auto-connect
         # ================================================================
         net_card = QFrame()
-        net_card.setStyleSheet("QFrame{background:#1a1a1a; border:1px solid #444; border-radius:8px;}")
+        net_card.setStyleSheet("QFrame{background:#141418; border:1px solid #2e2e38; border-radius:16px;}")
         net_card_layout = QVBoxLayout(net_card)
         net_card_layout.setContentsMargins(16, 16, 16, 16)
         net_card_layout.setSpacing(12)
 
         # Título de la tarjeta
         net_card_title = QLabel("RED / CONSOLA (Titan)")
-        net_card_title.setStyleSheet("font-weight:700; color:#fff; font-size:14px; border:none;")
+        net_card_title.setStyleSheet("font-weight:700; color:#f0f0f0; font-size:14px; border:none;")
         net_card_layout.addWidget(net_card_title)
 
         # Separador visual
         sep1 = QFrame()
         sep1.setFrameShape(QFrame.HLine)
-        sep1.setStyleSheet("background:#444; border:none;")
+        sep1.setStyleSheet("background:#2e2e38; border:none;")
         sep1.setFixedHeight(1)
         net_card_layout.addWidget(sep1)
 
@@ -1736,14 +1736,14 @@ class Main(QMainWindow):
 
         row_ip = QHBoxLayout()
         lbl_ip = QLabel("IP:")
-        lbl_ip.setStyleSheet("color:#ccc; border:none;")
+        lbl_ip.setStyleSheet("color:#a6a6a6; border:none;")
         row_ip.addWidget(lbl_ip)
         self.ed_console_ip = QLineEdit()
         self.ed_console_ip.setPlaceholderText("10.0.0.1")
         self.ed_console_ip.setMaximumWidth(140)
         row_ip.addWidget(self.ed_console_ip)
         lbl_port = QLabel("Puerto:")
-        lbl_port.setStyleSheet("color:#ccc; border:none;")
+        lbl_port.setStyleSheet("color:#a6a6a6; border:none;")
         row_ip.addWidget(lbl_port)
         self.ed_console_port = QLineEdit()
         self.ed_console_port.setPlaceholderText("4430")
@@ -1754,10 +1754,10 @@ class Main(QMainWindow):
 
         row_dest_btns = QHBoxLayout()
         self.btn_save_reconnect = QPushButton("Guardar y Reconectar")
-        self.btn_save_reconnect.setStyleSheet("QPushButton{background:#27ae60; border:1px solid #229954; border-radius:4px; padding:6px 12px; color:#fff; font-weight:700;} QPushButton:hover{background:#2ecc71;}")
+        self.btn_save_reconnect.setStyleSheet("QPushButton{background:#27ae60; border:1px solid #229954; border-radius:10px; padding:6px 12px; color:#fff; font-weight:700;} QPushButton:hover{background:#2ecc71;}")
         row_dest_btns.addWidget(self.btn_save_reconnect)
         self.chk_auto_retry = QCheckBox("Auto-reintento")
-        self.chk_auto_retry.setStyleSheet("color:#ccc;")
+        self.chk_auto_retry.setStyleSheet("color:#a6a6a6;")
         row_dest_btns.addWidget(self.chk_auto_retry)
         row_dest_btns.addStretch()
         net_card_layout.addLayout(row_dest_btns)
@@ -1765,7 +1765,7 @@ class Main(QMainWindow):
         # Separador
         sep2 = QFrame()
         sep2.setFrameShape(QFrame.HLine)
-        sep2.setStyleSheet("background:#333; border:none;")
+        sep2.setStyleSheet("background:#2e2e38; border:none;")
         sep2.setFixedHeight(1)
         net_card_layout.addWidget(sep2)
 
@@ -1776,13 +1776,13 @@ class Main(QMainWindow):
 
         row_nic = QHBoxLayout()
         lbl_nic = QLabel("NIC:")
-        lbl_nic.setStyleSheet("color:#ccc; border:none;")
+        lbl_nic.setStyleSheet("color:#a6a6a6; border:none;")
         row_nic.addWidget(lbl_nic)
         self.cmb_nic = QComboBox()
         self.cmb_nic.setMinimumWidth(280)
         row_nic.addWidget(self.cmb_nic, 2)
         lbl_eff = QLabel("IP efectiva:")
-        lbl_eff.setStyleSheet("color:#ccc; border:none;")
+        lbl_eff.setStyleSheet("color:#a6a6a6; border:none;")
         row_nic.addWidget(lbl_eff)
         self.lbl_local_ip = QLabel("—")
         self.lbl_local_ip.setStyleSheet("color:#27ae60; font-weight:700; border:none;")
@@ -1792,11 +1792,11 @@ class Main(QMainWindow):
 
         row_nic_btns = QHBoxLayout()
         self.btn_apply_nic = QPushButton("Guardar NIC")
-        self.btn_apply_nic.setStyleSheet("QPushButton{background:#e67e22; border:1px solid #d35400; border-radius:4px; padding:6px 12px; color:#fff;} QPushButton:hover{background:#f39c12;}")
+        self.btn_apply_nic.setStyleSheet("QPushButton{background:#e67e22; border:1px solid #d35400; border-radius:10px; padding:6px 12px; color:#fff;} QPushButton:hover{background:#f39c12;}")
         row_nic_btns.addWidget(self.btn_apply_nic)
         self.chk_nic_auto_connect = QCheckBox("Auto-connect al iniciar")
         self.chk_nic_auto_connect.setChecked(True)
-        self.chk_nic_auto_connect.setStyleSheet("color:#ccc;")
+        self.chk_nic_auto_connect.setStyleSheet("color:#a6a6a6;")
         self.chk_nic_auto_connect.setToolTip("Si está marcado, aplica esta NIC automáticamente al reiniciar la app")
         row_nic_btns.addWidget(self.chk_nic_auto_connect)
         row_nic_btns.addStretch()
@@ -1805,7 +1805,7 @@ class Main(QMainWindow):
         # Separador
         sep3 = QFrame()
         sep3.setFrameShape(QFrame.HLine)
-        sep3.setStyleSheet("background:#333; border:none;")
+        sep3.setStyleSheet("background:#2e2e38; border:none;")
         sep3.setFixedHeight(1)
         net_card_layout.addWidget(sep3)
 
@@ -1825,9 +1825,9 @@ class Main(QMainWindow):
         self.radio_http = QRadioButton("HTTP")
         self.radio_artnet = QRadioButton("Art-Net")
         self.radio_sacn = QRadioButton("sACN")
-        self.radio_http.setStyleSheet("color:#ccc;")
-        self.radio_artnet.setStyleSheet("color:#ccc;")
-        self.radio_sacn.setStyleSheet("color:#ccc;")
+        self.radio_http.setStyleSheet("color:#a6a6a6;")
+        self.radio_artnet.setStyleSheet("color:#a6a6a6;")
+        self.radio_sacn.setStyleSheet("color:#a6a6a6;")
         self.transport_group.addButton(self.radio_http)
         self.transport_group.addButton(self.radio_artnet)
         self.transport_group.addButton(self.radio_sacn)
@@ -1844,14 +1844,14 @@ class Main(QMainWindow):
         sacn_layout = QHBoxLayout(self.sacn_params)
         sacn_layout.setContentsMargins(0, 0, 0, 0)
         lbl_univ = QLabel("Universe:")
-        lbl_univ.setStyleSheet("color:#ccc; border:none;")
+        lbl_univ.setStyleSheet("color:#a6a6a6; border:none;")
         sacn_layout.addWidget(lbl_univ)
         self.spin_sacn_universe = QSpinBox()
         self.spin_sacn_universe.setRange(1, 63999)
         self.spin_sacn_universe.setValue(1)
         sacn_layout.addWidget(self.spin_sacn_universe)
         lbl_prio = QLabel("Priority:")
-        lbl_prio.setStyleSheet("color:#ccc; border:none;")
+        lbl_prio.setStyleSheet("color:#a6a6a6; border:none;")
         sacn_layout.addWidget(lbl_prio)
         self.spin_sacn_priority = QSpinBox()
         self.spin_sacn_priority.setRange(0, 200)
@@ -1866,19 +1866,19 @@ class Main(QMainWindow):
         artnet_layout = QHBoxLayout(self.artnet_params)
         artnet_layout.setContentsMargins(0, 0, 0, 0)
         lbl_net = QLabel("Net:")
-        lbl_net.setStyleSheet("color:#ccc; border:none;")
+        lbl_net.setStyleSheet("color:#a6a6a6; border:none;")
         artnet_layout.addWidget(lbl_net)
         self.spin_artnet_net = QSpinBox()
         self.spin_artnet_net.setRange(0, 127)
         artnet_layout.addWidget(self.spin_artnet_net)
         lbl_sub = QLabel("Subnet:")
-        lbl_sub.setStyleSheet("color:#ccc; border:none;")
+        lbl_sub.setStyleSheet("color:#a6a6a6; border:none;")
         artnet_layout.addWidget(lbl_sub)
         self.spin_artnet_subnet = QSpinBox()
         self.spin_artnet_subnet.setRange(0, 15)
         artnet_layout.addWidget(self.spin_artnet_subnet)
         lbl_univ2 = QLabel("Universe:")
-        lbl_univ2.setStyleSheet("color:#ccc; border:none;")
+        lbl_univ2.setStyleSheet("color:#a6a6a6; border:none;")
         artnet_layout.addWidget(lbl_univ2)
         self.spin_artnet_universe = QSpinBox()
         self.spin_artnet_universe.setRange(0, 15)
@@ -1890,7 +1890,7 @@ class Main(QMainWindow):
 
         row_transport_btn = QHBoxLayout()
         self.btn_apply_transport = QPushButton("Aplicar Transporte")
-        self.btn_apply_transport.setStyleSheet("QPushButton{background:#9b59b6; border:1px solid #8e44ad; border-radius:4px; padding:6px 12px; color:#fff;} QPushButton:hover{background:#a569bd;}")
+        self.btn_apply_transport.setStyleSheet("QPushButton{background:#9b59b6; border:1px solid #8e44ad; border-radius:10px; padding:6px 12px; color:#fff;} QPushButton:hover{background:#a569bd;}")
         row_transport_btn.addWidget(self.btn_apply_transport)
         row_transport_btn.addStretch()
         transport_layout.addLayout(row_transport_btn)
@@ -1904,12 +1904,12 @@ class Main(QMainWindow):
 
         # === Sección: Avolites Cue Offset ===
         offset_frame = QFrame()
-        offset_frame.setStyleSheet("QFrame{background:#1a1a1a; border:1px solid #333; border-radius:6px;}")
+        offset_frame.setStyleSheet("QFrame{background:#141418; border:1px solid #2e2e38; border-radius:12px;}")
         offset_layout = QVBoxLayout(offset_frame)
         offset_layout.setContentsMargins(12, 12, 12, 12)
         offset_layout.setSpacing(8)
         offset_title = QLabel("AVOLITES CUE OFFSET")
-        offset_title.setStyleSheet("font-weight:700; color:#ddd; font-size:12px;")
+        offset_title.setStyleSheet("font-weight:700; color:#f0f0f0; font-size:12px;")
         offset_layout.addWidget(offset_title)
 
         row_offset = QHBoxLayout()
@@ -1928,7 +1928,7 @@ class Main(QMainWindow):
 
         row_offset_btn = QHBoxLayout()
         self.btn_apply_cue_offset = QPushButton("Guardar Offset")
-        self.btn_apply_cue_offset.setStyleSheet("QPushButton{background:#e67e22; border:1px solid #d35400; border-radius:4px; padding:6px; color:#fff;} QPushButton:hover{background:#f39c12;}")
+        self.btn_apply_cue_offset.setStyleSheet("QPushButton{background:#e67e22; border:1px solid #d35400; border-radius:10px; padding:6px; color:#fff;} QPushButton:hover{background:#f39c12;}")
         row_offset_btn.addWidget(self.btn_apply_cue_offset)
         row_offset_btn.addStretch()
         offset_layout.addLayout(row_offset_btn)
@@ -1945,20 +1945,20 @@ class Main(QMainWindow):
 
         # Sección: Diagnóstico
         diag_frame = QFrame()
-        diag_frame.setStyleSheet("QFrame{background:#1a1a1a; border:1px solid #333; border-radius:6px;}")
+        diag_frame.setStyleSheet("QFrame{background:#141418; border:1px solid #2e2e38; border-radius:12px;}")
         diag_layout = QVBoxLayout(diag_frame)
         diag_layout.setContentsMargins(12, 12, 12, 12)
         diag_layout.setSpacing(8)
         diag_title = QLabel("DIAGNÓSTICO")
-        diag_title.setStyleSheet("font-weight:700; color:#ddd; font-size:12px;")
+        diag_title.setStyleSheet("font-weight:700; color:#f0f0f0; font-size:12px;")
         diag_layout.addWidget(diag_title)
         
         row_ping = QHBoxLayout()
         self.btn_ping = QPushButton("Ping")
-        self.btn_ping.setStyleSheet("QPushButton{background:#333; border:1px solid #555; border-radius:4px; padding:6px; color:#ccc;} QPushButton:hover{background:#444;}")
+        self.btn_ping.setStyleSheet("QPushButton{background:#2e2e38; border:1px solid #2e2e38; border-radius:10px; padding:6px; color:#a6a6a6;} QPushButton:hover{background:#2e2e38;}")
         row_ping.addWidget(self.btn_ping)
         self.lbl_ping_result = QLabel("—")
-        self.lbl_ping_result.setStyleSheet("color:#888;")
+        self.lbl_ping_result.setStyleSheet("color:#8a8a8a;")
         row_ping.addWidget(self.lbl_ping_result)
         row_ping.addStretch()
         diag_layout.addLayout(row_ping)
@@ -1972,10 +1972,10 @@ class Main(QMainWindow):
         diag_layout.addLayout(row_error)
         
         events_lbl = QLabel("Eventos recientes:")
-        events_lbl.setStyleSheet("color:#888; font-size:10px;")
+        events_lbl.setStyleSheet("color:#8a8a8a; font-size:10px;")
         diag_layout.addWidget(events_lbl)
         self.net_events_list = QLabel("—")
-        self.net_events_list.setStyleSheet("color:#666; font-size:9px; background:#0a0a0a; border:1px solid #222; border-radius:4px; padding:6px;")
+        self.net_events_list.setStyleSheet("color:#616161; font-size:9px; background:#0a0a0f; border:1px solid #0e0e14; border-radius:10px; padding:6px;")
         self.net_events_list.setWordWrap(True)
         self.net_events_list.setMinimumHeight(80)
         diag_layout.addWidget(self.net_events_list)
@@ -3481,7 +3481,7 @@ class Main(QMainWindow):
 
     def _build_status_box(self, modules):
         frame = QFrame()
-        frame.setStyleSheet("QFrame{background:#141414; border:1px solid #333; border-radius:6px;}")
+        frame.setStyleSheet("QFrame{background:#141418; border:1px solid #2e2e38; border-radius:12px;}")
         frame.setFixedHeight(65)
         layout = QGridLayout(frame)
         layout.setContentsMargins(8, 8, 8, 8)

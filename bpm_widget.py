@@ -8,16 +8,16 @@ class BPMMonitorWidget(QWidget):
 
         # Estilos cacheados
         self._bpm_style_stable = (
-            "color:#00f08a; font-weight:700; font-size:24px; background:#0a0a0a; "
-            "border:1px solid #333; border-radius:6px; padding:8px; text-align:center;"
+            "color:#00f08a; font-weight:700; font-size:24px; background:#0a0a0f; "
+            "border:1px solid #2e2e38; border-radius:12px; padding:8px; text-align:center;"
         )
         self._bpm_style_unstable = (
-            "color:#ffaa00; font-weight:700; font-size:24px; background:#0a0a0a; "
-            "border:1px solid #333; border-radius:6px; padding:8px; text-align:center;"
+            "color:#ffaa00; font-weight:700; font-size:24px; background:#0a0a0f; "
+            "border:1px solid #2e2e38; border-radius:12px; padding:8px; text-align:center;"
         )
         self._bpm_style_off = (
-            "color:#888; font-weight:700; font-size:24px; background:#0a0a0a; "
-            "border:1px solid #333; border-radius:6px; padding:8px; text-align:center;"
+            "color:#8a8a8a; font-weight:700; font-size:24px; background:#0a0a0f; "
+            "border:1px solid #2e2e38; border-radius:12px; padding:8px; text-align:center;"
         )
         self._last_bpm_style = None
 

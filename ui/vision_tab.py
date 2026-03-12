@@ -63,7 +63,7 @@ class ZoneEditor(QLabel):
         super().__init__(parent)
         self.max_zones = max_zones
         self.setMinimumSize(640, 480)
-        self.setStyleSheet("border: 2px solid #333; background-color: #1a1a1a;")
+        self.setStyleSheet("border: 2px solid #2e2e38; background-color: #141418;")
         self.setAlignment(Qt.AlignCenter)
 
         # Estado de edición
@@ -375,7 +375,7 @@ class VisionTab(QWidget):
         cam_layout = QHBoxLayout()
         cam_layout.addWidget(QLabel("Camera State:"))
         self.camera_state_label = QLabel("Disconnected")
-        self.camera_state_label.setStyleSheet("color: #888;")
+        self.camera_state_label.setStyleSheet("color: #8a8a8a;")
         cam_layout.addWidget(self.camera_state_label)
         cam_layout.addStretch()
         layout.addLayout(cam_layout)
@@ -389,7 +389,7 @@ class VisionTab(QWidget):
                 color: white;
                 font-weight: bold;
                 padding: 8px;
-                border-radius: 4px;
+                border-radius: 10px;
             }
             QPushButton:checked {
                 background-color: #e74c3c;
@@ -422,7 +422,7 @@ class VisionTab(QWidget):
         # Canvas para preview
         self.preview_label = QLabel()
         self.preview_label.setMinimumSize(640, 480)
-        self.preview_label.setStyleSheet("border: 2px solid #333; background-color: #000;")
+        self.preview_label.setStyleSheet("border: 2px solid #2e2e38; background-color: #000;")
         self.preview_label.setAlignment(Qt.AlignCenter)
         self.preview_label.setText("No hay video")
 
@@ -905,7 +905,7 @@ class VisionTab(QWidget):
                 self.system_toggle.setChecked(False)
                 self.system_led.set_on(False)
                 self.camera_state_label.setText("Disconnected")
-                self.camera_state_label.setStyleSheet("color: #888;")
+                self.camera_state_label.setStyleSheet("color: #8a8a8a;")
 
             self.system_running = running
 
@@ -959,15 +959,15 @@ class VisionTab(QWidget):
             dancers = state.get("dancers", {"left": False, "right": False, "count": 0})
             self.lbl_dancers_left.setText("ON" if dancers["left"] else "—")
             self.lbl_dancers_left.setStyleSheet(
-                f"font-weight: bold; color: {'#27ae60' if dancers['left'] else '#888'};"
+                f"font-weight: bold; color: {'#27ae60' if dancers['left'] else '#8a8a8a'};"
             )
             self.lbl_dancers_right.setText("ON" if dancers["right"] else "—")
             self.lbl_dancers_right.setStyleSheet(
-                f"font-weight: bold; color: {'#9b59b6' if dancers['right'] else '#888'};"
+                f"font-weight: bold; color: {'#9b59b6' if dancers['right'] else '#8a8a8a'};"
             )
             self.lbl_dancers_count.setText(f"{dancers['count']}")
             self.lbl_dancers_count.setStyleSheet(
-                f"font-weight: bold; font-size: 14px; color: {'#27ae60' if dancers['count'] > 0 else '#888'};"
+                f"font-weight: bold; font-size: 14px; color: {'#27ae60' if dancers['count'] > 0 else '#8a8a8a'};"
             )
 
             # Tracking

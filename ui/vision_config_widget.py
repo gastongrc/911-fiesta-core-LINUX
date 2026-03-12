@@ -60,9 +60,9 @@ class CameraConfigPanel(QWidget):
         self.combo_protocol.addItem("MJPEG (HTTP)", "mjpeg")
         self.combo_protocol.addItem("RTSP (H.264)", "rtsp")
         self.combo_protocol.setStyleSheet(
-            "QComboBox{background:#333; color:#ccc; border:1px solid #555; padding:4px; border-radius:3px;}"
+            "QComboBox{background:#0e0e14; color:#f0f0f0; border:1px solid #2e2e38; padding:8px 12px; border-radius:10px; font-family:'JetBrains Mono',monospace;}"
             "QComboBox::drop-down{border:none;}"
-            "QComboBox QAbstractItemView{background:#333; color:#ccc; selection-background-color:#3498db;}"
+            "QComboBox QAbstractItemView{background:#141418; color:#f0f0f0; selection-background-color:#0d1a10; selection-color:#00e676;}"
         )
         self.combo_protocol.setFixedWidth(120)
         proto_layout.addWidget(self.combo_protocol)
@@ -70,9 +70,9 @@ class CameraConfigPanel(QWidget):
 
         layout.addLayout(proto_layout)
 
-        # Style común para inputs
-        input_style = "QLineEdit{background:#333; color:#ccc; border:1px solid #555; padding:4px; border-radius:3px;}"
-        spin_style = "QSpinBox,QDoubleSpinBox{background:#333; color:#ccc; border:1px solid #555; padding:2px; border-radius:3px;}"
+        # Style comun para inputs — WEB: input with glass inset
+        input_style = "QLineEdit{background:#0e0e14; color:#f0f0f0; border:1px solid #2e2e38; padding:8px 12px; border-radius:10px; font-family:'JetBrains Mono',monospace;}"
+        spin_style = "QSpinBox,QDoubleSpinBox{background:#0e0e14; color:#f0f0f0; border:1px solid #2e2e38; padding:6px 10px; border-radius:10px; font-family:'JetBrains Mono',monospace;}"
 
         # === STACKED WIDGET FOR PROTOCOL-SPECIFIC FIELDS ===
         self.stacked_fields = QStackedWidget()

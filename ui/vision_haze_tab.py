@@ -114,7 +114,7 @@ class VisionHazeTab(QWidget):
         # Canvas para preview
         self.preview_label = QLabel()
         self.preview_label.setMinimumSize(640, 480)
-        self.preview_label.setStyleSheet("border: 2px solid #333; background-color: #000;")
+        self.preview_label.setStyleSheet("border: 2px solid #2e2e38; background-color: #000;")
         self.preview_label.setAlignment(Qt.AlignCenter)
         self.preview_label.setText("No hay video")
         layout.addWidget(self.preview_label)
@@ -224,7 +224,7 @@ class VisionHazeTab(QWidget):
         self.haze_bar = QFrame()
         self.haze_bar.setFixedHeight(20)
         self.haze_bar.setFrameShape(QFrame.StyledPanel)
-        self.haze_bar.setStyleSheet("background-color: #00FF64; border: 1px solid #333;")
+        self.haze_bar.setStyleSheet("background-color: #00FF64; border: 1px solid #2e2e38;")
         haze_bar_layout.addWidget(self.haze_bar)
 
         self.haze_bar_label = QLabel("0.0")
@@ -426,7 +426,7 @@ class VisionHazeTab(QWidget):
             else:
                 bar_color = "#FF3333"  # Rojo
 
-            self.haze_bar.setStyleSheet(f"background-color: {bar_color}; border: 1px solid #333;")
+            self.haze_bar.setStyleSheet(f"background-color: {bar_color}; border: 1px solid #2e2e38;")
             self.haze_bar_label.setText(f"{haze_value:.2f}")
 
             # LEDs de estado

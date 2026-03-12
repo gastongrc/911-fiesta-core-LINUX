@@ -682,9 +682,9 @@ class DayColumnWidget(QFrame):
 
         self.setStyleSheet("""
             QFrame {
-                background-color: #1e272e;
-                border-radius: 8px;
-                border: 1px solid #34495e;
+                background-color: #141418;
+                border-radius: 20px;
+                border: 1px solid #2e2e38;
             }
         """)
         self.setMinimumWidth(200)
@@ -696,7 +696,7 @@ class DayColumnWidget(QFrame):
         # Header
         header = QLabel(self.day_name)
         header.setFont(QFont("", 11, QFont.Bold))
-        header.setStyleSheet("color: #ecf0f1; background: transparent; border: none;")
+        header.setStyleSheet("color: #f0f0f0; background: transparent; border: none;")
         header.setAlignment(Qt.AlignCenter)
         layout.addWidget(header)
 
@@ -734,15 +734,15 @@ class DayColumnWidget(QFrame):
         add_btn = QPushButton("+ Agregar bloque")
         add_btn.setStyleSheet("""
             QPushButton {
-                background: #27ae60;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 6px;
+                background: rgba(0, 230, 118, 0.25);
+                color: #00e676;
+                border: 1px solid rgba(0, 230, 118, 0.30);
+                border-radius: 10px;
+                padding: 10px;
                 font-weight: bold;
             }
             QPushButton:hover {
-                background: #2ecc71;
+                background: rgba(0, 230, 118, 0.35);
             }
         """)
         add_btn.clicked.connect(self._on_add_block)
@@ -878,14 +878,14 @@ class CalendarScheduleEditor(QWidget):
         title_row = QHBoxLayout()
         title = QLabel("EDITOR DE HORARIOS SEMANALES")
         title.setFont(QFont("", 12, QFont.Bold))
-        title.setStyleSheet("color: #ecf0f1;")
+        title.setStyleSheet("color: #00e676; letter-spacing: 1px;")
         title_row.addWidget(title)
 
         title_row.addStretch()
 
         # Indicador de cambios
         self.changes_label = QLabel("")
-        self.changes_label.setStyleSheet("color: #f39c12; font-weight: bold;")
+        self.changes_label.setStyleSheet("color: #ffd740; font-weight: bold;")
         title_row.addWidget(self.changes_label)
 
         main_layout.addLayout(title_row)
@@ -920,14 +920,14 @@ class CalendarScheduleEditor(QWidget):
         reload_btn = QPushButton("Recargar")
         reload_btn.setStyleSheet("""
             QPushButton {
-                background: #3498db;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
+                background: rgba(66, 165, 245, 0.25);
+                color: #42a5f5;
+                border: 1px solid rgba(66, 165, 245, 0.30);
+                border-radius: 10px;
+                padding: 10px 20px;
                 font-weight: bold;
             }
-            QPushButton:hover { background: #2980b9; }
+            QPushButton:hover { background: rgba(66, 165, 245, 0.35); }
         """)
         reload_btn.clicked.connect(self._on_reload)
         buttons_row.addWidget(reload_btn)
@@ -936,15 +936,15 @@ class CalendarScheduleEditor(QWidget):
         self.save_btn.setEnabled(False)
         self.save_btn.setStyleSheet("""
             QPushButton {
-                background: #27ae60;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
+                background: rgba(0, 230, 118, 0.25);
+                color: #00e676;
+                border: 1px solid rgba(0, 230, 118, 0.30);
+                border-radius: 10px;
+                padding: 10px 20px;
                 font-weight: bold;
             }
-            QPushButton:hover { background: #2ecc71; }
-            QPushButton:disabled { background: #7f8c8d; }
+            QPushButton:hover { background: rgba(0, 230, 118, 0.35); }
+            QPushButton:disabled { background: #141418; color: #616161; border: 1px solid #2e2e38; }
         """)
         self.save_btn.clicked.connect(self._on_save)
         buttons_row.addWidget(self.save_btn)

@@ -70,7 +70,7 @@ class BpmMasterTab(QWidget):
             layout.addWidget(self.graph_widget, stretch=3)
         else:
             no_graph = QLabel("Gráfico no disponible (instalar pyqtgraph)")
-            no_graph.setStyleSheet("color: #888; font-size: 14px;")
+            no_graph.setStyleSheet("color: #8a8a8a; font-size: 14px;")
             no_graph.setAlignment(Qt.AlignCenter)
             layout.addWidget(no_graph, stretch=3)
 
@@ -84,17 +84,17 @@ class BpmMasterTab(QWidget):
         group.setStyleSheet("""
             QGroupBox {
                 font-weight: bold;
-                border: 2px solid #444;
-                border-radius: 6px;
+                border: 2px solid #2e2e38;
+                border-radius: 12px;
                 margin-top: 10px;
                 padding-top: 10px;
-                background: #1a1a1a;
+                background: #141418;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 subcontrol-position: top left;
                 padding: 0 5px;
-                color: #aaa;
+                color: #00e676;
             }
         """)
 
@@ -162,13 +162,13 @@ class BpmMasterTab(QWidget):
         """Crea el gráfico con PyQtGraph."""
         # Configurar estilo oscuro
         pg.setConfigOption('background', '#0a0a0a')
-        pg.setConfigOption('foreground', '#aaa')
+        pg.setConfigOption('foreground', '#a6a6a6')
 
         # Crear widget de gráfico
         graph = pg.PlotWidget()
-        graph.setLabel('left', 'BPM', color='#aaa', size='12pt')
-        graph.setLabel('bottom', 'Tiempo (s)', color='#aaa', size='12pt')
-        graph.setTitle('BPM History (30s)', color='#aaa', size='14pt')
+        graph.setLabel('left', 'BPM', color='#a6a6a6', size='12pt')
+        graph.setLabel('bottom', 'Tiempo (s)', color='#a6a6a6', size='12pt')
+        graph.setTitle('BPM History (30s)', color='#a6a6a6', size='14pt')
         graph.showGrid(x=True, y=True, alpha=0.3)
         graph.setYRange(60, 180)
 
@@ -197,17 +197,17 @@ class BpmMasterTab(QWidget):
         group.setStyleSheet("""
             QGroupBox {
                 font-weight: bold;
-                border: 2px solid #444;
-                border-radius: 6px;
+                border: 2px solid #2e2e38;
+                border-radius: 12px;
                 margin-top: 10px;
                 padding-top: 10px;
-                background: #1a1a1a;
+                background: #141418;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 subcontrol-position: top left;
                 padding: 0 5px;
-                color: #aaa;
+                color: #00e676;
             }
         """)
 
@@ -237,18 +237,18 @@ class BpmMasterTab(QWidget):
         # Botones
         btn_style = """
             QPushButton {
-                background: #333;
-                border: 1px solid #555;
-                border-radius: 4px;
+                background: #2e2e38;
+                border: 1px solid #2e2e38;
+                border-radius: 10px;
                 padding: 8px 16px;
-                color: #ccc;
+                color: #f0f0f0;
                 font-weight: bold;
             }
             QPushButton:hover {
-                background: #444;
+                background: #2e2e38;
             }
             QPushButton:pressed {
-                background: #222;
+                background: #0e0e14;
             }
         """
 

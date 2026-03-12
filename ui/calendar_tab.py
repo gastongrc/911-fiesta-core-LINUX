@@ -144,19 +144,19 @@ class PermissionIndicator(QWidget):
         if self._enabled:
             self.status_label.setText("ON")
             self.setStyleSheet("""
-                QWidget { background: rgba(46,204,113,0.2); border: 1px solid #2ecc71; border-radius: 4px; }
+                QWidget { background: rgba(0,230,118,0.10); border: 1px solid rgba(0,230,118,0.30); border-radius: 8px; }
             """)
-            self.icon_label.setStyleSheet("color: #2ecc71;")
-            self.name_label.setStyleSheet("color: #2ecc71;")
-            self.status_label.setStyleSheet("color: #27ae60;")
+            self.icon_label.setStyleSheet("color: #00e676;")
+            self.name_label.setStyleSheet("color: #00e676;")
+            self.status_label.setStyleSheet("color: #00c864;")
         else:
             self.status_label.setText("OFF")
             self.setStyleSheet("""
-                QWidget { background: rgba(127,140,141,0.1); border: 1px solid #34495e; border-radius: 4px; }
+                QWidget { background: #0e0e14; border: 1px solid #2e2e38; border-radius: 8px; }
             """)
-            self.icon_label.setStyleSheet("color: #7f8c8d;")
-            self.name_label.setStyleSheet("color: #7f8c8d;")
-            self.status_label.setStyleSheet("color: #95a5a6;")
+            self.icon_label.setStyleSheet("color: #8a8a8a;")
+            self.name_label.setStyleSheet("color: #8a8a8a;")
+            self.status_label.setStyleSheet("color: #616161;")
 
 
 class AlertBanner(QFrame):
@@ -172,34 +172,33 @@ class AlertBanner(QFrame):
     def _setup_ui(self):
         self.setStyleSheet("""
             QFrame {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #f39c12, stop:1 #e67e22);
-                border-radius: 6px;
-                border: none;
+                background: rgba(255,215,64,0.15);
+                border: 1px solid rgba(255,215,64,0.30);
+                border-radius: 12px;
             }
         """)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setContentsMargins(16, 12, 16, 12)
 
         self.icon = QLabel("!")
         self.icon.setFont(QFont("", 16, QFont.Bold))
-        self.icon.setStyleSheet("color: white;")
+        self.icon.setStyleSheet("color: #ffd740;")
         layout.addWidget(self.icon)
 
         self.message = QLabel("")
         self.message.setFont(QFont("", 11, QFont.Bold))
-        self.message.setStyleSheet("color: white;")
+        self.message.setStyleSheet("color: #ffd740;")
         layout.addWidget(self.message, 1)
 
         self.countdown = QLabel("")
-        self.countdown.setFont(QFont("", 12, QFont.Bold))
-        self.countdown.setStyleSheet("color: white;")
+        self.countdown.setFont(QFont("JetBrains Mono", 12, QFont.Bold))
+        self.countdown.setStyleSheet("color: #ffd740;")
         layout.addWidget(self.countdown)
 
         self.confirm_btn = QPushButton("OK")
         self.confirm_btn.setStyleSheet("""
-            QPushButton { background: white; color: #e67e22; border: none; border-radius: 4px; padding: 4px 12px; font-weight: bold; }
-            QPushButton:hover { background: #ecf0f1; }
+            QPushButton { background: rgba(255,215,64,0.25); color: #ffd740; border: 1px solid rgba(255,215,64,0.30); border-radius: 10px; padding: 8px 16px; font-weight: bold; }
+            QPushButton:hover { background: rgba(255,215,64,0.35); }
         """)
         self.confirm_btn.clicked.connect(self._on_confirm)
         layout.addWidget(self.confirm_btn)
@@ -238,11 +237,11 @@ class DisabledStatesWidget(QWidget):
         layout.setSpacing(4)
 
         self.label = QLabel("Estados bloqueados:")
-        self.label.setStyleSheet("color: #7f8c8d; font-size: 10px;")
+        self.label.setStyleSheet("color: #8a8a8a; font-size: 10px;")
         layout.addWidget(self.label)
 
         self.states_label = QLabel("Ninguno")
-        self.states_label.setStyleSheet("color: #e74c3c; font-size: 10px; font-weight: bold;")
+        self.states_label.setStyleSheet("color: #ff5252; font-size: 10px; font-weight: bold;")
         layout.addWidget(self.states_label)
 
         layout.addStretch()
@@ -251,13 +250,13 @@ class DisabledStatesWidget(QWidget):
         self._states = states
         if not states:
             self.states_label.setText("Ninguno")
-            self.states_label.setStyleSheet("color: #2ecc71; font-size: 10px;")
+            self.states_label.setStyleSheet("color: #00e676; font-size: 10px;")
         elif "ALL" in states:
             self.states_label.setText("TODOS")
-            self.states_label.setStyleSheet("color: #e74c3c; font-size: 10px; font-weight: bold;")
+            self.states_label.setStyleSheet("color: #ff5252; font-size: 10px; font-weight: bold;")
         else:
             self.states_label.setText(", ".join(states))
-            self.states_label.setStyleSheet("color: #f39c12; font-size: 10px; font-weight: bold;")
+            self.states_label.setStyleSheet("color: #ffd740; font-size: 10px; font-weight: bold;")
 
 
 class ModuleIndicator(QWidget):
@@ -302,17 +301,17 @@ class ModuleIndicator(QWidget):
         if self._enabled:
             self.status_label.setText("ON")
             self.setStyleSheet("""
-                QWidget { background: rgba(46,204,113,0.25); border: 2px solid #2ecc71; border-radius: 6px; }
+                QWidget { background: rgba(0,230,118,0.10); border: 2px solid rgba(0,230,118,0.30); border-radius: 12px; }
             """)
-            self.name_label.setStyleSheet("color: #2ecc71;")
-            self.status_label.setStyleSheet("color: #27ae60;")
+            self.name_label.setStyleSheet("color: #00e676;")
+            self.status_label.setStyleSheet("color: #00c864;")
         else:
             self.status_label.setText("OFF")
             self.setStyleSheet("""
-                QWidget { background: rgba(127,140,141,0.1); border: 1px solid #34495e; border-radius: 6px; }
+                QWidget { background: #0e0e14; border: 1px solid #2e2e38; border-radius: 12px; }
             """)
-            self.name_label.setStyleSheet("color: #7f8c8d;")
-            self.status_label.setStyleSheet("color: #95a5a6;")
+            self.name_label.setStyleSheet("color: #8a8a8a;")
+            self.status_label.setStyleSheet("color: #616161;")
 
 
 class ActionsPanel(QFrame):
@@ -325,22 +324,22 @@ class ActionsPanel(QFrame):
         self._setup_ui()
 
     def _setup_ui(self):
-        self.setStyleSheet("QFrame { background: #1e272e; border-radius: 8px; border: 1px solid #34495e; }")
+        self.setStyleSheet("QFrame { background: #141418; border-radius: 20px; border: 1px solid #2e2e38; }")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(8)
+        layout.setContentsMargins(24, 16, 24, 20)
+        layout.setSpacing(12)
 
-        # Título
+        # Titulo
         title_row = QHBoxLayout()
         title = QLabel("ACCIONES ACTIVAS")
-        title.setFont(QFont("", 10, QFont.Bold))
-        title.setStyleSheet("color: #ecf0f1;")
+        title.setFont(QFont("Space Grotesk", 10, QFont.Bold))
+        title.setStyleSheet("color: #00e676; letter-spacing: 1px;")
         title_row.addWidget(title)
         title_row.addStretch()
 
         self.mode_badge = QLabel("apagado")
-        self.mode_badge.setFont(QFont("", 9, QFont.Bold))
-        self.mode_badge.setStyleSheet("color: #7f8c8d; background: rgba(127,140,141,0.2); padding: 2px 8px; border-radius: 3px;")
+        self.mode_badge.setFont(QFont("JetBrains Mono", 9, QFont.Bold))
+        self.mode_badge.setStyleSheet("color: #8a8a8a; background: #0e0e14; padding: 4px 12px; border: 1px solid #2e2e38; border-radius: 8px;")
         title_row.addWidget(self.mode_badge)
 
         layout.addLayout(title_row)
@@ -360,7 +359,7 @@ class ActionsPanel(QFrame):
         # Explainer text
         self.explainer = QLabel("")
         self.explainer.setWordWrap(True)
-        self.explainer.setStyleSheet("color: #95a5a6; font-size: 10px; margin-top: 6px; padding: 6px; background: rgba(52,73,94,0.3); border-radius: 4px;")
+        self.explainer.setStyleSheet("color: #a6a6a6; font-size: 10px; margin-top: 6px; padding: 8px 12px; background: #0e0e14; border: 1px solid #1e1e28; border-radius: 12px;")
         self.explainer.setAlignment(Qt.AlignLeft)
         layout.addWidget(self.explainer)
 
@@ -376,7 +375,7 @@ class ActionsPanel(QFrame):
         # Actualizar badge de modo
         color = MODE_COLORS.get(mode, "#7f8c8d")
         self.mode_badge.setText(mode)
-        self.mode_badge.setStyleSheet(f"color: {color}; background: rgba(127,140,141,0.2); padding: 2px 8px; border-radius: 3px;")
+        self.mode_badge.setStyleSheet(f"color: {color}; background: #0e0e14; padding: 4px 12px; border: 1px solid {color}; border-radius: 8px;")
 
         # Generar texto explicativo
         self._update_explainer(modules, mode)
@@ -425,8 +424,8 @@ class CalendarTab(QWidget):
 
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(12, 12, 12, 12)
-        main_layout.setSpacing(12)
+        main_layout.setContentsMargins(24, 24, 24, 24)
+        main_layout.setSpacing(20)
 
         # ===== ALERTA BANNER =====
         self.alert_banner = AlertBanner()
@@ -439,9 +438,10 @@ class CalendarTab(QWidget):
         # ===== TABS: Estado / Horarios / Control =====
         self.tabs = QTabWidget()
         self.tabs.setStyleSheet("""
-            QTabWidget::pane { border: 1px solid #34495e; border-radius: 6px; background: #1a1a2e; }
-            QTabBar::tab { background: #2c3e50; color: #bdc3c7; padding: 8px 16px; margin-right: 2px; border-top-left-radius: 4px; border-top-right-radius: 4px; }
-            QTabBar::tab:selected { background: #1a1a2e; color: #ecf0f1; }
+            QTabWidget::pane { border: 1px solid #2e2e38; border-radius: 12px; background: #141418; }
+            QTabBar::tab { background: #141418; color: #616161; padding: 11px 18px; margin-right: 2px; border-top-left-radius: 12px; border-top-right-radius: 12px; font-weight: 500; font-size: 13px; }
+            QTabBar::tab:selected { background: #0d1a10; color: #00e676; border: 1px solid rgba(0,230,118,0.30); border-bottom: 2px solid #00e676; }
+            QTabBar::tab:hover:!selected { background: #1c1c22; color: #a6a6a6; }
         """)
 
         # Tab 1: Estado
@@ -465,7 +465,7 @@ class CalendarTab(QWidget):
         else:
             placeholder = QLabel("Editor de horarios no disponible")
             placeholder.setAlignment(Qt.AlignCenter)
-            placeholder.setStyleSheet("color: #7f8c8d;")
+            placeholder.setStyleSheet("color: #8a8a8a;")
             self.tabs.addTab(placeholder, "Horarios")
             self.schedule_editor = None
 
@@ -487,26 +487,26 @@ class CalendarTab(QWidget):
         header = QFrame()
         header.setStyleSheet("""
             QFrame {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2c3e50, stop:1 #1a252f);
-                border-radius: 10px;
-                border: 1px solid #34495e;
+                background: #141418;
+                border-radius: 20px;
+                border: 1px solid #2e2e38;
             }
         """)
         layout = QVBoxLayout(header)
-        layout.setContentsMargins(16, 12, 16, 12)
-        layout.setSpacing(6)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(8)
 
         # Fila 1: Dia y Hora
         row1 = QHBoxLayout()
 
         self.day_label = QLabel("---")
-        self.day_label.setFont(QFont("", 12, QFont.Bold))
-        self.day_label.setStyleSheet("color: #ecf0f1;")
+        self.day_label.setFont(QFont("Space Grotesk", 12, QFont.Bold))
+        self.day_label.setStyleSheet("color: #f0f0f0;")
         row1.addWidget(self.day_label)
 
         self.time_label = QLabel("--:--:--")
-        self.time_label.setFont(QFont("", 28, QFont.Bold))
-        self.time_label.setStyleSheet("color: #ecf0f1;")
+        self.time_label.setFont(QFont("JetBrains Mono", 28, QFont.Bold))
+        self.time_label.setStyleSheet("color: #f0f0f0;")
         self.time_label.setAlignment(Qt.AlignRight)
         row1.addWidget(self.time_label)
 
@@ -515,7 +515,7 @@ class CalendarTab(QWidget):
         # Separador
         sep = QFrame()
         sep.setFrameShape(QFrame.HLine)
-        sep.setStyleSheet("background: #34495e;")
+        sep.setStyleSheet("background: #2e2e38;")
         sep.setMaximumHeight(1)
         layout.addWidget(sep)
 
@@ -523,36 +523,36 @@ class CalendarTab(QWidget):
         row2 = QHBoxLayout()
 
         lbl = QLabel("CALENDARIO")
-        lbl.setFont(QFont("", 10))
-        lbl.setStyleSheet("color: #7f8c8d;")
+        lbl.setFont(QFont("Space Grotesk", 10))
+        lbl.setStyleSheet("color: #00e676; letter-spacing: 1px;")
         row2.addWidget(lbl)
 
         row2.addWidget(QLabel(" "))
 
         self.mode_label = QLabel("apagado")
-        self.mode_label.setFont(QFont("", 16, QFont.Bold))
+        self.mode_label.setFont(QFont("Space Grotesk", 16, QFont.Bold))
         self.mode_label.setStyleSheet(f"color: {MODE_COLORS['apagado']};")
         row2.addWidget(self.mode_label)
 
         row2.addStretch()
 
-        # Override badge
+        # Override badge — WEB: .b.red
         self.override_badge = QLabel("OVERRIDE")
-        self.override_badge.setFont(QFont("", 9, QFont.Bold))
-        self.override_badge.setStyleSheet("color: #e74c3c; background: rgba(231,76,60,0.2); padding: 2px 6px; border-radius: 3px;")
+        self.override_badge.setFont(QFont("JetBrains Mono", 9, QFont.Bold))
+        self.override_badge.setStyleSheet("color: #ff5252; background: #0e0e14; padding: 4px 12px; border: 1px solid #ff5252; border-radius: 8px;")
         self.override_badge.hide()
         row2.addWidget(self.override_badge)
 
-        # Pending GO badge
+        # Pending GO badge — WEB: .b (cyan)
         self.pending_go_badge = QLabel("GO PENDIENTE")
-        self.pending_go_badge.setFont(QFont("", 9, QFont.Bold))
-        self.pending_go_badge.setStyleSheet("color: #3498db; background: rgba(52,152,219,0.2); padding: 2px 6px; border-radius: 3px;")
+        self.pending_go_badge.setFont(QFont("JetBrains Mono", 9, QFont.Bold))
+        self.pending_go_badge.setStyleSheet("color: #4dd0e1; background: #0e0e14; padding: 4px 12px; border: 1px solid #4dd0e1; border-radius: 8px;")
         self.pending_go_badge.hide()
         row2.addWidget(self.pending_go_badge)
 
         self.source_label = QLabel("Fuente: ---")
-        self.source_label.setFont(QFont("", 9))
-        self.source_label.setStyleSheet("color: #95a5a6;")
+        self.source_label.setFont(QFont("Inter", 9))
+        self.source_label.setStyleSheet("color: #a6a6a6;")
         row2.addWidget(self.source_label)
 
         layout.addLayout(row2)
@@ -562,47 +562,50 @@ class CalendarTab(QWidget):
     def _create_timeline(self, parent_layout):
         """Timeline con progreso"""
         frame = QFrame()
-        frame.setStyleSheet("QFrame { background: #1e272e; border-radius: 8px; border: 1px solid #34495e; }")
+        frame.setStyleSheet("QFrame { background: #141418; border-radius: 20px; border: 1px solid #2e2e38; }")
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(6)
+        layout.setContentsMargins(24, 16, 24, 20)
+        layout.setSpacing(8)
 
         # Titulo
         row = QHBoxLayout()
-        row.addWidget(QLabel("TIMELINE"))
+        tl_title = QLabel("TIMELINE")
+        tl_title.setStyleSheet("color: #00e676; font-weight: 700; font-size: 12px; letter-spacing: 1px;")
+        row.addWidget(tl_title)
         row.addStretch()
         self.timeline_status = QLabel("ACTIVO")
-        self.timeline_status.setStyleSheet("color: #2ecc71; font-weight: bold;")
+        self.timeline_status.setStyleSheet("color: #00e676; font-weight: bold;")
         row.addWidget(self.timeline_status)
         layout.addLayout(row)
 
-        # Barra
+        # Barra — WEB: .gauge / .gauge-fill (green→cyan)
         self.timeline_bar = QProgressBar()
         self.timeline_bar.setRange(0, 100)
         self.timeline_bar.setValue(0)
         self.timeline_bar.setTextVisible(False)
-        self.timeline_bar.setMinimumHeight(16)
+        self.timeline_bar.setMinimumHeight(6)
+        self.timeline_bar.setMaximumHeight(6)
         self.timeline_bar.setStyleSheet("""
-            QProgressBar { background: #2c3e50; border-radius: 6px; }
-            QProgressBar::chunk { background: #3498db; border-radius: 6px; }
+            QProgressBar { background: #0a0a0f; border: 1px solid #2e2e38; border-radius: 3px; }
+            QProgressBar::chunk { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #00e676, stop:1 #4dd0e1); border-radius: 3px; }
         """)
         layout.addWidget(self.timeline_bar)
 
         # Info
         info_row = QHBoxLayout()
         self.elapsed_label = QLabel("Transcurrido: ---")
-        self.elapsed_label.setStyleSheet("color: #7f8c8d; font-size: 10px;")
+        self.elapsed_label.setStyleSheet("color: #8a8a8a; font-size: 10px;")
         info_row.addWidget(self.elapsed_label)
         info_row.addStretch()
         self.progress_pct = QLabel("0%")
-        self.progress_pct.setStyleSheet("color: #3498db; font-weight: bold;")
+        self.progress_pct.setStyleSheet("color: #4dd0e1; font-weight: bold;")
         info_row.addWidget(self.progress_pct)
         layout.addLayout(info_row)
 
         # Proximo
         self.next_label = QLabel("Proximo: ---")
         self.next_label.setAlignment(Qt.AlignCenter)
-        self.next_label.setStyleSheet("color: #95a5a6; font-size: 10px;")
+        self.next_label.setStyleSheet("color: #a6a6a6; font-size: 10px;")
         layout.addWidget(self.next_label)
 
         parent_layout.addWidget(frame)
@@ -617,7 +620,7 @@ class CalendarTab(QWidget):
         # === CONTROL MODE SELECTOR ===
         mode_selector_frame = QFrame()
         mode_selector_frame.setStyleSheet("""
-            QFrame { background: #1e272e; border-radius: 8px; border: 1px solid #34495e; }
+            QFrame { background: #141418; border-radius: 20px; border: 1px solid #2e2e38; }
         """)
         mode_selector_layout = QVBoxLayout(mode_selector_frame)
         mode_selector_layout.setContentsMargins(12, 10, 12, 10)
@@ -655,7 +658,7 @@ class CalendarTab(QWidget):
         # === MANUAL PANEL (hidden in AUTO) ===
         self._manual_panel = QFrame()
         self._manual_panel.setStyleSheet("""
-            QFrame { background: #1e272e; border-radius: 8px; border: 1px solid #34495e; }
+            QFrame { background: #141418; border-radius: 20px; border: 1px solid #2e2e38; }
         """)
         mp_layout = QVBoxLayout(self._manual_panel)
         mp_layout.setContentsMargins(12, 10, 12, 10)
@@ -665,7 +668,7 @@ class CalendarTab(QWidget):
 
         # --- CLIMA group (exclusive) ---
         clima_label = QLabel("CLIMA")
-        clima_label.setStyleSheet("color: #95a5a6; font-size: 10px; font-weight: bold;")
+        clima_label.setStyleSheet("color: #a6a6a6; font-size: 10px; font-weight: bold;")
         mp_layout.addWidget(clima_label)
 
         clima_row = QHBoxLayout()
@@ -678,7 +681,7 @@ class CalendarTab(QWidget):
             btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             color = MODE_COLORS.get(clima, "#7f8c8d")
             btn.setStyleSheet(f"""
-                QPushButton {{ background: #2c3e50; color: #95a5a6; border: 1px solid #3d5266; border-radius: 14px; padding: 2px 8px; font-size: 11px; }}
+                QPushButton {{ background: #141418; color: #a6a6a6; border: 1px solid #3d5266; border-radius: 14px; padding: 2px 8px; font-size: 11px; }}
                 QPushButton:checked {{ background: {color}; color: white; border: none; font-weight: bold; }}
                 QPushButton:hover:!checked {{ background: #34495e; border: 1px solid {color}; }}
             """)
@@ -689,7 +692,7 @@ class CalendarTab(QWidget):
 
         # --- MODO group (exclusive) ---
         modo_label = QLabel("MODO")
-        modo_label.setStyleSheet("color: #95a5a6; font-size: 10px; font-weight: bold;")
+        modo_label.setStyleSheet("color: #a6a6a6; font-size: 10px; font-weight: bold;")
         mp_layout.addWidget(modo_label)
 
         modo_row = QHBoxLayout()
@@ -708,7 +711,7 @@ class CalendarTab(QWidget):
             btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             color = MODE_COLORS.get(mode_key, "#7f8c8d")
             btn.setStyleSheet(f"""
-                QPushButton {{ background: #2c3e50; color: #95a5a6; border: 1px solid #3d5266; border-radius: 14px; padding: 2px 8px; font-size: 11px; }}
+                QPushButton {{ background: #141418; color: #a6a6a6; border: 1px solid #3d5266; border-radius: 14px; padding: 2px 8px; font-size: 11px; }}
                 QPushButton:checked {{ background: {color}; color: white; border: none; font-weight: bold; }}
                 QPushButton:hover:!checked {{ background: #34495e; border: 1px solid {color}; }}
             """)
@@ -719,7 +722,7 @@ class CalendarTab(QWidget):
 
         # --- EXTRAS group (multi-select toggles) ---
         extras_label = QLabel("EXTRAS")
-        extras_label.setStyleSheet("color: #95a5a6; font-size: 10px; font-weight: bold;")
+        extras_label.setStyleSheet("color: #a6a6a6; font-size: 10px; font-weight: bold;")
         mp_layout.addWidget(extras_label)
 
         extras_row = QHBoxLayout()
@@ -732,8 +735,8 @@ class CalendarTab(QWidget):
             btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             btn.setStyleSheet("""
                 QPushButton { background: #283747; color: #6c7a89; border: 1px solid #2c3e50; border-radius: 14px; padding: 2px 8px; font-size: 11px; }
-                QPushButton:checked { background: #2980b9; color: #ecf0f1; border: none; font-weight: bold; }
-                QPushButton:hover:!checked { background: #34495e; color: #95a5a6; }
+                QPushButton:checked { background: #2980b9; color: #f0f0f0; border: none; font-weight: bold; }
+                QPushButton:hover:!checked { background: #34495e; color: #a6a6a6; }
             """)
             extras_row.addWidget(btn)
             self._manual_extra_btns[action] = btn
@@ -758,7 +761,7 @@ class CalendarTab(QWidget):
 
         # === GO SECTION ===
         go_frame = QFrame()
-        go_frame.setStyleSheet("QFrame { background: #1e272e; border-radius: 8px; border: 1px solid #34495e; }")
+        go_frame.setStyleSheet("QFrame { background: #141418; border-radius: 20px; border: 1px solid #2e2e38; }")
         go_layout = QVBoxLayout(go_frame)
         go_layout.setContentsMargins(12, 10, 12, 10)
         go_layout.setSpacing(8)
@@ -771,7 +774,7 @@ class CalendarTab(QWidget):
 
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(CANONICAL_MODES)
-        self.mode_combo.setStyleSheet("background: #2c3e50; color: white; border: 1px solid #34495e; border-radius: 4px; padding: 4px;")
+        self.mode_combo.setStyleSheet("background: #141418; color: white; border: 1px solid #2e2e38; border-radius: 8px; padding: 4px;")
         mode_row.addWidget(self.mode_combo, 1)
         go_layout.addLayout(mode_row)
 
@@ -780,7 +783,7 @@ class CalendarTab(QWidget):
 
         self.go_now_btn = QPushButton("GO Ahora")
         self.go_now_btn.setStyleSheet("""
-            QPushButton { background: #27ae60; color: white; border: none; border-radius: 4px; padding: 8px 16px; font-weight: bold; }
+            QPushButton { background: #27ae60; color: white; border: none; border-radius: 8px; padding: 8px 16px; font-weight: bold; }
             QPushButton:hover { background: #2ecc71; }
         """)
         self.go_now_btn.clicked.connect(lambda: self._on_go(0))
@@ -788,7 +791,7 @@ class CalendarTab(QWidget):
 
         self.go_5_btn = QPushButton("+5 min")
         self.go_5_btn.setStyleSheet("""
-            QPushButton { background: #3498db; color: white; border: none; border-radius: 4px; padding: 8px 12px; }
+            QPushButton { background: #3498db; color: white; border: none; border-radius: 8px; padding: 8px 12px; }
             QPushButton:hover { background: #2980b9; }
         """)
         self.go_5_btn.clicked.connect(lambda: self._on_go(5))
@@ -796,7 +799,7 @@ class CalendarTab(QWidget):
 
         self.go_10_btn = QPushButton("+10 min")
         self.go_10_btn.setStyleSheet("""
-            QPushButton { background: #3498db; color: white; border: none; border-radius: 4px; padding: 8px 12px; }
+            QPushButton { background: #3498db; color: white; border: none; border-radius: 8px; padding: 8px 12px; }
             QPushButton:hover { background: #2980b9; }
         """)
         self.go_10_btn.clicked.connect(lambda: self._on_go(10))
@@ -804,7 +807,7 @@ class CalendarTab(QWidget):
 
         self.go_15_btn = QPushButton("+15 min")
         self.go_15_btn.setStyleSheet("""
-            QPushButton { background: #3498db; color: white; border: none; border-radius: 4px; padding: 8px 12px; }
+            QPushButton { background: #3498db; color: white; border: none; border-radius: 8px; padding: 8px 12px; }
             QPushButton:hover { background: #2980b9; }
         """)
         self.go_15_btn.clicked.connect(lambda: self._on_go(15))
@@ -815,7 +818,7 @@ class CalendarTab(QWidget):
         # Cancelar GO pendiente
         self.cancel_go_btn = QPushButton("Cancelar GO Pendiente")
         self.cancel_go_btn.setStyleSheet("""
-            QPushButton { background: #c0392b; color: white; border: none; border-radius: 4px; padding: 6px 12px; }
+            QPushButton { background: #c0392b; color: white; border: none; border-radius: 8px; padding: 6px 12px; }
             QPushButton:hover { background: #e74c3c; }
         """)
         self.cancel_go_btn.clicked.connect(self._on_cancel_go)
@@ -827,7 +830,7 @@ class CalendarTab(QWidget):
 
         # === OVERRIDE SECTION ===
         override_frame = QFrame()
-        override_frame.setStyleSheet("QFrame { background: #1e272e; border-radius: 8px; border: 1px solid #34495e; }")
+        override_frame.setStyleSheet("QFrame { background: #141418; border-radius: 20px; border: 1px solid #2e2e38; }")
         override_layout = QVBoxLayout(override_frame)
         override_layout.setContentsMargins(12, 10, 12, 10)
         override_layout.setSpacing(8)
@@ -841,12 +844,12 @@ class CalendarTab(QWidget):
         self.override_spin.setRange(5, 120)
         self.override_spin.setValue(30)
         self.override_spin.setSuffix(" min")
-        self.override_spin.setStyleSheet("background: #2c3e50; color: white; border: 1px solid #34495e; border-radius: 4px;")
+        self.override_spin.setStyleSheet("background: #141418; color: white; border: 1px solid #2e2e38; border-radius: 8px;")
         override_row.addWidget(self.override_spin)
 
         self.override_btn = QPushButton("Activar Override")
         self.override_btn.setStyleSheet("""
-            QPushButton { background: #e67e22; color: white; border: none; border-radius: 4px; padding: 8px 16px; font-weight: bold; }
+            QPushButton { background: #e67e22; color: white; border: none; border-radius: 8px; padding: 8px 16px; font-weight: bold; }
             QPushButton:hover { background: #f39c12; }
         """)
         self.override_btn.clicked.connect(self._on_override)
@@ -854,7 +857,7 @@ class CalendarTab(QWidget):
 
         self.clear_override_btn = QPushButton("Limpiar")
         self.clear_override_btn.setStyleSheet("""
-            QPushButton { background: #c0392b; color: white; border: none; border-radius: 4px; padding: 8px 12px; }
+            QPushButton { background: #c0392b; color: white; border: none; border-radius: 8px; padding: 8px 12px; }
             QPushButton:hover { background: #e74c3c; }
         """)
         self.clear_override_btn.clicked.connect(self._on_clear_override)
@@ -865,7 +868,7 @@ class CalendarTab(QWidget):
 
         # Override info
         self.override_info = QLabel("")
-        self.override_info.setStyleSheet("color: #f39c12; font-size: 10px;")
+        self.override_info.setStyleSheet("color: #ffd740; font-size: 10px;")
         self.override_info.hide()
         override_layout.addWidget(self.override_info)
 
@@ -874,18 +877,18 @@ class CalendarTab(QWidget):
 
         # === AUTO MODE SECTION ===
         auto_frame = QFrame()
-        auto_frame.setStyleSheet("QFrame { background: #1e272e; border-radius: 8px; border: 1px solid #34495e; }")
+        auto_frame.setStyleSheet("QFrame { background: #141418; border-radius: 20px; border: 1px solid #2e2e38; }")
         auto_layout = QHBoxLayout(auto_frame)
         auto_layout.setContentsMargins(12, 10, 12, 10)
 
         self.auto_label = QLabel("Modo automatico: ACTIVO")
-        self.auto_label.setStyleSheet("color: #2ecc71;")
+        self.auto_label.setStyleSheet("color: #00e676;")
         auto_layout.addWidget(self.auto_label)
         auto_layout.addStretch()
 
         self.auto_btn = QPushButton("Desactivar Auto")
         self.auto_btn.setStyleSheet("""
-            QPushButton { background: #7f8c8d; color: white; border: none; border-radius: 4px; padding: 6px 12px; }
+            QPushButton { background: #7f8c8d; color: white; border: none; border-radius: 8px; padding: 6px 12px; }
             QPushButton:hover { background: #95a5a6; }
         """)
         self.auto_btn.clicked.connect(self._on_toggle_auto)
@@ -963,7 +966,7 @@ class CalendarTab(QWidget):
     def _create_permissions(self, parent_layout):
         """Panel de permisos"""
         frame = QFrame()
-        frame.setStyleSheet("QFrame { background: #1e272e; border-radius: 8px; border: 1px solid #34495e; }")
+        frame.setStyleSheet("QFrame { background: #141418; border-radius: 20px; border: 1px solid #2e2e38; }")
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(8)
@@ -986,7 +989,7 @@ class CalendarTab(QWidget):
         energy_row = QHBoxLayout()
         energy_row.addWidget(QLabel("Energia:"))
         self.energy_label = QLabel("---")
-        self.energy_label.setStyleSheet("color: #f39c12; font-weight: bold;")
+        self.energy_label.setStyleSheet("color: #ffd740; font-weight: bold;")
         energy_row.addWidget(self.energy_label)
         energy_row.addStretch()
         layout.addLayout(energy_row)
@@ -1000,7 +1003,7 @@ class CalendarTab(QWidget):
     def _create_status(self, parent_layout):
         """Panel de estado"""
         frame = QFrame()
-        frame.setStyleSheet("QFrame { background: #1e272e; border-radius: 8px; border: 1px solid #34495e; }")
+        frame.setStyleSheet("QFrame { background: #141418; border-radius: 20px; border: 1px solid #2e2e38; }")
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(6)
@@ -1012,7 +1015,7 @@ class CalendarTab(QWidget):
 
         grid.addWidget(QLabel("Estado:"), 0, 0)
         self.sys_status = QLabel("ESTABLE")
-        self.sys_status.setStyleSheet("color: #2ecc71; font-weight: bold;")
+        self.sys_status.setStyleSheet("color: #00e676; font-weight: bold;")
         grid.addWidget(self.sys_status, 0, 1)
 
         grid.addWidget(QLabel("Desde:"), 1, 0)
@@ -1146,15 +1149,15 @@ class CalendarTab(QWidget):
 
     def _set_disconnected(self):
         self.mode_label.setText("---")
-        self.mode_label.setStyleSheet("color: #7f8c8d;")
+        self.mode_label.setStyleSheet("color: #8a8a8a;")
         self.source_label.setText("No conectado")
         self.timeline_status.setText("DESCONECTADO")
-        self.timeline_status.setStyleSheet("color: #e74c3c;")
+        self.timeline_status.setStyleSheet("color: #ff5252;")
         self.sys_status.setText("DESCONECTADO")
-        self.sys_status.setStyleSheet("color: #e74c3c;")
+        self.sys_status.setStyleSheet("color: #ff5252;")
         # Governance status
         self.governance_status.setText("🔴 DESCONECTADO")
-        self.governance_status.setStyleSheet("color: #e74c3c; font-size: 10px; font-weight: bold; margin-top: 8px;")
+        self.governance_status.setStyleSheet("color: #ff5252; font-size: 10px; font-weight: bold; margin-top: 8px;")
         # Actions panel - all off
         empty_modules = {k: False for k in CANONICAL_MODULE_CONFIG.keys()}
         self.actions_panel.update_modules(empty_modules, "---")
@@ -1194,7 +1197,7 @@ class CalendarTab(QWidget):
                 self.elapsed_label.setText(f"Transcurrido: {m}m {s:02d}s")
 
             self.timeline_status.setText("ACTIVO")
-            self.timeline_status.setStyleSheet("color: #2ecc71;")
+            self.timeline_status.setStyleSheet("color: #00e676;")
 
             # Progreso
             progress = state.get("progress", 0)
@@ -1280,7 +1283,7 @@ class CalendarTab(QWidget):
             self.energy_label.setStyleSheet(f"color: {energy_colors.get(energy, '#7f8c8d')}; font-weight: bold;")
         else:
             self.energy_label.setText("---")
-            self.energy_label.setStyleSheet("color: #7f8c8d;")
+            self.energy_label.setStyleSheet("color: #8a8a8a;")
 
         # Estados deshabilitados
         disabled = perms.get("disable_states", [])
@@ -1292,17 +1295,17 @@ class CalendarTab(QWidget):
 
         if mode == "apagado":
             self.sys_status.setText("APAGADO")
-            self.sys_status.setStyleSheet("color: #e74c3c;")
+            self.sys_status.setStyleSheet("color: #ff5252;")
             # Governance: pasivo cuando está apagado
             self.governance_status.setText("🟡 PASIVO (sistema idle)")
-            self.governance_status.setStyleSheet("color: #f39c12; font-size: 10px; font-weight: bold; margin-top: 8px;")
+            self.governance_status.setStyleSheet("color: #ffd740; font-size: 10px; font-weight: bold; margin-top: 8px;")
         else:
             self.sys_status.setText("ESTABLE")
-            self.sys_status.setStyleSheet("color: #2ecc71;")
+            self.sys_status.setStyleSheet("color: #00e676;")
             # Governance: activo gobernando
             src_text = "BIOS" if source == "AUTO" else source
             self.governance_status.setText(f"🟢 GOBERNANDO ({src_text})")
-            self.governance_status.setStyleSheet("color: #2ecc71; font-size: 10px; font-weight: bold; margin-top: 8px;")
+            self.governance_status.setStyleSheet("color: #00e676; font-size: 10px; font-weight: bold; margin-top: 8px;")
 
         since_str = state.get("since")
         if since_str:
@@ -1352,11 +1355,11 @@ class CalendarTab(QWidget):
         is_auto = state.get("auto_mode_enabled", True)
         if is_auto:
             self.auto_label.setText("Modo automatico: ACTIVO")
-            self.auto_label.setStyleSheet("color: #2ecc71;")
+            self.auto_label.setStyleSheet("color: #00e676;")
             self.auto_btn.setText("Desactivar Auto")
         else:
             self.auto_label.setText("Modo automatico: INACTIVO")
-            self.auto_label.setStyleSheet("color: #e74c3c;")
+            self.auto_label.setStyleSheet("color: #ff5252;")
             self.auto_btn.setText("Activar Auto")
 
     def _update_control_mode(self, state):

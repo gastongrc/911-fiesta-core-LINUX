@@ -48,9 +48,9 @@ class PulseLED(QFrame):
                 QFrame {
                     background: qradialgradient(cx:0.5, cy:0.5, radius:0.5,
                         fx:0.5, fy:0.5,
-                        stop:0 #333333, stop:0.5 #222222, stop:1 #111111);
+                        stop:0 #2e2e38, stop:0.5 #0e0e14, stop:1 #0a0a0f);
                     border-radius: 40px;
-                    border: 3px solid #444444;
+                    border: 3px solid #2e2e38;
                 }
             """)
 
@@ -92,9 +92,9 @@ class KickLED(QFrame):
                 QFrame {
                     background: qradialgradient(cx:0.5, cy:0.5, radius:0.5,
                         fx:0.5, fy:0.5,
-                        stop:0 #333333, stop:0.5 #222222, stop:1 #111111);
+                        stop:0 #2e2e38, stop:0.5 #0e0e14, stop:1 #0a0a0f);
                     border-radius: 40px;
-                    border: 3px solid #444444;
+                    border: 3px solid #2e2e38;
                 }
             """)
 
@@ -111,9 +111,9 @@ class LockLED(QFrame):
         QFrame {
             background: qradialgradient(cx:0.5, cy:0.5, radius:0.5,
                 fx:0.5, fy:0.5,
-                stop:0 #333333, stop:0.5 #222222, stop:1 #111111);
+                stop:0 #2e2e38, stop:0.5 #0e0e14, stop:1 #0a0a0f);
             border-radius: 25px;
-            border: 3px solid #444444;
+            border: 3px solid #2e2e38;
         }
     """
     _STYLE_LOCKED = """
@@ -209,7 +209,7 @@ class ClockWidget(QWidget):
 
         label = QLabel(label_text)
         label.setFont(QFont("Arial", 9))
-        label.setStyleSheet("color: #888; background: transparent;")
+        label.setStyleSheet("color: #8a8a8a; background: transparent;")
         label.setFixedWidth(110)
         row.addWidget(label)
 
@@ -218,7 +218,7 @@ class ClockWidget(QWidget):
         slider.setValue(int(default_val * multiplier))
         slider.setStyleSheet("""
             QSlider::groove:horizontal {
-                background: #333;
+                background: #2e2e38;
                 height: 6px;
                 border-radius: 3px;
             }
@@ -255,15 +255,15 @@ class ClockWidget(QWidget):
         return row, slider
 
     def _setup_ui(self):
-        self.setStyleSheet("background: #0f0f0f;")
+        self.setStyleSheet("background: #0a0a0f;")
 
         # Scroll area for all content
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("""
             QScrollArea { border: none; background: transparent; }
-            QScrollBar:vertical { width: 8px; background: #1a1a1a; }
-            QScrollBar::handle:vertical { background: #444; border-radius: 4px; }
+            QScrollBar:vertical { width: 8px; background: #141418; }
+            QScrollBar::handle:vertical { background: #2e2e38; border-radius: 4px; }
         """)
 
         content = QWidget()
@@ -280,7 +280,7 @@ class ClockWidget(QWidget):
 
         subtitle = QLabel("AutoClock v11")
         subtitle.setFont(QFont("Arial", 10))
-        subtitle.setStyleSheet("color: #666; background: transparent;")
+        subtitle.setStyleSheet("color: #616161; background: transparent;")
         subtitle.setAlignment(Qt.AlignCenter)
         main_layout.addWidget(subtitle)
 
@@ -324,7 +324,7 @@ class ClockWidget(QWidget):
 
         self._lock_label = QLabel("LOCK")
         self._lock_label.setFont(QFont("Arial", 9))
-        self._lock_label.setStyleSheet("color: #666; background: transparent;")
+        self._lock_label.setStyleSheet("color: #616161; background: transparent;")
         self._lock_label.setAlignment(Qt.AlignCenter)
 
         lock_container.addWidget(self.lock_led, 0, Qt.AlignCenter)
@@ -341,7 +341,7 @@ class ClockWidget(QWidget):
 
         interval_unit = QLabel("ms")
         interval_unit.setFont(QFont("Arial", 12))
-        interval_unit.setStyleSheet("color: #666; background: transparent;")
+        interval_unit.setStyleSheet("color: #616161; background: transparent;")
         interval_unit.setAlignment(Qt.AlignCenter)
 
         # BPM Display
@@ -392,7 +392,7 @@ class ClockWidget(QWidget):
                 background: #3d1a1a;
                 color: #ff6666;
                 border: 1px solid #aa5555;
-                border-radius: 4px;
+                border-radius: 10px;
             }
             QPushButton:hover { background: #5d2a2a; }
             QPushButton:pressed { background: #2d0a0a; }
@@ -409,9 +409,9 @@ class ClockWidget(QWidget):
         detection_group.setStyleSheet("""
             QGroupBox {
                 color: #ff8800;
-                background: #1a1a1a;
-                border: 1px solid #333;
-                border-radius: 6px;
+                background: #141418;
+                border: 1px solid #2e2e38;
+                border-radius: 12px;
                 margin-top: 10px;
                 padding-top: 10px;
             }
@@ -457,9 +457,9 @@ class ClockWidget(QWidget):
         stability_group.setStyleSheet("""
             QGroupBox {
                 color: #00aaff;
-                background: #1a1a1a;
-                border: 1px solid #333;
-                border-radius: 6px;
+                background: #141418;
+                border: 1px solid #2e2e38;
+                border-radius: 12px;
                 margin-top: 10px;
                 padding-top: 10px;
             }
@@ -601,7 +601,7 @@ class ClockWidget(QWidget):
         elif ui.lock_state == "LOCKING":
             self._lock_label.setStyleSheet("color: #ffcc00; background: transparent;")
         else:
-            self._lock_label.setStyleSheet("color: #666; background: transparent;")
+            self._lock_label.setStyleSheet("color: #616161; background: transparent;")
 
         # Update manual indicator
         if self.auto_clock.manual_override_active():

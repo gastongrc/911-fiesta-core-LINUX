@@ -167,17 +167,17 @@ class LayerListWidget(QWidget):
 
         # Título mejorado
         header = QFrame()
-        header.setStyleSheet("background: #252525; border-radius: 4px;")
+        header.setStyleSheet("background: #141418; border: 1px solid #2e2e38; border-radius: 12px;")
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(8, 6, 8, 6)
 
         title = QLabel(f"LAYERS ({self.camera_type})")
-        title.setStyleSheet("font-weight: bold; font-size: 12px; color: #fff;")
+        title.setStyleSheet("font-weight: bold; font-size: 12px; color: #00e676; letter-spacing: 1px;")
         header_layout.addWidget(title)
 
         # Contador de zonas
         self.zone_count = QLabel(f"0/{self.max_zones}")
-        self.zone_count.setStyleSheet("font-size: 10px; color: #888;")
+        self.zone_count.setStyleSheet("font-size: 10px; color: #8a8a8a;")
         header_layout.addWidget(self.zone_count)
 
         layout.addWidget(header)

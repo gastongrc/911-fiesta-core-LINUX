@@ -26,24 +26,30 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import QTimer, Qt
 
 # ---------------------------------------------------------------------------
-# Colors (match neon_styles)
+# Colors — aligned with WEB control-room.css design tokens
 # ---------------------------------------------------------------------------
-_GREEN = "#00ff88"
-_CYAN = "#00d4ff"
-_YELLOW = "#ff9500"
-_RED = "#ff3366"
-_MUTED = "#606070"
-_TEXT = "#e0e0e8"
-_TEXT2 = "#a0a0b0"
-_BG_CARD = "#181820"
-_BG_PANEL = "#121218"
-_BORDER = "#2a2a35"
+_GREEN = "#00e676"       # WEB: --green
+_CYAN = "#4dd0e1"        # WEB: --cyan
+_YELLOW = "#ffd740"      # WEB: --yellow
+_RED = "#ff5252"         # WEB: --red
+_MUTED = "#8a8a8a"       # WEB: --off
+_TEXT = "#f0f0f0"        # WEB: --t1
+_TEXT2 = "#a6a6a6"       # WEB: --t2
+_BG_CARD = "#141418"     # Glass card solid
+_BG_PANEL = "#141418"    # Glass panel solid
+_BG_INSET = "#0e0e14"   # Inset panel
+_BORDER = "#2e2e38"      # Glass border solid
 
 # Status colors
 _OK_COLOR = _GREEN
 _WARN_COLOR = _YELLOW
 _ERR_COLOR = _RED
 _OFF_COLOR = _MUTED
+
+# Typography
+_FONT_TITLE = "'Space Grotesk', 'Inter', 'Segoe UI', sans-serif"
+_FONT_BODY = "'Inter', 'Segoe UI', sans-serif"
+_FONT_MONO = "'JetBrains Mono', 'Consolas', monospace"
 
 
 def _status_dot(color: str) -> str:
@@ -52,22 +58,29 @@ def _status_dot(color: str) -> str:
 
 
 def _card_style() -> str:
+    """WEB: .g glass card."""
     return (
         f"QFrame{{ background:{_BG_CARD}; border:1px solid {_BORDER}; "
-        f"border-radius:8px; }}"
+        f"border-radius:20px; }}"
     )
 
 
 def _section_title_style() -> str:
-    return f"font-weight:700; color:{_CYAN}; font-size:12px; letter-spacing:1px;"
+    """WEB: section header — Space Grotesk, green accent."""
+    return (
+        f"font-weight:700; color:{_GREEN}; font-size:12px; "
+        f"letter-spacing:1px; font-family:{_FONT_TITLE};"
+    )
 
 
 def _metric_label_style() -> str:
-    return f"color:{_TEXT2}; font-size:11px;"
+    """WEB: --t2 secondary text."""
+    return f"color:{_TEXT2}; font-size:11px; font-family:{_FONT_BODY};"
 
 
 def _metric_value_style(color: str = _TEXT) -> str:
-    return f"color:{color}; font-weight:700; font-size:12px; font-family:'JetBrains Mono','Consolas',monospace;"
+    """WEB: monospace value display."""
+    return f"color:{color}; font-weight:700; font-size:12px; font-family:{_FONT_MONO};"
 
 
 # ---------------------------------------------------------------------------
@@ -334,21 +347,21 @@ class HealthMonitorWidget(QWidget):
 
         container = QWidget()
         layout = QVBoxLayout(container)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(14)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(20)
         scroll.setWidget(container)
 
         # --- GLOBAL STATUS BANNER ---
         self.frm_global = QFrame()
         self.frm_global.setStyleSheet(_card_style())
         gl = QHBoxLayout(self.frm_global)
-        gl.setContentsMargins(14, 10, 14, 10)
+        gl.setContentsMargins(24, 16, 24, 16)
         self.lbl_global_dot = QLabel()
         self.lbl_global_dot.setTextFormat(Qt.RichText)
         self.lbl_global_dot.setText(_status_dot(_OK_COLOR))
         gl.addWidget(self.lbl_global_dot)
         self.lbl_global_text = QLabel("SYSTEM OK")
-        self.lbl_global_text.setStyleSheet(f"font-weight:800; font-size:14px; color:{_GREEN};")
+        self.lbl_global_text.setStyleSheet(f"font-weight:800; font-size:14px; color:{_GREEN}; font-family:{_FONT_TITLE};")
         gl.addWidget(self.lbl_global_text)
         gl.addStretch()
         self.lbl_global_reason = QLabel("")
@@ -441,8 +454,8 @@ class HealthMonitorWidget(QWidget):
         self.lbl_audio_cards.setWordWrap(True)
         self.lbl_audio_cards.setTextFormat(Qt.RichText)
         self.lbl_audio_cards.setStyleSheet(
-            f"color:{_TEXT}; font-size:11px; font-family:'JetBrains Mono','Consolas',monospace; "
-            f"padding:4px 6px; background:#0e0e14; border-radius:4px;"
+            f"color:{_TEXT}; font-size:11px; font-family:{_FONT_MONO}; "
+            f"padding:8px 12px; background:{_BG_INSET}; border:1px solid #1e1e28; border-radius:12px;"
         )
         audio_vbox.addWidget(self.lbl_audio_cards)
 
@@ -454,8 +467,8 @@ class HealthMonitorWidget(QWidget):
         self.lbl_audio_capture.setWordWrap(True)
         self.lbl_audio_capture.setTextFormat(Qt.RichText)
         self.lbl_audio_capture.setStyleSheet(
-            f"color:{_TEXT}; font-size:11px; font-family:'JetBrains Mono','Consolas',monospace; "
-            f"padding:4px 6px; background:#0e0e14; border-radius:4px;"
+            f"color:{_TEXT}; font-size:11px; font-family:{_FONT_MONO}; "
+            f"padding:8px 12px; background:{_BG_INSET}; border:1px solid #1e1e28; border-radius:12px;"
         )
         audio_vbox.addWidget(self.lbl_audio_capture)
 
@@ -480,7 +493,7 @@ class HealthMonitorWidget(QWidget):
         err_frame = self._make_section("LAST ERRORS")
         self.lbl_last_error = QLabel("---")
         self.lbl_last_error.setWordWrap(True)
-        self.lbl_last_error.setStyleSheet(f"color:{_TEXT2}; font-size:10px; font-family:'JetBrains Mono','Consolas',monospace;")
+        self.lbl_last_error.setStyleSheet(f"color:{_TEXT2}; font-size:10px; font-family:{_FONT_MONO};")
         err_frame.layout().addWidget(self.lbl_last_error)
         layout.addWidget(err_frame)
 
@@ -489,8 +502,8 @@ class HealthMonitorWidget(QWidget):
         btn = QPushButton("Refresh Now")
         btn.setStyleSheet(
             f"QPushButton{{background:{_BG_CARD}; border:1px solid {_BORDER}; "
-            f"border-radius:6px; padding:8px 16px; color:{_CYAN}; font-weight:600;}} "
-            f"QPushButton:hover{{background:#252530; border-color:{_CYAN};}}"
+            f"border-radius:10px; padding:12px 24px; color:{_GREEN}; font-weight:600; font-family:{_FONT_BODY};}} "
+            f"QPushButton:hover{{background:#1c1c22; border-color:#3e5e3e;}}"
         )
         btn.clicked.connect(self.refresh_metrics)
         btn_row.addWidget(btn)
@@ -506,8 +519,8 @@ class HealthMonitorWidget(QWidget):
         frame = QFrame()
         frame.setStyleSheet(_card_style())
         vbox = QVBoxLayout(frame)
-        vbox.setContentsMargins(14, 10, 14, 12)
-        vbox.setSpacing(4)
+        vbox.setContentsMargins(24, 16, 24, 20)
+        vbox.setSpacing(8)
         lbl = QLabel(title)
         lbl.setStyleSheet(_section_title_style())
         vbox.addWidget(lbl)
@@ -919,7 +932,7 @@ class HealthMonitorWidget(QWidget):
 
         self.lbl_global_dot.setText(_status_dot(color))
         self.lbl_global_text.setText(f"SYSTEM {self._global_status}")
-        self.lbl_global_text.setStyleSheet(f"font-weight:800; font-size:14px; color:{color};")
+        self.lbl_global_text.setStyleSheet(f"font-weight:800; font-size:14px; color:{color}; font-family:{_FONT_TITLE};")
         self.lbl_global_reason.setText(self._global_reason)
 
         # ---- LAST ERRORS ----

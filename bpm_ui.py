@@ -20,11 +20,11 @@ class BPMMonitorWidget(QWidget):
 
         layout = QVBoxLayout(self); layout.setContentsMargins(8, 8, 8, 8); layout.setSpacing(6)
         title = QLabel("BPM DETECTOR")
-        title.setStyleSheet("font-weight:700; color:#ddd; font-size:12px;")
+        title.setStyleSheet("font-weight:700; color:#f0f0f0; font-size:12px;")
         layout.addWidget(title)
 
         self.bpm_main = QLabel("-- BPM")
-        self.bpm_main.setStyleSheet("color:#888; font-weight:700; font-size:24px; background:#0a0a0a; border:1px solid #333; border-radius:6px; padding:8px;")
+        self.bpm_main.setStyleSheet("color:#8a8a8a; font-weight:700; font-size:24px; background:#0a0a0f; border:1px solid #2e2e38; border-radius:12px; padding:8px;")
         self.bpm_main.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.bpm_main)
 
@@ -51,14 +51,14 @@ class BPMMonitorWidget(QWidget):
         self.btn_force_bpm = QPushButton("Force BPM")
         self.btn_reset = QPushButton("Reset")
         for b in (self.btn_force_bpm, self.btn_reset):
-            b.setStyleSheet("QPushButton{background:#333; border:1px solid #555; border-radius:4px; padding:6px; color:#ccc;} QPushButton:hover{background:#444;}")
+            b.setStyleSheet("QPushButton{background:#2e2e38; border:1px solid #2e2e38; border-radius:10px; padding:6px; color:#f0f0f0;} QPushButton:hover{background:#2e2e38;}")
         btn_layout.addWidget(self.btn_force_bpm); btn_layout.addWidget(self.btn_reset)
         layout.addLayout(btn_layout)
 
         self.btn_reset.clicked.connect(self.reset_bpm)
         self.btn_force_bpm.clicked.connect(self.force_bpm_dialog)
 
-        self.setStyleSheet("QWidget{background:#151515; border:1px solid #333; border-radius:6px;} QLabel{color:#ccc;}")
+        self.setStyleSheet("QWidget{background:#141418; border:1px solid #2e2e38; border-radius:12px;} QLabel{color:#f0f0f0;}")
 
     # --- API pública ---
     def set_detector(self, detector, available=True):
@@ -81,11 +81,11 @@ class BPMMonitorWidget(QWidget):
             self.bpm_main.setText(main_txt)
 
         stable = bool(info.get('stable', False))
-        color = "#00f08a" if stable and bpm>0 else ("#ffaa00" if bpm>0 else "#888")
+        color = "#00f08a" if stable and bpm>0 else ("#ffaa00" if bpm>0 else "#8a8a8a")
         if color != self._last_color:
             self._last_color = color
             self.bpm_main.setStyleSheet(
-                f"color:{color}; font-weight:700; font-size:24px; background:#0a0a0a; border:1px solid #333; border-radius:6px; padding:8px;"
+                f"color:{color}; font-weight:700; font-size:24px; background:#0a0a0f; border:1px solid #2e2e38; border-radius:12px; padding:8px;"
             )
 
         conf_txt = f"{float(info.get('confidence', 0) or 0):.1f}%"

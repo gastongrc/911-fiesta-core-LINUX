@@ -61,12 +61,12 @@ class ThresholdVU(QWidget):
 
         if self._cached_colors is None:
             self._cached_colors = {
-                'bg': QColor("#0f0f0f"),
-                'border': QColor("#333333"),
-                'fill': QColor("#00e676"),
-                'min': QColor("#4fc3f7"),
-                'max': QColor("#ffb74d"),
-                'match': QColor("#ef5350")
+                'bg': QColor("#0e0e14"),    # WEB: inset bg
+                'border': QColor("#2e2e38"),  # WEB: glass border
+                'fill': QColor("#00e676"),  # WEB: --green
+                'min': QColor("#4dd0e1"),   # WEB: --cyan
+                'max': QColor("#ffd740"),   # WEB: --yellow
+                'match': QColor("#ff5252")  # WEB: --red
             }
         
         colors = self._cached_colors
@@ -114,17 +114,30 @@ class ThresholdVU(QWidget):
 class ModuleCard(QFrame):
     """
     Tarjeta estándar con soporte para placeholders y disabled state.
+    WEB-aligned: glass card (.g) with 20px radius, green accent.
     """
+    # WEB-aligned design tokens
+    _BG_CARD = "#141418"
+    _BG_INSET = "#0e0e14"
+    _BORDER = "#2e2e38"
+    _BORDER_ACTIVE = "#00e676"
+    _TEXT1 = "#f0f0f0"
+    _TEXT2 = "#a6a6a6"
+    _TEXT_MUTED = "#616161"
+    _GREEN = "#00e676"
+    _FONT_TITLE = "'Space Grotesk', 'Inter', sans-serif"
+    _FONT_MONO = "'JetBrains Mono', 'Consolas', monospace"
+
     def __init__(self, title: str):
         super().__init__()
-        
+
         self._on = False
         self._is_placeholder = False
         self._is_disabled = False
-        
+
         self.setStyleSheet(
-            "QFrame{background:#181818; border:1px solid #333; border-radius:6px;} "
-            "QLabel{color:#ddd;}"
+            f"QFrame{{background:{self._BG_CARD}; border:1px solid {self._BORDER}; border-radius:20px;}} "
+            f"QLabel{{color:{self._TEXT1};}}"
         )
         self.setMinimumWidth(290)
         self.setMinimumHeight(180)
@@ -138,30 +151,34 @@ class ModuleCard(QFrame):
         self._debug_mode = os.environ.get('MODULE_CARD_DEBUG', '0') == '1'
 
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(8,8,8,8)
-        lay.setSpacing(6)
+        lay.setContentsMargins(16,16,16,16)
+        lay.setSpacing(8)
         
         # Header con badges
         header_layout = QHBoxLayout()
         self.lbl_title = QLabel(title)
-        self.lbl_title.setStyleSheet("QLabel{font-weight:700; color:#fff; font-size:12px;}")
+        self.lbl_title.setStyleSheet(
+            f"QLabel{{font-weight:700; color:{self._TEXT1}; font-size:12px; font-family:{self._FONT_TITLE};}}"
+        )
         header_layout.addWidget(self.lbl_title)
         header_layout.addStretch()
         
-        # Badge para PLACEHOLDER
+        # Badge para PLACEHOLDER — WEB: .b.gray
         self.badge_placeholder = QLabel("PLACEHOLDER")
         self.badge_placeholder.setStyleSheet(
-            "QLabel{background:#666; color:#fff; padding:2px 6px; "
-            "border-radius:3px; font-size:9px; font-weight:700;}"
+            f"QLabel{{background:{self._BG_INSET}; color:#8a8a8a; padding:4px 12px; "
+            f"border:1px solid #8a8a8a; border-radius:8px; font-size:11px; "
+            f"font-weight:600; font-family:{self._FONT_MONO};}}"
         )
         self.badge_placeholder.setVisible(False)
         header_layout.addWidget(self.badge_placeholder)
-        
-        # Badge para DISABLED
+
+        # Badge para DISABLED — WEB: .b.red
         self.badge_disabled = QLabel("DISABLED")
         self.badge_disabled.setStyleSheet(
-            "QLabel{background:#c62828; color:#fff; padding:2px 6px; "
-            "border-radius:3px; font-size:9px; font-weight:700;}"
+            f"QLabel{{background:{self._BG_INSET}; color:#ff5252; padding:4px 12px; "
+            f"border:1px solid #ff5252; border-radius:8px; font-size:11px; "
+            f"font-weight:600; font-family:{self._FONT_MONO};}}"
         )
         self.badge_disabled.setVisible(False)
         header_layout.addWidget(self.badge_disabled)
@@ -183,7 +200,7 @@ class ModuleCard(QFrame):
         thr.setVerticalSpacing(4)
 
         min_lbl = QLabel("Min")
-        min_lbl.setStyleSheet("QLabel{font-size:10px;}")
+        min_lbl.setStyleSheet(f"QLabel{{font-size:10px; color:{self._TEXT2};}}")
         thr.addWidget(min_lbl, 0, 0, Qt.AlignRight)
         
         self.s_min = QSlider(Qt.Horizontal)
@@ -193,11 +210,11 @@ class ModuleCard(QFrame):
         thr.addWidget(self.s_min, 0, 1)
         
         self.lbl_min_val = QLabel("25%")
-        self.lbl_min_val.setStyleSheet("QLabel{color:#9aa; font-size:10px;}")
+        self.lbl_min_val.setStyleSheet(f"QLabel{{color:{self._TEXT2}; font-size:10px; font-family:{self._FONT_MONO};}}")
         thr.addWidget(self.lbl_min_val, 0, 2, Qt.AlignLeft)
 
         max_lbl = QLabel("Max")
-        max_lbl.setStyleSheet("QLabel{font-size:10px;}")
+        max_lbl.setStyleSheet(f"QLabel{{font-size:10px; color:{self._TEXT2};}}")
         thr.addWidget(max_lbl, 1, 0, Qt.AlignRight)
         
         self.s_max = QSlider(Qt.Horizontal)
@@ -207,11 +224,11 @@ class ModuleCard(QFrame):
         thr.addWidget(self.s_max, 1, 1)
         
         self.lbl_max_val = QLabel("75%")
-        self.lbl_max_val.setStyleSheet("QLabel{color:#9aa; font-size:10px;}")
+        self.lbl_max_val.setStyleSheet(f"QLabel{{color:{self._TEXT2}; font-size:10px; font-family:{self._FONT_MONO};}}")
         thr.addWidget(self.lbl_max_val, 1, 2, Qt.AlignLeft)
 
         match_lbl = QLabel("Match")
-        match_lbl.setStyleSheet("QLabel{font-size:10px;}")
+        match_lbl.setStyleSheet(f"QLabel{{font-size:10px; color:{self._TEXT2};}}")
         thr.addWidget(match_lbl, 2, 0, Qt.AlignRight)
         
         self.s_match = QSlider(Qt.Horizontal)
@@ -221,7 +238,7 @@ class ModuleCard(QFrame):
         thr.addWidget(self.s_match, 2, 1)
         
         self.lbl_match_val = QLabel("50%")
-        self.lbl_match_val.setStyleSheet("QLabel{color:#9aa; font-size:10px;}")
+        self.lbl_match_val.setStyleSheet(f"QLabel{{color:{self._TEXT2}; font-size:10px; font-family:{self._FONT_MONO};}}")
         thr.addWidget(self.lbl_match_val, 2, 2, Qt.AlignLeft)
 
         lay.addLayout(thr)
@@ -232,7 +249,9 @@ class ModuleCard(QFrame):
         self._led_row = 0
 
         self.lbl_status = QLabel("")
-        self.lbl_status.setStyleSheet("QLabel{font-size:10px; color:#9aa;}")
+        self.lbl_status.setStyleSheet(
+            f"QLabel{{font-size:10px; color:{self._TEXT2}; font-family:{self._FONT_MONO};}}"
+        )
         lay.addWidget(self.lbl_status)
 
         self._connect_and_track(self.s_min.valueChanged, self._on_thr_change)
@@ -259,10 +278,10 @@ class ModuleCard(QFrame):
         self.set_status("status: inactive (disabled by preset)")
 
     def _apply_inactive_style(self):
-        """Aplica estilo visual de inactivo (atenuado)"""
+        """Aplica estilo visual de inactivo (atenuado) — WEB: dimmed glass card."""
         self.setStyleSheet(
-            "QFrame{background:#181818; border:1px solid #333; border-radius:6px; opacity:0.6;} "
-            "QLabel{color:#666;}"
+            f"QFrame{{background:{self._BG_CARD}; border:1px solid {self._BORDER}; border-radius:20px;}} "
+            f"QLabel{{color:{self._TEXT_MUTED};}}"
         )
 
     def _disable_controls(self):
@@ -321,7 +340,7 @@ class ModuleCard(QFrame):
         self._grid_row += 1
         
         lbl = QLabel(label)
-        lbl.setStyleSheet("QLabel{font-size:10px;}")
+        lbl.setStyleSheet(f"QLabel{{font-size:10px; color:{self._TEXT2};}}")
         self.grid.addWidget(lbl, row, 0)
         
         s = QSlider(Qt.Horizontal)
@@ -338,7 +357,7 @@ class ModuleCard(QFrame):
         self.grid.addWidget(s, row, 1)
         
         val_lbl = QLabel(self._fmt_value(float(vmin), float(vmax), float(vdef)))
-        val_lbl.setStyleSheet("QLabel{color:#9aa; font-size:10px;}")
+        val_lbl.setStyleSheet(f"QLabel{{color:{self._TEXT2}; font-size:10px; font-family:{self._FONT_MONO};}}")
         self.grid.addWidget(val_lbl, row, 2)
         
         self._sliders[key] = s
@@ -364,9 +383,9 @@ class ModuleCard(QFrame):
             col = len(self._leds) % 3
             if col == 0:
                 self._led_row += 1
-        
-        lbl = QLabel(f"◯ {label}")
-        lbl.setStyleSheet("QLabel{color:#777; font-weight:600; font-size:10px;}")
+
+        lbl = QLabel(f"\u25cb {label}")
+        lbl.setStyleSheet(f"QLabel{{color:#8a8a8a; font-weight:600; font-size:10px; font-family:{self._FONT_MONO};}}")
         self.leds_grid.addWidget(lbl, self._led_row, col)
         self._leds[key] = lbl
 
@@ -374,8 +393,10 @@ class ModuleCard(QFrame):
         lbl = self._leds.get(key)
         if not lbl: 
             return
-        lbl.setText(f"{'◉' if on else '◯'} {lbl.text()[2:]}")
-        lbl.setStyleSheet(f"QLabel{{color: {'#00f08a' if on else '#777'}; font-weight:700; font-size:10px;}}")
+        char = '\u25c9' if on else '\u25cb'
+        lbl.setText(f"{char} {lbl.text()[2:]}")
+        color = self._GREEN if on else '#8a8a8a'
+        lbl.setStyleSheet(f"QLabel{{color:{color}; font-weight:700; font-size:10px; font-family:{self._FONT_MONO};}}")
 
     def set_value(self, v):
         self.vu.set_value(v)
@@ -412,9 +433,10 @@ class ModuleCard(QFrame):
         if self._is_placeholder or self._is_disabled:
             return
         
+        border_color = self._BORDER_ACTIVE if on else self._BORDER
         self.setStyleSheet(
-            f"QFrame{{background:#181818; border:2px solid {'#00f08a' if on else '#333'}; border-radius:6px;}} "
-            "QLabel{color:#ddd;}"
+            f"QFrame{{background:{self._BG_CARD}; border:2px solid {border_color}; border-radius:20px;}} "
+            f"QLabel{{color:{self._TEXT1};}}"
         )
 
     def is_on(self): 

@@ -212,7 +212,7 @@ class CuesMonitorTab(QWidget):
         """Crea el header con información de estado y contadores."""
         header_frame = QFrame()
         header_frame.setStyleSheet(
-            "QFrame { background: #1a1a1a; border: 1px solid #333; border-radius: 6px; }"
+            "QFrame { background: #141418; border: 1px solid #2e2e38; border-radius: 12px; }"
         )
         header_layout = QVBoxLayout(header_frame)
         header_layout.setContentsMargins(10, 8, 10, 8)
@@ -228,7 +228,7 @@ class CuesMonitorTab(QWidget):
         self.header_info = QLabel("Estado: — | Energía: — | Engine: Modular")
         self.header_info.setAlignment(Qt.AlignCenter)
         self.header_info.setFont(QFont("Arial", 10))
-        self.header_info.setStyleSheet("color: #ccc;")
+        self.header_info.setStyleSheet("color: #f0f0f0;")
         header_layout.addWidget(self.header_info)
         
         # Contadores de analizadores
@@ -236,7 +236,7 @@ class CuesMonitorTab(QWidget):
         self.analyzer_stats = QLabel(f"Analyzers → Active: {active} | Disabled: {disabled} | Placeholders: {placeholders}")
         self.analyzer_stats.setAlignment(Qt.AlignCenter)
         self.analyzer_stats.setFont(QFont("Arial", 9))
-        self.analyzer_stats.setStyleSheet("color: #888; background: #0f0f0f; padding: 3px; border-radius: 3px;")
+        self.analyzer_stats.setStyleSheet("color: #8a8a8a; background: #0a0a0f; padding: 3px; border-radius: 3px;")
         header_layout.addWidget(self.analyzer_stats)
         
         # Línea de estado Aux Time
@@ -252,7 +252,7 @@ class CuesMonitorTab(QWidget):
         """NUEVO: Crea sección dedicada para Brake Analyzer REAL"""
         brake_frame = QFrame()
         brake_frame.setStyleSheet(
-            "QFrame { background: #2a1b3d; border: 2px solid #9c27b0; border-radius: 6px; }"
+            "QFrame { background: #2a1b3d; border: 2px solid #9c27b0; border-radius: 12px; }"
         )
         brake_layout = QVBoxLayout(brake_frame)
         brake_layout.setContentsMargins(10, 8, 10, 8)
@@ -278,7 +278,7 @@ class CuesMonitorTab(QWidget):
         """Crea sección de debug para diagnóstico."""
         debug_frame = QFrame()
         debug_frame.setStyleSheet(
-            "QFrame { background: #0d1b2a; border: 1px solid #415a77; border-radius: 6px; }"
+            "QFrame { background: #0d1b2a; border: 1px solid #415a77; border-radius: 12px; }"
         )
         debug_layout = QVBoxLayout(debug_frame)
         debug_layout.setContentsMargins(10, 8, 10, 8)
@@ -528,7 +528,7 @@ class CuesMonitorTab(QWidget):
             style = (
                 "QPushButton { "
                 "background: #1976d2; color: white; font-weight: bold; "
-                "border: 2px solid #0d47a1; border-radius: 4px; "
+                "border: 2px solid #0d47a1; border-radius: 10px; "
                 "font-size: 10px; "
                 "} "
                 "QPushButton:hover { background: #1565c0; }"
@@ -536,20 +536,20 @@ class CuesMonitorTab(QWidget):
         elif dimmed:
             style = (
                 "QPushButton { "
-                "background: #2a2a2a; color: #666; "
-                "border: 1px solid #444; border-radius: 4px; opacity: 0.6; "
+                "background: #2a2a2a; color: #616161; "
+                "border: 1px solid #2e2e38; border-radius: 10px; opacity: 0.6; "
                 "font-size: 10px; "
                 "} "
-                "QPushButton:hover { background: #333; }"
+                "QPushButton:hover { background: #2e2e38; }"
             )
         else:
             style = (
                 "QPushButton { "
-                "background: #333; color: #ddd; "
-                "border: 1px solid #555; border-radius: 4px; "
+                "background: #2e2e38; color: #f0f0f0; "
+                "border: 1px solid #2e2e38; border-radius: 10px; "
                 "font-size: 10px; "
                 "} "
-                "QPushButton:hover { background: #444; border: 1px solid #777; }"
+                "QPushButton:hover { background: #2e2e38; border: 1px solid #777; }"
             )
         
         btn.setStyleSheet(style)
@@ -565,7 +565,7 @@ class CuesMonitorTab(QWidget):
         self.btn_kill_all.setStyleSheet(
             "QPushButton { "
             "background: #d32f2f; color: white; font-weight: bold; "
-            "border: 1px solid #b71c1c; border-radius: 4px; padding: 8px 16px; "
+            "border: 1px solid #b71c1c; border-radius: 10px; padding: 8px 16px; "
             "} "
             "QPushButton:hover { background: #c62828; }"
         )
@@ -576,7 +576,7 @@ class CuesMonitorTab(QWidget):
         self.btn_force_update.setStyleSheet(
             "QPushButton { "
             "background: #2e7d32; color: white; font-weight: bold; "
-            "border: 1px solid #1b5e20; border-radius: 4px; padding: 8px 16px; "
+            "border: 1px solid #1b5e20; border-radius: 10px; padding: 8px 16px; "
             "} "
             "QPushButton:hover { background: #388e3c; }"
         )
@@ -586,8 +586,8 @@ class CuesMonitorTab(QWidget):
         self.btn_connection = QPushButton("Avolites: —")
         self.btn_connection.setStyleSheet(
             "QPushButton { "
-            "background: #666; color: white; "
-            "border: 1px solid #555; border-radius: 4px; padding: 8px 16px; "
+            "background: #616161; color: white; "
+            "border: 1px solid #2e2e38; border-radius: 10px; padding: 8px 16px; "
             "}"
         )
         
@@ -844,13 +844,13 @@ class CuesMonitorTab(QWidget):
                         self.btn_connection.setText("Avolites: ✓")
                         self.btn_connection.setStyleSheet(
                             "QPushButton { background: #4caf50; color: white; "
-                            "border: 1px solid #388e3c; border-radius: 4px; padding: 8px 16px; }"
+                            "border: 1px solid #388e3c; border-radius: 10px; padding: 8px 16px; }"
                         )
                     else:
                         self.btn_connection.setText("Avolites: ✗")
                         self.btn_connection.setStyleSheet(
                             "QPushButton { background: #f44336; color: white; "
-                            "border: 1px solid #d32f2f; border-radius: 4px; padding: 8px 16px; }"
+                            "border: 1px solid #d32f2f; border-radius: 10px; padding: 8px 16px; }"
                         )
                 except Exception:
                     pass

@@ -36,16 +36,16 @@ class CueEngineDebugWidget(QWidget):
         
         # Título más grande
         title = QLabel("CUE ENGINE DEBUG")
-        title.setStyleSheet("font-weight:700; color:#ddd; font-size:12px;")
+        title.setStyleSheet("font-weight:700; color:#00e676; font-size:12px; letter-spacing:1px;")
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
         
         # Información básica del engine - ✅ EXPANDIDA
         self.basic_info = QLabel("Inicializando...")
         self.basic_info.setStyleSheet(
-            "color:#ccc; font-family: monospace; font-size:10px; "
-            "background:#0a0a0a; border:1px solid #333; border-radius:4px; "
-            "padding:6px;"
+            "color:#f0f0f0; font-family: 'JetBrains Mono', monospace; font-size:10px; "
+            "background:#0e0e14; border:1px solid #2e2e38; border-radius:12px; "
+            "padding:8px 12px;"
         )
         self.basic_info.setWordWrap(True)
         self.basic_info.setMinimumHeight(90)
@@ -53,17 +53,17 @@ class CueEngineDebugWidget(QWidget):
         
         # Métricas de rendimiento - ✅ EXPANDIDA
         metrics_frame = QFrame()
-        metrics_frame.setStyleSheet("QFrame { background:#1a1a1a; border:1px solid #444; border-radius:4px; }")
+        metrics_frame.setStyleSheet("QFrame { background:#141418; border:1px solid #2e2e38; border-radius:16px; }")
         metrics_layout = QVBoxLayout(metrics_frame)
         metrics_layout.setContentsMargins(8, 8, 8, 8)
         metrics_layout.setSpacing(4)
         
         metrics_title = QLabel("MÉTRICAS")
-        metrics_title.setStyleSheet("color:#ffd60a; font-weight:bold; font-size:10px;")
+        metrics_title.setStyleSheet("color:#ffd740; font-weight:bold; font-size:10px;")
         metrics_layout.addWidget(metrics_title)
         
         self.metrics_info = QLabel("Calculando...")
-        self.metrics_info.setStyleSheet("color:#90e0ef; font-family: monospace; font-size:10px;")
+        self.metrics_info.setStyleSheet("color:#4dd0e1; font-family: monospace; font-size:10px;")
         self.metrics_info.setWordWrap(True)
         self.metrics_info.setMinimumHeight(60)
         metrics_layout.addWidget(self.metrics_info)
@@ -72,17 +72,17 @@ class CueEngineDebugWidget(QWidget):
         
         # Debug de especialistas - ✅ EXPANDIDA
         specialists_frame = QFrame()
-        specialists_frame.setStyleSheet("QFrame { background:#1a1a1a; border:1px solid #444; border-radius:4px; }")
+        specialists_frame.setStyleSheet("QFrame { background:#141418; border:1px solid #2e2e38; border-radius:16px; }")
         specialists_layout = QVBoxLayout(specialists_frame)
         specialists_layout.setContentsMargins(8, 8, 8, 8)
         specialists_layout.setSpacing(4)
         
         specialists_title = QLabel("ESPECIALISTAS")
-        specialists_title.setStyleSheet("color:#ffd60a; font-weight:bold; font-size:10px;")
+        specialists_title.setStyleSheet("color:#ffd740; font-weight:bold; font-size:10px;")
         specialists_layout.addWidget(specialists_title)
         
         self.specialists_info = QLabel("Cargando...")
-        self.specialists_info.setStyleSheet("color:#90e0ef; font-family: monospace; font-size:10px;")
+        self.specialists_info.setStyleSheet("color:#4dd0e1; font-family: monospace; font-size:10px;")
         self.specialists_info.setWordWrap(True)
         self.specialists_info.setMinimumHeight(45)
         specialists_layout.addWidget(self.specialists_info)
@@ -95,22 +95,22 @@ class CueEngineDebugWidget(QWidget):
         
         self.btn_debug_full = QPushButton("Debug Completo")
         self.btn_debug_full.setStyleSheet(
-            "QPushButton{background:#333; border:1px solid #555; border-radius:4px; "
-            "padding:6px; color:#ccc; font-size:10px;} QPushButton:hover{background:#444;}"
+            "QPushButton{background:#141418; border:1px solid #2e2e38; border-radius:10px; "
+            "padding:8px 16px; color:#f0f0f0; font-size:10px;} QPushButton:hover{background:#1c1c22; border-color:#3e5e3e;}"
         )
         self.btn_debug_full.clicked.connect(self.show_full_debug)
         
         self.btn_reset = QPushButton("Reset Engine")
         self.btn_reset.setStyleSheet(
-            "QPushButton{background:#d32f2f; border:1px solid #b71c1c; border-radius:4px; "
-            "padding:6px; color:#fff; font-size:10px;} QPushButton:hover{background:#c62828;}"
+            "QPushButton{background:rgba(255,82,82,0.25); border:1px solid rgba(255,82,82,0.30); border-radius:10px; "
+            "padding:8px 16px; color:#ff5252; font-size:10px;} QPushButton:hover{background:rgba(255,82,82,0.35);}"
         )
         self.btn_reset.clicked.connect(self.reset_engine)
         
         self.btn_emergency = QPushButton("EMERGENCY")
         self.btn_emergency.setStyleSheet(
-            "QPushButton{background:#ff5722; border:1px solid #d84315; border-radius:4px; "
-            "padding:6px; color:#fff; font-size:10px; font-weight:bold;} QPushButton:hover{background:#f44336;}"
+            "QPushButton{background:rgba(255,82,82,0.35); border:2px solid #ff5252; border-radius:10px; "
+            "padding:8px 16px; color:#ff5252; font-size:10px; font-weight:bold;} QPushButton:hover{background:rgba(255,82,82,0.50);}"
         )
         self.btn_emergency.clicked.connect(self.emergency_stop)
         
