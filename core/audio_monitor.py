@@ -31,7 +31,8 @@ class AudioMonitor:
         self._last_update = now
 
         # --- 1) STREAM LOST ---
-        if not getattr(self.engine, "is_running", True):
+        # AudioEngine uses 'running' (not 'is_running')
+        if not getattr(self.engine, "running", True):
             self.alerts["stream_lost"] = True
         else:
             self.alerts["stream_lost"] = False

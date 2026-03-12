@@ -96,27 +96,36 @@ class SnapshotServer:
 
         if self.audio_engine:
             try:
-                audio["running"] = getattr(self.audio_engine, 'is_running', False)
-                audio["device"] = getattr(self.audio_engine, 'device_name', None)
+                # AudioEngine uses 'running' (not 'is_running')
+                audio["running"] = getattr(self.audio_engine, 'running', False)
 
-                # Nivel desde audio_monitor
-                if self.audio_monitor:
-                    level = getattr(self.audio_monitor, 'current_level', 0.0)
-                    if level:
-                        audio["level"] = round(level, 3)
-                        audio["silence"] = level < 0.001
-                        audio["clipping"] = level > 0.95
-                else:
-                    # Desde engine.get_status()
+                # AudioEngine stores device_index (int), not device_name
+                dev_idx = getattr(self.audio_engine, 'device_index', None)
+                if dev_idx is not None:
                     try:
-                        status = self.audio_engine.get_status()
-                        rms = status.get("rms_db", -60)
-                        if rms > -60:
-                            level = 10 ** (rms / 20)
-                            audio["level"] = round(level, 3)
-                            audio["silence"] = rms < -50
-                            audio["clipping"] = rms > -3
-                    except:
+                        import sounddevice as sd
+                        info = sd.query_devices(dev_idx, 'input')
+                        audio["device"] = info.get('name', f'device:{dev_idx}')
+                    except Exception:
+                        audio["device"] = f"device:{dev_idx}"
+
+                # Level: read RMS directly from engine (audio_monitor has no current_level)
+                status = self.audio_engine.get_status()
+                rms = status.get("rms", 0.0)
+                audio["level"] = round(float(rms), 4)
+                audio["silence"] = rms < 0.001
+                audio["clipping"] = rms > 0.95
+
+                # Override clipping from audio_monitor alerts if available
+                if self.audio_monitor:
+                    try:
+                        mon_status = self.audio_monitor.get_status()
+                        alerts = mon_status.get("alerts", {})
+                        if alerts.get("clipping"):
+                            audio["clipping"] = True
+                        if alerts.get("no_audio"):
+                            audio["silence"] = True
+                    except Exception:
                         pass
             except Exception as e:
                 print(f"[HTTP_SNAPSHOT] AudioEngine error: {e}")
