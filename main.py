@@ -128,7 +128,7 @@ try:
     from PySide6.QtWidgets import (
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
         QPushButton, QLabel, QComboBox, QScrollArea, QGridLayout, QMessageBox,
-        QFileDialog, QFrame, QTabWidget, QProgressBar, QSizePolicy, QLineEdit,
+        QFileDialog, QFrame, QTabWidget, QStackedWidget, QProgressBar, QSizePolicy, QLineEdit,
         QCheckBox, QRadioButton, QButtonGroup, QSpinBox
     )
     from PySide6.QtCore import QTimer, Qt, QElapsedTimer, QDateTime
@@ -595,6 +595,67 @@ def wait_for_audio_device(keywords=None, timeout=15.0, poll_interval=1.0):
             break
     print(f"[AUDIO] WARNING: Maono PS22 not found after {timeout}s ({attempt} attempts)")
     return None, None
+
+
+# ---------------------------------------------------------------------------
+# Sidebar Navigation Widget
+# ---------------------------------------------------------------------------
+class SidebarNav(QWidget):
+    """Left sidebar navigation that drives a QStackedWidget."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("Sidebar")
+        self.setFixedWidth(160)
+        self._buttons: list[QPushButton] = []
+        self._stack: QStackedWidget | None = None
+
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(0, 8, 0, 8)
+        self._layout.setSpacing(0)
+
+    # -- public API ----------------------------------------------------------
+    def set_stack(self, stack: QStackedWidget):
+        self._stack = stack
+
+    def add_section(self, title: str):
+        lbl = QLabel(title)
+        lbl.setProperty("role", "section")
+        self._layout.addWidget(lbl)
+
+    def add_item(self, label: str, widget: QWidget):
+        idx = self._stack.indexOf(widget) if self._stack else -1
+        btn = QPushButton(label)
+        btn.setCursor(Qt.PointingHandCursor)
+        btn.clicked.connect(lambda checked, i=idx: self._select(i))
+        self._layout.addWidget(btn)
+        self._buttons.append(btn)
+
+    def finish(self):
+        self._layout.addStretch()
+        if self._buttons:
+            self._select(0)
+
+    # -- internal ------------------------------------------------------------
+    def _select(self, index: int):
+        if self._stack is None:
+            return
+        self._stack.setCurrentIndex(index)
+        for b in self._buttons:
+            b.setProperty("active", "false")
+            b.style().unpolish(b)
+            b.style().polish(b)
+        if 0 <= index < len(self._buttons):
+            self._buttons[index].setProperty("active", "true")
+            self._buttons[index].style().unpolish(self._buttons[index])
+            self._buttons[index].style().polish(self._buttons[index])
+
+    def select_widget(self, widget: QWidget):
+        if self._stack is None:
+            return
+        idx = self._stack.indexOf(widget)
+        if idx >= 0:
+            self._select(idx)
 
 
 class Main(QMainWindow):
@@ -1365,8 +1426,10 @@ class Main(QMainWindow):
             layout.setContentsMargins(0,0,0,0)
             self.waveform_hosts[name] = host
 
-        self.tabs = QTabWidget()
-        
+        self.view_stack = QStackedWidget()
+        self.sidebar = SidebarNav()
+        self.sidebar.set_stack(self.view_stack)
+
         # Bajada
         tab_bajada = QWidget()
         layout_bajada = QVBoxLayout(tab_bajada)
@@ -1375,7 +1438,7 @@ class Main(QMainWindow):
         layout_bajada.addWidget(self.waveform_hosts["bajada"])
         layout_bajada.addWidget(self.status_bajada_box)
         layout_bajada.addWidget(make_grid(self.modules_bajada, cols=4))
-        self.tabs.addTab(tab_bajada, "Bajada")
+        self.view_stack.addWidget(tab_bajada)
         self.tab_bajada = tab_bajada
 
         # Golpe
@@ -1386,7 +1449,7 @@ class Main(QMainWindow):
         layout_golpe.addWidget(self.waveform_hosts["golpe"])
         layout_golpe.addWidget(self.status_golpe_box)
         layout_golpe.addWidget(make_grid(self.modules_golpe, cols=4))
-        self.tabs.addTab(tab_golpe, "Base Golpe")
+        self.view_stack.addWidget(tab_golpe)
         self.tab_golpe = tab_golpe
 
         # Ataque
@@ -1397,7 +1460,7 @@ class Main(QMainWindow):
         layout_ataque.addWidget(self.waveform_hosts["ataque"])
         layout_ataque.addWidget(self.status_ataque_box)
         layout_ataque.addWidget(make_grid(self.modules_ataque, cols=3))
-        self.tabs.addTab(tab_ataque, "Ataque")
+        self.view_stack.addWidget(tab_ataque)
         self.tab_ataque = tab_ataque
 
         # Brake
@@ -1408,7 +1471,7 @@ class Main(QMainWindow):
         layout_brake.addWidget(self.waveform_hosts["brake"])
         layout_brake.addWidget(self.status_brake_box)
         layout_brake.addWidget(make_grid(self.modules_brake, cols=3))
-        self.tabs.addTab(tab_brake, "Brake")
+        self.view_stack.addWidget(tab_brake)
         self.tab_brake = tab_brake
 
         # V12: Legacy Analyzers Tab
@@ -1447,7 +1510,7 @@ class Main(QMainWindow):
             self._labels_legacy = []
 
         layout_legacy.addStretch()
-        self.tabs.addTab(tab_legacy, "Legacy")
+        self.view_stack.addWidget(tab_legacy)
         self.tab_legacy = tab_legacy
 
         # Cues
@@ -1457,7 +1520,7 @@ class Main(QMainWindow):
                     avolites=self.avolites,
                     state_manager=self.state_manager,
                     energy_detector=self.energy_detector,
-                    parent=self.tabs,
+                    parent=self.view_stack,
                     cue_engine=self.cue_engine,
                     modules_bajada=self.modules_bajada,
                     modules_golpe=self.modules_golpe,
@@ -1468,9 +1531,9 @@ class Main(QMainWindow):
                     cues_layout = self.cues_tab.layout()
                     if cues_layout:
                         cues_layout.insertWidget(0, self.waveform_hosts["cues"])
-                
-                self.tabs.addTab(self.cues_tab, "Cues Monitor")
-                self.btn_cues.clicked.connect(lambda: self.tabs.setCurrentWidget(self.cues_tab))
+
+                self.view_stack.addWidget(self.cues_tab)
+                self.btn_cues.clicked.connect(lambda: self.sidebar.select_widget(self.cues_tab))
             except Exception as e:
                 print(f"[MAIN] Error creando Cues tab: {e}")
                 self.cues_tab = None
@@ -1603,7 +1666,7 @@ class Main(QMainWindow):
         layout_monitor.addWidget(status_section)
         layout_monitor.addStretch()
         
-        self.tabs.addTab(tab_monitor, "Monitor")
+        self.view_stack.addWidget(tab_monitor)
         self.tab_monitor = tab_monitor
 
         # === PANEL RED/CONSOLA UNIFICADO ===
@@ -1982,7 +2045,7 @@ class Main(QMainWindow):
         ln.addWidget(diag_frame)
         
         ln.addStretch()
-        self.tabs.addTab(tab_net, "Red / Consola")
+        self.view_stack.addWidget(tab_net)
         self.tab_net = tab_net
 
         # === PANEL HEALTH ===
@@ -1994,7 +2057,7 @@ class Main(QMainWindow):
         self.health_widget = HealthMonitorWidget(self)
         health_layout.addWidget(self.health_widget)
         
-        self.tabs.addTab(tab_health, "Health")
+        self.view_stack.addWidget(tab_health)
         self.tab_health = tab_health
 
         # === TAP TEMPO TAB ===
@@ -2003,7 +2066,7 @@ class Main(QMainWindow):
                 # V13: Pass both auto_clock and kick_detector to ClockWidget
                 kick_det = getattr(self, 'kick_detector', None)
                 self.clock_widget = ClockWidget(self.auto_clock, kick_det, self)
-                self.tabs.addTab(self.clock_widget, "TAP Tempo")
+                self.view_stack.addWidget(self.clock_widget)
                 print(f"[MAIN] ClockWidget V13 (auto_clock + kick_detector={kick_det is not None})")
             except Exception as e:
                 self.clock_widget = None
@@ -2016,17 +2079,17 @@ class Main(QMainWindow):
             try:
                 # Tab 1: Haze Detector PRO (V16: pasa system_bridge para sync checkbox)
                 self.vision_haze_tab = VisionHazeTab(self.vision_manager, self, system_bridge=self.system_bridge)
-                self.tabs.addTab(self.vision_haze_tab, "Vision Haze")
+                self.view_stack.addWidget(self.vision_haze_tab)
                 print("[MAIN] VisionHazeTab añadido correctamente")
 
                 # Tab 2: DJ Detector PRO
                 self.vision_dj_tab = VisionDJTab(self.vision_manager, self)
-                self.tabs.addTab(self.vision_dj_tab, "Vision DJ")
+                self.view_stack.addWidget(self.vision_dj_tab)
                 print("[MAIN] VisionDJTab añadido correctamente")
 
                 # Tab 3: Artist Tracker PRO
                 self.vision_artist_tab = VisionArtistTab(self.vision_manager, self)
-                self.tabs.addTab(self.vision_artist_tab, "Vision Artist")
+                self.view_stack.addWidget(self.vision_artist_tab)
                 print("[MAIN] VisionArtistTab añadido correctamente")
 
             except Exception as e:
@@ -2043,7 +2106,7 @@ class Main(QMainWindow):
         if CALENDAR_TAB_AVAILABLE:
             try:
                 self.calendar_tab = CalendarTab()
-                self.tabs.addTab(self.calendar_tab, "📅 Calendario")
+                self.view_stack.addWidget(self.calendar_tab)
                 print("[MAIN] CalendarTab añadido correctamente")
 
                 # Conectar CalendarManager si existe
@@ -2082,14 +2145,52 @@ class Main(QMainWindow):
         
         self._net_events = []
 
-        self.tabs.currentChanged.connect(self._on_tab_changed)
+        self.view_stack.currentChanged.connect(self._on_tab_changed)
 
+        # -- Sidebar navigation items ----------------------------------------
+        self.sidebar.add_section("ANALYZERS")
+        self.sidebar.add_item("Bajada", tab_bajada)
+        self.sidebar.add_item("Base Golpe", tab_golpe)
+        self.sidebar.add_item("Ataque", tab_ataque)
+        self.sidebar.add_item("Brake", tab_brake)
+        self.sidebar.add_item("Legacy", tab_legacy)
+
+        self.sidebar.add_section("MONITORING")
+        if self.cues_tab:
+            self.sidebar.add_item("Cues Monitor", self.cues_tab)
+        self.sidebar.add_item("Monitor", tab_monitor)
+        self.sidebar.add_item("Health", tab_health)
+
+        self.sidebar.add_section("SYSTEM")
+        self.sidebar.add_item("Red / Consola", tab_net)
+        if self.clock_widget:
+            self.sidebar.add_item("Tempo", self.clock_widget)
+        if getattr(self, 'calendar_tab', None):
+            self.sidebar.add_item("Calendario", self.calendar_tab)
+
+        self.sidebar.add_section("VISION")
+        if getattr(self, 'vision_haze_tab', None):
+            self.sidebar.add_item("Vision Haze", self.vision_haze_tab)
+        if getattr(self, 'vision_dj_tab', None):
+            self.sidebar.add_item("Vision DJ", self.vision_dj_tab)
+        if getattr(self, 'vision_artist_tab', None):
+            self.sidebar.add_item("Vision Artist", self.vision_artist_tab)
+
+        self.sidebar.finish()
+
+        # -- Main layout: TopBar + (Sidebar | ViewStack) ---------------------
         body = QWidget()
         body.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         main_layout = QVBoxLayout(body)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         main_layout.addWidget(top)
+
+        content_row = QHBoxLayout()
+        content_row.setContentsMargins(0, 0, 0, 0)
+        content_row.setSpacing(0)
+        content_row.addWidget(self.sidebar)
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -2097,9 +2198,11 @@ class Main(QMainWindow):
         page_layout = QVBoxLayout(page)
         page_layout.setContentsMargins(0, 0, 0, 0)
         page_layout.setSpacing(0)
-        page_layout.addWidget(self.tabs)
+        page_layout.addWidget(self.view_stack)
         scroll.setWidget(page)
-        main_layout.addWidget(scroll, 1)
+        content_row.addWidget(scroll, 1)
+
+        main_layout.addLayout(content_row, 1)
         self.setCentralWidget(body)
 
         # V13: Audio controls removed from top bar - use Red/Consola tab instead
@@ -3552,7 +3655,7 @@ class Main(QMainWindow):
             self.waveform.show()
 
     def _on_tab_changed(self, idx):
-        w = self.tabs.currentWidget()
+        w = self.view_stack.currentWidget()
         if w is getattr(self, "tab_bajada", None):
             self._active_tab_name = "bajada"
         elif w is getattr(self, "tab_golpe", None):

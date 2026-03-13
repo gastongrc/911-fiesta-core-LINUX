@@ -664,6 +664,45 @@ QFrame {{
 """
 
 # ---------------------------------------------------------------------------
+# Sidebar Navigation — WEB: left nav panel
+# ---------------------------------------------------------------------------
+SIDEBAR_STYLE = f"""
+#Sidebar {{
+    background: {BG_PANEL_SOLID};
+    border-right: 1px solid {BORDER_SOLID};
+}}
+#Sidebar QLabel[role="section"] {{
+    color: {TEXT_MUTED};
+    font-size: 10px;
+    font-weight: 700;
+    font-family: {FONT_BODY};
+    padding: 12px 12px 4px 12px;
+    border: none;
+    background: transparent;
+}}
+#Sidebar QPushButton {{
+    background: transparent;
+    color: {TEXT_SECONDARY};
+    border: none;
+    border-radius: {R_SM}px;
+    text-align: left;
+    padding: 8px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    font-family: {FONT_BODY};
+}}
+#Sidebar QPushButton:hover {{
+    background: {BG_HOVER_SOLID};
+    color: {TEXT_PRIMARY};
+}}
+#Sidebar QPushButton[active="true"] {{
+    background: #0d1a10;
+    color: {NEON_GREEN};
+    border-left: 2px solid {NEON_GREEN};
+}}
+"""
+
+# ---------------------------------------------------------------------------
 # Complete Application Stylesheet — get_full_stylesheet()
 # ---------------------------------------------------------------------------
 def get_full_stylesheet() -> str:
@@ -671,6 +710,7 @@ def get_full_stylesheet() -> str:
     return f"""
     {MAIN_WINDOW_STYLE}
     {TAB_WIDGET_STYLE}
+    {SIDEBAR_STYLE}
     {BUTTON_STYLE}
     {PROGRESS_BAR_STYLE}
     {SLIDER_STYLE}
