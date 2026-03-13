@@ -27,7 +27,7 @@ PRESETS = {
         "hysteresis_margin": 0.04,
         "stability_window_ms": 120,
         "inter_state_cooldown_ms": 0,
-        "ema_alpha": 0.25,       # V14: was 0.5 — stabilized to prevent spike-driven transitions
+        "ema_alpha": 0.35,       # V14.1: rebalanced (was 0.25) — faster reaction to real transitions
         "buffer_size": 2,
     },
     "STABLE": {
@@ -65,8 +65,8 @@ class StateManager:
     # Each state must remain the dominant candidate for its full window before transition
     CONFIRMATION_WINDOW_MS = {
         "ATAQUE": 400,       # Attack can be faster but still needs confirmation
-        "BASE_GOLPE": 500,   # Groove needs consistent signal
-        "BAJADA": 800,       # Calm sections need strong confirmation to avoid false exits
+        "BASE_GOLPE": 350,   # V14.1: was 500 — prevent BASE_GOLPE lock
+        "BAJADA": 450,       # V14.1: was 800 — allow real club transitions
         "BRAKE": 200,        # Emergency state, keep responsive
     }
     STABILITY_WINDOW_MS = 120  # Fallback for unknown states
@@ -89,7 +89,7 @@ class StateManager:
         self._energy_history = deque(maxlen=3)
         self._current_energy = "MEDIA"
         self._scores_smooth = {"bajada": 0.0, "base_golpe": 0.0, "ataque": 0.0, "brake": 0.0}
-        self._ema_alpha = 0.25  # V14: Stabilized (was 0.5) — slower propagation prevents spike-driven transitions
+        self._ema_alpha = 0.35  # V14.1: rebalanced (was 0.25) — faster reaction to real transitions
 
         # ✅ SPRINT 2: Histéresis adaptativa + BRAKE real + Holds
         self._hysteresis_matrix = {
@@ -840,7 +840,7 @@ class StateManager:
             self.hold_remaining = self.min_hold_seconds * 1.875  # 0.8 * 1.875 = 1.5s
             self.brake_timer = 4.0
         elif new_state == self.STATE_BASE_GOLPE:
-            self.hold_remaining = self.min_hold_seconds * 1.5   # 0.8 * 1.5 = 1.2s
+            self.hold_remaining = self.min_hold_seconds * 1.125  # 0.8 * 1.125 = 0.9s (V14.1: was 1.5)
         elif new_state == self.STATE_BAJADA:
             self.hold_remaining = self.min_hold_seconds * 1.875  # 0.8 * 1.875 = 1.5s
         
