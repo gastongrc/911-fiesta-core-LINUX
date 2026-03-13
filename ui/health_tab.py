@@ -26,18 +26,18 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import QTimer, Qt
 
 # ---------------------------------------------------------------------------
-# Colors (match neon_styles)
+# Colors (aligned to WEB design language)
 # ---------------------------------------------------------------------------
-_GREEN = "#00ff88"
-_CYAN = "#00d4ff"
-_YELLOW = "#ff9500"
-_RED = "#ff3366"
-_MUTED = "#606070"
-_TEXT = "#e0e0e8"
-_TEXT2 = "#a0a0b0"
-_BG_CARD = "#181820"
-_BG_PANEL = "#121218"
-_BORDER = "#2a2a35"
+_GREEN = "#00e676"
+_CYAN = "#4dd0e1"
+_YELLOW = "#ffd740"
+_RED = "#ff5252"
+_MUTED = "rgba(240,240,240,0.38)"
+_TEXT = "#f0f0f0"
+_TEXT2 = "rgba(240,240,240,0.65)"
+_BG_CARD = "rgba(255,255,255,0.05)"
+_BG_PANEL = "rgba(255,255,255,0.04)"
+_BORDER = "rgba(255,255,255,0.10)"
 
 # Status colors
 _OK_COLOR = _GREEN
@@ -54,20 +54,20 @@ def _status_dot(color: str) -> str:
 def _card_style() -> str:
     return (
         f"QFrame{{ background:{_BG_CARD}; border:1px solid {_BORDER}; "
-        f"border-radius:8px; }}"
+        f"border-radius:14px; }}"
     )
 
 
 def _section_title_style() -> str:
-    return f"font-weight:700; color:{_CYAN}; font-size:12px; letter-spacing:1px;"
+    return f"font-weight:700; color:{_GREEN}; font-size:13px; letter-spacing:1px; font-family:'Space Grotesk','Inter',sans-serif;"
 
 
 def _metric_label_style() -> str:
-    return f"color:{_TEXT2}; font-size:11px;"
+    return f"color:{_TEXT2}; font-size:13px;"
 
 
 def _metric_value_style(color: str = _TEXT) -> str:
-    return f"color:{color}; font-weight:700; font-size:12px; font-family:'JetBrains Mono','Consolas',monospace;"
+    return f"color:{color}; font-weight:700; font-size:13px; font-family:'JetBrains Mono','Consolas',monospace;"
 
 
 # ---------------------------------------------------------------------------
@@ -352,7 +352,7 @@ class HealthMonitorWidget(QWidget):
         gl.addWidget(self.lbl_global_text)
         gl.addStretch()
         self.lbl_global_reason = QLabel("")
-        self.lbl_global_reason.setStyleSheet(f"color:{_TEXT2}; font-size:11px;")
+        self.lbl_global_reason.setStyleSheet(f"color:{_TEXT2}; font-size:13px;")
         gl.addWidget(self.lbl_global_reason)
         layout.addWidget(self.frm_global)
 
@@ -442,7 +442,7 @@ class HealthMonitorWidget(QWidget):
         self.lbl_audio_cards.setTextFormat(Qt.RichText)
         self.lbl_audio_cards.setStyleSheet(
             f"color:{_TEXT}; font-size:11px; font-family:'JetBrains Mono','Consolas',monospace; "
-            f"padding:4px 6px; background:#0e0e14; border-radius:4px;"
+            f"padding:6px 8px; background:rgba(0,0,0,0.25); border-radius:10px;"
         )
         audio_vbox.addWidget(self.lbl_audio_cards)
 
@@ -455,7 +455,7 @@ class HealthMonitorWidget(QWidget):
         self.lbl_audio_capture.setTextFormat(Qt.RichText)
         self.lbl_audio_capture.setStyleSheet(
             f"color:{_TEXT}; font-size:11px; font-family:'JetBrains Mono','Consolas',monospace; "
-            f"padding:4px 6px; background:#0e0e14; border-radius:4px;"
+            f"padding:6px 8px; background:rgba(0,0,0,0.25); border-radius:10px;"
         )
         audio_vbox.addWidget(self.lbl_audio_capture)
 
@@ -480,7 +480,7 @@ class HealthMonitorWidget(QWidget):
         err_frame = self._make_section("LAST ERRORS")
         self.lbl_last_error = QLabel("---")
         self.lbl_last_error.setWordWrap(True)
-        self.lbl_last_error.setStyleSheet(f"color:{_TEXT2}; font-size:10px; font-family:'JetBrains Mono','Consolas',monospace;")
+        self.lbl_last_error.setStyleSheet(f"color:{_TEXT2}; font-size:11px; font-family:'JetBrains Mono','Consolas',monospace;")
         err_frame.layout().addWidget(self.lbl_last_error)
         layout.addWidget(err_frame)
 
@@ -488,9 +488,9 @@ class HealthMonitorWidget(QWidget):
         btn_row = QHBoxLayout()
         btn = QPushButton("Refresh Now")
         btn.setStyleSheet(
-            f"QPushButton{{background:{_BG_CARD}; border:1px solid {_BORDER}; "
-            f"border-radius:6px; padding:8px 16px; color:{_CYAN}; font-weight:600;}} "
-            f"QPushButton:hover{{background:#252530; border-color:{_CYAN};}}"
+            f"QPushButton{{background:rgba(255,255,255,0.06); border:1px solid {_BORDER}; "
+            f"border-radius:10px; padding:8px 16px; color:{_GREEN}; font-weight:600;}} "
+            f"QPushButton:hover{{background:rgba(255,255,255,0.10); border-color:rgba(0,230,118,0.30);}}"
         )
         btn.clicked.connect(self.refresh_metrics)
         btn_row.addWidget(btn)
