@@ -1631,183 +1631,135 @@ class Main(QMainWindow):
             self.cues_tab = None
 
         # ===================================================================
-        # Monitor — WEB Control Room Dashboard
-        # Layout: Metrics bar → 3-column card grid
-        # Matches webapp/src/pages/Home.jsx
+        # Control Room Dashboard — matches WEB Home.jsx
+        # Row 0: Metrics bar  (Audio Level | BPM | Console | State)
+        # Row 1: Audio Device | Avolites Console | Network
+        # Row 2: Energy | Current State | Modules
+        # Row 3: Last Cue | Transport | Clock
         # ===================================================================
         tab_monitor = QWidget()
         layout_monitor = QVBoxLayout(tab_monitor)
         layout_monitor.setContentsMargins(S_XL, S_LG, S_XL, S_LG)
         layout_monitor.setSpacing(GRID_SPACING)
 
-        # -- Waveform (full-width) -----------------------------------------
+        # Waveform (full-width, compact)
         layout_monitor.addWidget(self.waveform_hosts["monitor"])
 
-        # -- Metrics Bar (WEB: 4-column top bar) ---------------------------
+        # -- Shared helpers ------------------------------------------------
+        _inset_ss = (
+            f"QFrame{{background:{BG_INSET_SOLID}; border:1px solid #1e1e28; "
+            f"border-radius:{R_MD}px; padding:{S_MD}px;}}"
+        )
+        _lbl_title_ss = f"color:{TEXT_MUTED}; font-size:10px; font-weight:600; font-family:{FONT_TITLE}; border:none; background:transparent;"
+        _lbl_value_ss = f"color:{TEXT_PRIMARY}; font-size:18px; font-weight:700; font-family:{FONT_MONO}; border:none; background:transparent;"
+        _lbl_sub_ss = f"color:{TEXT_SECONDARY}; font-size:11px; border:none; background:transparent;"
+        _lbl_muted_ss = f"color:{TEXT_MUTED}; font-size:11px; border:none; background:transparent;"
+
+        def _make_metric(title, initial="—"):
+            """Small inset metric (WEB: .inset in metrics bar)."""
+            f = QFrame(); f.setStyleSheet(_inset_ss)
+            fl = QVBoxLayout(f); fl.setContentsMargins(S_MD, S_SM, S_MD, S_SM); fl.setSpacing(2)
+            t = QLabel(title); t.setStyleSheet(_lbl_title_ss)
+            v = QLabel(initial); v.setStyleSheet(_lbl_value_ss)
+            fl.addWidget(t); fl.addWidget(v)
+            return f, v
+
+        def _card_body(*widgets):
+            """Build a compact card body widget from a list of child widgets."""
+            w = QWidget()
+            ly = QVBoxLayout(w); ly.setContentsMargins(CARD_PADDING, 0, CARD_PADDING, CARD_PADDING); ly.setSpacing(S_SM)
+            for c in widgets:
+                ly.addWidget(c)
+            return w
+
+        # ── ROW 0: Metrics bar ───────────────────────────────────────────
         metrics_card = GlassCard()
         metrics_grid = QGridLayout()
         metrics_grid.setSpacing(GRID_SPACING)
         metrics_grid.setContentsMargins(CARD_PADDING, S_BASE, CARD_PADDING, S_BASE)
 
-        _inset_ss = (
-            f"QFrame{{background:{BG_INSET_SOLID}; border:1px solid #1e1e28; "
-            f"border-radius:{R_MD}px; padding:{S_MD}px;}}"
-        )
-
-        def _make_metric(title, initial="—"):
-            """Build a small inset metric panel (WEB: .inset inside metrics bar)."""
-            f = QFrame()
-            f.setStyleSheet(_inset_ss)
-            fl = QVBoxLayout(f)
-            fl.setContentsMargins(S_MD, S_SM, S_MD, S_SM)
-            fl.setSpacing(2)
-            t = QLabel(title)
-            t.setStyleSheet(f"color:{TEXT_MUTED}; font-size:10px; font-weight:600; font-family:{FONT_TITLE}; border:none; background:transparent;")
-            v = QLabel(initial)
-            v.setStyleSheet(f"color:{TEXT_PRIMARY}; font-size:18px; font-weight:700; font-family:{FONT_MONO}; border:none; background:transparent;")
-            fl.addWidget(t)
-            fl.addWidget(v)
-            return f, v
-
-        m_vu, self.dash_vu_value = _make_metric("NIVEL AUDIO", "— dBFS")
+        m_vu, self.dash_vu_value = _make_metric("AUDIO LEVEL", "— dB")
         m_bpm, self.dash_bpm_value = _make_metric("BPM", "—")
-        m_conn, self.dash_conn_value = _make_metric("CONSOLA", "Desconectado")
-        m_state, self.dash_state_value = _make_metric("ESTADO", "—")
+        m_conn, self.dash_conn_value = _make_metric("CONSOLE", "Offline")
+        m_state, self.dash_state_value = _make_metric("STATE", "—")
 
-        metrics_grid.addWidget(m_vu, 0, 0)
-        metrics_grid.addWidget(m_bpm, 0, 1)
-        metrics_grid.addWidget(m_conn, 0, 2)
-        metrics_grid.addWidget(m_state, 0, 3)
-        for c in range(4):
-            metrics_grid.setColumnStretch(c, 1)
-
-        metrics_w = QWidget()
-        metrics_w.setLayout(metrics_grid)
+        for i, m in enumerate((m_vu, m_bpm, m_conn, m_state)):
+            metrics_grid.addWidget(m, 0, i)
+            metrics_grid.setColumnStretch(i, 1)
+        metrics_w = QWidget(); metrics_w.setLayout(metrics_grid)
         metrics_card.add_widget(metrics_w)
         layout_monitor.addWidget(metrics_card)
 
-        # -- Card Grid (WEB: repeat(auto-fit, minmax(320px, 1fr))) ---------
-        dash_grid = QGridLayout()
-        dash_grid.setSpacing(GRID_SPACING)
+        # ── Main 3-column grid ───────────────────────────────────────────
+        dash = QGridLayout()
+        dash.setSpacing(GRID_SPACING)
         for c in range(3):
-            dash_grid.setColumnStretch(c, 1)
+            dash.setColumnStretch(c, 1)
 
-        _grid_row = 0
-        _grid_col = 0
+        # ── ROW 1: Audio Device | Avolites Console | Network ─────────────
 
-        def _next_cell():
-            nonlocal _grid_row, _grid_col
-            r, c = _grid_row, _grid_col
-            _grid_col += 1
-            if _grid_col >= 3:
-                _grid_col = 0
-                _grid_row += 1
-            return r, c
-
-        # Card: Placa de Sonido (Audio)
+        # Card 1,0: Audio Device
         audio_card = GlassCard("PLACA DE SONIDO")
-        audio_inner = QVBoxLayout()
-        audio_inner.setContentsMargins(CARD_PADDING, 0, CARD_PADDING, CARD_PADDING)
-        audio_inner.setSpacing(S_SM)
-        self.vu_main = QProgressBar()
-        self.vu_main.setRange(0, 1000)
-        self.vu_main.setTextVisible(False)
-        self.vu_main.setFixedHeight(8)
-        self.vu_main.setStyleSheet(
-            f"QProgressBar{{background:{BG_INSET_SOLID}; border:1px solid {BORDER_SOLID}; border-radius:4px;}} "
-            f"QProgressBar::chunk{{background:qlineargradient(x1:0,y1:0,x2:1,y2:0, "
-            f"stop:0 {NEON_GREEN}, stop:1 #4dd0e1); border-radius:3px;}}"
-        )
-        self.dash_audio_device = QLabel("—")
-        self.dash_audio_device.setStyleSheet(f"color:{TEXT_SECONDARY}; font-size:11px; border:none; background:transparent;")
+        self.dash_audio_device = QLabel("—"); self.dash_audio_device.setStyleSheet(_lbl_sub_ss)
         self.dash_audio_level = QLabel("Nivel: —")
         self.dash_audio_level.setStyleSheet(f"color:{TEXT_PRIMARY}; font-size:13px; font-weight:600; font-family:{FONT_MONO}; border:none; background:transparent;")
-        audio_inner.addWidget(self.dash_audio_device)
-        audio_inner.addWidget(self.dash_audio_level)
-        audio_inner.addWidget(self.vu_main)
-        audio_w = QWidget()
-        audio_w.setLayout(audio_inner)
-        audio_card.add_widget(audio_w)
-        r, c = _next_cell()
-        dash_grid.addWidget(audio_card, r, c)
+        self.vu_main = QProgressBar(); self.vu_main.setRange(0, 1000); self.vu_main.setTextVisible(False); self.vu_main.setFixedHeight(6)
+        self.vu_main.setStyleSheet(
+            f"QProgressBar{{background:{BG_INSET_SOLID}; border:1px solid {BORDER_SOLID}; border-radius:3px;}} "
+            f"QProgressBar::chunk{{background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 {NEON_GREEN}, stop:1 #4dd0e1); border-radius:2px;}}"
+        )
+        audio_card.add_widget(_card_body(self.dash_audio_device, self.dash_audio_level, self.vu_main))
+        dash.addWidget(audio_card, 0, 0)
 
-        # Card: Consola Avolites
+        # Card 1,1: Consola Avolites
         console_card = GlassCard("CONSOLA AVOLITES")
-        console_inner = QVBoxLayout()
-        console_inner.setContentsMargins(CARD_PADDING, 0, CARD_PADDING, CARD_PADDING)
-        console_inner.setSpacing(S_SM)
-        self.dash_console_ip = QLabel("IP: —")
-        self.dash_console_ip.setStyleSheet(f"color:{TEXT_SECONDARY}; font-size:11px; border:none; background:transparent;")
+        self.dash_console_ip = QLabel("IP: —"); self.dash_console_ip.setStyleSheet(_lbl_sub_ss)
         self.dash_console_status = QLabel("● Desconectado")
-        self.dash_console_status.setStyleSheet(f"color:#e74c3c; font-size:13px; font-weight:700; border:none; background:transparent;")
-        self.dash_console_latency = QLabel("Latencia: —")
-        self.dash_console_latency.setStyleSheet(f"color:{TEXT_MUTED}; font-size:11px; border:none; background:transparent;")
-        console_inner.addWidget(self.dash_console_ip)
-        console_inner.addWidget(self.dash_console_status)
-        console_inner.addWidget(self.dash_console_latency)
-        console_w = QWidget()
-        console_w.setLayout(console_inner)
-        console_card.add_widget(console_w)
-        r, c = _next_cell()
-        dash_grid.addWidget(console_card, r, c)
+        self.dash_console_status.setStyleSheet("color:#e74c3c; font-size:13px; font-weight:700; border:none; background:transparent;")
+        self.dash_console_latency = QLabel("Latencia: —"); self.dash_console_latency.setStyleSheet(_lbl_muted_ss)
+        console_card.add_widget(_card_body(self.dash_console_ip, self.dash_console_status, self.dash_console_latency))
+        dash.addWidget(console_card, 0, 1)
 
-        # Card: Red Local (Network)
+        # Card 1,2: Red Local
         net_card_dash = GlassCard("RED LOCAL")
-        net_inner = QVBoxLayout()
-        net_inner.setContentsMargins(CARD_PADDING, 0, CARD_PADDING, CARD_PADDING)
-        net_inner.setSpacing(S_SM)
-        self.dash_net_ip = QLabel("IP: —")
-        self.dash_net_ip.setStyleSheet(f"color:{TEXT_SECONDARY}; font-size:11px; border:none; background:transparent;")
-        self.dash_net_iface = QLabel("Interfaz: —")
-        self.dash_net_iface.setStyleSheet(f"color:{TEXT_MUTED}; font-size:11px; border:none; background:transparent;")
-        net_inner.addWidget(self.dash_net_ip)
-        net_inner.addWidget(self.dash_net_iface)
-        net_w = QWidget()
-        net_w.setLayout(net_inner)
-        net_card_dash.add_widget(net_w)
-        r, c = _next_cell()
-        dash_grid.addWidget(net_card_dash, r, c)
+        self.dash_net_ip = QLabel("IP: —"); self.dash_net_ip.setStyleSheet(_lbl_sub_ss)
+        self.dash_net_iface = QLabel("Interfaz: —"); self.dash_net_iface.setStyleSheet(_lbl_muted_ss)
+        net_card_dash.add_widget(_card_body(self.dash_net_ip, self.dash_net_iface))
+        dash.addWidget(net_card_dash, 0, 2)
 
-        # Card: Energy Monitor
+        # ── ROW 2: Energy | Current State | Modules ──────────────────────
+
+        # Card 2,0: Energy
         if ENERGY_AVAILABLE:
             energy_card = GlassCard("ENERGY")
             self.energy_widget = EnergyMonitorWidget(self.energy_detector)
             self.energy_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-            self.energy_widget.setMinimumHeight(180)
             energy_card.add_widget(self.energy_widget)
             energy_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-            r, c = _next_cell()
-            dash_grid.addWidget(energy_card, r, c)
+            dash.addWidget(energy_card, 1, 0)
 
-        # Card: Current State
+        # Card 2,1: Current State
         if STATE_WIDGET_AVAILABLE:
             state_card = GlassCard("CURRENT STATE")
             self.state_widget = StateMonitorWidget(self.state_manager)
             self.state_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-            self.state_widget.setMinimumHeight(180)
             state_card.add_widget(self.state_widget)
             state_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-            r, c = _next_cell()
-            dash_grid.addWidget(state_card, r, c)
+            dash.addWidget(state_card, 1, 1)
         else:
             self.state_widget = None
 
-        # Card: Modules (WEB: 4 module rows with LED dots)
+        # Card 2,2: Modules
         modules_card = GlassCard("MODULES")
-        modules_inner = QVBoxLayout()
-        modules_inner.setContentsMargins(CARD_PADDING, 0, CARD_PADDING, CARD_PADDING)
-        modules_inner.setSpacing(S_SM)
-        modules_inner.addWidget(self.status_bajada_box)
-        modules_inner.addWidget(self.status_golpe_box)
-        modules_inner.addWidget(self.status_ataque_box)
-        modules_inner.addWidget(self.status_brake_box)
-        modules_wrapper = QWidget()
-        modules_wrapper.setLayout(modules_inner)
-        modules_card.add_widget(modules_wrapper)
-        r, c = _next_cell()
-        dash_grid.addWidget(modules_card, r, c)
+        modules_card.add_widget(_card_body(
+            self.status_bajada_box, self.status_golpe_box,
+            self.status_ataque_box, self.status_brake_box,
+        ))
+        dash.addWidget(modules_card, 1, 2)
 
-        # Card: Cues Engine
+        # ── ROW 3: Last Cue | Transport | Clock ─────────────────────────
+
+        # Card 3,0: Last Cue
         if self.cue_engine:
             try:
                 cues_card = GlassCard("LAST CUE")
@@ -1818,59 +1770,37 @@ class Main(QMainWindow):
                     pass
                 cues_card.add_widget(self.cues_debug_widget)
                 cues_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-                r, c = _next_cell()
-                dash_grid.addWidget(cues_card, r, c)
+                dash.addWidget(cues_card, 2, 0)
             except:
                 self.cues_debug_widget = None
         else:
             self.cues_debug_widget = None
 
-        # Card: Haze (Vision)
+        # Card 3,1: Transport
+        transport_card = GlassCard("TRANSPORT")
+        self.dash_transport_mode = QLabel("HTTP")
+        self.dash_transport_mode.setStyleSheet(f"color:{NEON_GREEN}; font-size:14px; font-weight:700; font-family:{FONT_MONO}; border:none; background:transparent;")
+        transport_card.add_widget(_card_body(self.dash_transport_mode))
+        dash.addWidget(transport_card, 2, 1)
+
+        # Card 3,2: Haze / Clock
         if VISION_AVAILABLE:
             haze_card = GlassCard("HAZE")
-            haze_inner = QHBoxLayout()
-            haze_inner.setContentsMargins(CARD_PADDING, 0, CARD_PADDING, CARD_PADDING)
-            haze_inner.setSpacing(S_SM)
             self.haze_bar = QProgressBar()
-            self.haze_bar.setOrientation(Qt.Vertical)
-            self.haze_bar.setRange(0, 100)
-            self.haze_bar.setValue(0)
-            self.haze_bar.setTextVisible(False)
-            self.haze_bar.setFixedWidth(20)
-            self.haze_bar.setMinimumHeight(120)
+            self.haze_bar.setRange(0, 100); self.haze_bar.setValue(0); self.haze_bar.setTextVisible(False); self.haze_bar.setFixedHeight(6)
             self.haze_bar.setStyleSheet(
-                f"QProgressBar{{background:{BG_INSET_SOLID}; border:1px solid {BORDER_SOLID}; border-radius:10px;}} "
-                "QProgressBar::chunk{background:qlineargradient(x1:0, y1:1, x2:0, y2:0, "
-                "stop:0 #4a90e2, stop:0.5 #7ec8e3, stop:1 #aaddff); border-radius:10px;}"
+                f"QProgressBar{{background:{BG_INSET_SOLID}; border:1px solid {BORDER_SOLID}; border-radius:3px;}} "
+                "QProgressBar::chunk{background:qlineargradient(x1:0,y1:0,x2:1,y2:0, "
+                "stop:0 #4a90e2, stop:0.5 #7ec8e3, stop:1 #aaddff); border-radius:2px;}"
             )
             self.dash_haze_pct = QLabel("0%")
-            self.dash_haze_pct.setStyleSheet(f"color:{TEXT_PRIMARY}; font-size:20px; font-weight:700; font-family:{FONT_MONO}; border:none; background:transparent;")
-            self.dash_haze_pct.setAlignment(Qt.AlignCenter)
-            haze_inner.addWidget(self.haze_bar)
-            haze_inner.addWidget(self.dash_haze_pct, 1)
-            haze_w = QWidget()
-            haze_w.setLayout(haze_inner)
-            haze_card.add_widget(haze_w)
-            r, c = _next_cell()
-            dash_grid.addWidget(haze_card, r, c)
+            self.dash_haze_pct.setStyleSheet(f"color:{TEXT_PRIMARY}; font-size:18px; font-weight:700; font-family:{FONT_MONO}; border:none; background:transparent;")
+            haze_card.add_widget(_card_body(self.dash_haze_pct, self.haze_bar))
+            dash.addWidget(haze_card, 2, 2)
         else:
             self.haze_bar = None
 
-        # Card: Transport
-        transport_card = GlassCard("TRANSPORT")
-        transport_inner = QVBoxLayout()
-        transport_inner.setContentsMargins(CARD_PADDING, 0, CARD_PADDING, CARD_PADDING)
-        transport_inner.setSpacing(S_SM)
-        self.dash_transport_mode = QLabel("HTTP")
-        self.dash_transport_mode.setStyleSheet(f"color:{NEON_GREEN}; font-size:14px; font-weight:700; font-family:{FONT_MONO}; border:none; background:transparent;")
-        transport_inner.addWidget(self.dash_transport_mode)
-        transport_w = QWidget()
-        transport_w.setLayout(transport_inner)
-        transport_card.add_widget(transport_w)
-        r, c = _next_cell()
-        dash_grid.addWidget(transport_card, r, c)
-
-        layout_monitor.addLayout(dash_grid)
+        layout_monitor.addLayout(dash)
         layout_monitor.addStretch()
         
         self.view_stack.addWidget(tab_monitor)
