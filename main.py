@@ -168,7 +168,14 @@ try:
         BUTTON_STYLE, BUTTON_PRIMARY_STYLE, BUTTON_DANGER_STYLE,
         TAB_WIDGET_STYLE, PROGRESS_BAR_STYLE, SLIDER_STYLE,
         VU_METER_STYLE, LABEL_TITLE_STYLE, LABEL_SECTION_STYLE,
-        state_indicator_style, energy_indicator_style
+        state_indicator_style, energy_indicator_style,
+        CARD_PADDING, CARD_RADIUS, GRID_SPACING, SIDEBAR_WIDTH,
+        CARD_BACKGROUND, CARD_BORDER,
+        S_SM, S_MD, S_BASE, S_LG, S_XL, S_2XL,
+        R_SM, R_MD, R_LG, R_XL,
+        BG_PANEL_SOLID, BG_CARD_SOLID, BG_INSET_SOLID, BORDER_SOLID,
+        TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED,
+        NEON_GREEN, FONT_TITLE, FONT_BODY, FONT_MONO,
     )
     NEON_STYLES_AVAILABLE = True
 except ImportError:
@@ -606,7 +613,10 @@ class SidebarNav(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("Sidebar")
-        self.setFixedWidth(160)
+        try:
+            self.setFixedWidth(SIDEBAR_WIDTH)
+        except NameError:
+            self.setFixedWidth(170)
         self._buttons: list[QPushButton] = []
         self._stack: QStackedWidget | None = None
 
@@ -656,6 +666,44 @@ class SidebarNav(QWidget):
         idx = self._stack.indexOf(widget)
         if idx >= 0:
             self._select(idx)
+
+
+# ---------------------------------------------------------------------------
+# GlassCard — WEB-style .g card wrapper for workspace modules
+# ---------------------------------------------------------------------------
+class GlassCard(QFrame):
+    """Card container matching WEB .g glass card.
+
+    Wraps an existing widget with a titled card frame so the workspace
+    feels like the web Control Room without modifying the inner widget.
+    """
+
+    def __init__(self, title: str | None = None, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setObjectName("WorkspaceCard")
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        if title:
+            lbl = QLabel(title)
+            lbl.setProperty("role", "card-title")
+            lay.addWidget(lbl)
+        self._content_layout = lay
+
+    def set_content(self, widget: QWidget):
+        widget.setContentsMargins(
+            NEON_CARD_PADDING, 0, NEON_CARD_PADDING, NEON_CARD_PADDING
+        )
+        self._content_layout.addWidget(widget)
+
+    def add_widget(self, widget: QWidget):
+        self._content_layout.addWidget(widget)
+
+
+try:
+    NEON_CARD_PADDING = CARD_PADDING
+except NameError:
+    NEON_CARD_PADDING = 24
 
 
 class Main(QMainWindow):
@@ -1399,8 +1447,9 @@ class Main(QMainWindow):
             print("[MAIN] V12 Neon Pro styling applied")
 
         top = QWidget()
+        top.setObjectName("TopBar")
         top_layout = QHBoxLayout(top)
-        top_layout.setContentsMargins(8,8,8,8)
+        top_layout.setContentsMargins(S_LG, 0, S_LG, 0)
 
         # V13: Only status indicators in top bar - all controls in Red/Consola tab
         top_layout.addStretch()
@@ -1433,52 +1482,68 @@ class Main(QMainWindow):
         # Bajada
         tab_bajada = QWidget()
         layout_bajada = QVBoxLayout(tab_bajada)
-        layout_bajada.setContentsMargins(8, 8, 8, 8)
-        layout_bajada.setSpacing(10)
+        layout_bajada.setContentsMargins(S_LG, S_LG, S_LG, S_LG)
+        layout_bajada.setSpacing(GRID_SPACING)
         layout_bajada.addWidget(self.waveform_hosts["bajada"])
-        layout_bajada.addWidget(self.status_bajada_box)
-        layout_bajada.addWidget(make_grid(self.modules_bajada, cols=4))
+        status_card_bajada = GlassCard("BAJADA — STATUS")
+        status_card_bajada.add_widget(self.status_bajada_box)
+        layout_bajada.addWidget(status_card_bajada)
+        modules_card_bajada = GlassCard("MÓDULOS")
+        modules_card_bajada.add_widget(make_grid(self.modules_bajada, cols=4))
+        layout_bajada.addWidget(modules_card_bajada)
         self.view_stack.addWidget(tab_bajada)
         self.tab_bajada = tab_bajada
 
         # Golpe
         tab_golpe = QWidget()
         layout_golpe = QVBoxLayout(tab_golpe)
-        layout_golpe.setContentsMargins(8, 8, 8, 8)
-        layout_golpe.setSpacing(10)
+        layout_golpe.setContentsMargins(S_LG, S_LG, S_LG, S_LG)
+        layout_golpe.setSpacing(GRID_SPACING)
         layout_golpe.addWidget(self.waveform_hosts["golpe"])
-        layout_golpe.addWidget(self.status_golpe_box)
-        layout_golpe.addWidget(make_grid(self.modules_golpe, cols=4))
+        status_card_golpe = GlassCard("BASE GOLPE — STATUS")
+        status_card_golpe.add_widget(self.status_golpe_box)
+        layout_golpe.addWidget(status_card_golpe)
+        modules_card_golpe = GlassCard("MÓDULOS")
+        modules_card_golpe.add_widget(make_grid(self.modules_golpe, cols=4))
+        layout_golpe.addWidget(modules_card_golpe)
         self.view_stack.addWidget(tab_golpe)
         self.tab_golpe = tab_golpe
 
         # Ataque
         tab_ataque = QWidget()
         layout_ataque = QVBoxLayout(tab_ataque)
-        layout_ataque.setContentsMargins(8, 8, 8, 8)
-        layout_ataque.setSpacing(10)
+        layout_ataque.setContentsMargins(S_LG, S_LG, S_LG, S_LG)
+        layout_ataque.setSpacing(GRID_SPACING)
         layout_ataque.addWidget(self.waveform_hosts["ataque"])
-        layout_ataque.addWidget(self.status_ataque_box)
-        layout_ataque.addWidget(make_grid(self.modules_ataque, cols=3))
+        status_card_ataque = GlassCard("ATAQUE — STATUS")
+        status_card_ataque.add_widget(self.status_ataque_box)
+        layout_ataque.addWidget(status_card_ataque)
+        modules_card_ataque = GlassCard("MÓDULOS")
+        modules_card_ataque.add_widget(make_grid(self.modules_ataque, cols=3))
+        layout_ataque.addWidget(modules_card_ataque)
         self.view_stack.addWidget(tab_ataque)
         self.tab_ataque = tab_ataque
 
         # Brake
         tab_brake = QWidget()
         layout_brake = QVBoxLayout(tab_brake)
-        layout_brake.setContentsMargins(8, 8, 8, 8)
-        layout_brake.setSpacing(10)
+        layout_brake.setContentsMargins(S_LG, S_LG, S_LG, S_LG)
+        layout_brake.setSpacing(GRID_SPACING)
         layout_brake.addWidget(self.waveform_hosts["brake"])
-        layout_brake.addWidget(self.status_brake_box)
-        layout_brake.addWidget(make_grid(self.modules_brake, cols=3))
+        status_card_brake = GlassCard("BRAKE — STATUS")
+        status_card_brake.add_widget(self.status_brake_box)
+        layout_brake.addWidget(status_card_brake)
+        modules_card_brake = GlassCard("MÓDULOS")
+        modules_card_brake.add_widget(make_grid(self.modules_brake, cols=3))
+        layout_brake.addWidget(modules_card_brake)
         self.view_stack.addWidget(tab_brake)
         self.tab_brake = tab_brake
 
         # V12: Legacy Analyzers Tab
         tab_legacy = QWidget()
         layout_legacy = QVBoxLayout(tab_legacy)
-        layout_legacy.setContentsMargins(8, 8, 8, 8)
-        layout_legacy.setSpacing(10)
+        layout_legacy.setContentsMargins(S_LG, S_LG, S_LG, S_LG)
+        layout_legacy.setSpacing(GRID_SPACING)
 
         # Legacy title
         legacy_title = QLabel("ANALIZADORES ADICIONALES / LEGACY")
@@ -1540,130 +1605,113 @@ class Main(QMainWindow):
         else:
             self.cues_tab = None
 
-        # Monitor
+        # Monitor — WEB-style grid dashboard
         tab_monitor = QWidget()
         layout_monitor = QVBoxLayout(tab_monitor)
-        layout_monitor.setContentsMargins(8, 8, 8, 8)
-        layout_monitor.setSpacing(8)
-        
+        layout_monitor.setContentsMargins(S_LG, S_LG, S_LG, S_LG)
+        layout_monitor.setSpacing(GRID_SPACING)
+
+        # Waveform (full-width)
         layout_monitor.addWidget(self.waveform_hosts["monitor"])
-        
-        vu_section = QFrame()
-        vu_section.setStyleSheet("QFrame{background:#141418; border:1px solid #2e2e38; border-radius:12px;}")
-        vu_layout = QVBoxLayout(vu_section)
-        vu_layout.setContentsMargins(8, 8, 8, 8)
-        vu_layout.setSpacing(4)
-        vu_lbl = QLabel("VU PRINCIPAL")
-        vu_lbl.setStyleSheet("QLabel{font-size:12px; font-weight:700; color:#f0f0f0;}")
-        vu_layout.addWidget(vu_lbl)
+
+        # -- Grid workspace ------------------------------------------------
+        monitor_grid = QGridLayout()
+        monitor_grid.setSpacing(GRID_SPACING)
+        _mg_col = 0  # track column position in row 0
+
+        # Card: VU Principal
+        vu_card = GlassCard("VU PRINCIPAL")
         self.vu_main = QProgressBar()
         self.vu_main.setRange(0, 1000)
         self.vu_main.setTextVisible(False)
         self.vu_main.setFixedHeight(20)
         self.vu_main.setStyleSheet(
-            "QProgressBar{background:#0a0a0f; border:1px solid #2e2e38; border-radius:16px;} "
-            "QProgressBar::chunk{background:#22aa88; border-radius:16px;}"
+            f"QProgressBar{{background:{BG_INSET_SOLID}; border:1px solid {BORDER_SOLID}; border-radius:{R_LG}px;}} "
+            f"QProgressBar::chunk{{background:#22aa88; border-radius:{R_LG}px;}}"
         )
-        vu_layout.addWidget(self.vu_main)
-        layout_monitor.addWidget(vu_section)
+        vu_card.add_widget(self.vu_main)
+        monitor_grid.addWidget(vu_card, 0, _mg_col)
+        _mg_col += 1
 
-        widgets_row = QHBoxLayout()
-        widgets_row.setContentsMargins(8, 8, 8, 8)
-        widgets_row.setSpacing(8)
-
-        # Vision System - Vertical Haze Bar (Phase 6)
+        # Card: Haze Bar (Vision System)
         if VISION_AVAILABLE:
-            haze_container = QFrame()
-            haze_container.setStyleSheet("QFrame{background:#141418; border:1px solid #2e2e38; border-radius:12px;}")
-            haze_container.setFixedWidth(40)
-            haze_container.setMinimumHeight(260)
-            haze_layout = QVBoxLayout(haze_container)
-            haze_layout.setContentsMargins(10, 10, 10, 10)
-            haze_layout.setSpacing(4)
-
-            haze_lbl = QLabel("HAZE")
-            haze_lbl.setStyleSheet("QLabel{font-size:10px; font-weight:700; color:#f0f0f0;}")
-            haze_lbl.setAlignment(Qt.AlignCenter)
-            haze_layout.addWidget(haze_lbl)
-
+            haze_card = GlassCard("HAZE")
             self.haze_bar = QProgressBar()
             self.haze_bar.setOrientation(Qt.Vertical)
             self.haze_bar.setRange(0, 100)
             self.haze_bar.setValue(0)
             self.haze_bar.setTextVisible(False)
             self.haze_bar.setFixedWidth(20)
+            self.haze_bar.setMinimumHeight(180)
             self.haze_bar.setStyleSheet(
-                "QProgressBar{background:#0a0a0f; border:1px solid #2e2e38; border-radius:10px;} "
+                f"QProgressBar{{background:{BG_INSET_SOLID}; border:1px solid {BORDER_SOLID}; border-radius:10px;}} "
                 "QProgressBar::chunk{background:qlineargradient(x1:0, y1:1, x2:0, y2:0, "
                 "stop:0 #4a90e2, stop:0.5 #7ec8e3, stop:1 #aaddff); border-radius:10px;}"
             )
-            haze_layout.addWidget(self.haze_bar, 1)
-            widgets_row.addWidget(haze_container)
+            haze_card.add_widget(self.haze_bar)
+            haze_card.setFixedWidth(80)
+            monitor_grid.addWidget(haze_card, 0, _mg_col)
+            _mg_col += 1
         else:
             self.haze_bar = None
 
+        # Card: Energy Monitor
         if ENERGY_AVAILABLE:
-            energy_container = QFrame()
-            energy_container.setMinimumWidth(260)
-            energy_container.setMinimumHeight(260)
-            energy_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-            energy_layout = QVBoxLayout(energy_container)
-            energy_layout.setContentsMargins(0, 0, 0, 0)
+            energy_card = GlassCard("ENERGY")
             self.energy_widget = EnergyMonitorWidget(self.energy_detector)
             self.energy_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-            energy_layout.addWidget(self.energy_widget)
-            widgets_row.addWidget(energy_container)
+            self.energy_widget.setMinimumHeight(220)
+            energy_card.add_widget(self.energy_widget)
+            energy_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            monitor_grid.addWidget(energy_card, 0, _mg_col)
+            _mg_col += 1
 
+        # Card: State Monitor
         if STATE_WIDGET_AVAILABLE:
-            state_container = QFrame()
-            state_container.setMinimumWidth(300)
-            state_container.setMinimumHeight(260)
-            state_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-            state_layout = QVBoxLayout(state_container)
-            state_layout.setContentsMargins(0, 0, 0, 0)
+            state_card = GlassCard("ESTADO")
             self.state_widget = StateMonitorWidget(self.state_manager)
             self.state_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-            state_layout.addWidget(self.state_widget)
-            widgets_row.addWidget(state_container)
+            self.state_widget.setMinimumHeight(220)
+            state_card.add_widget(self.state_widget)
+            state_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            monitor_grid.addWidget(state_card, 0, _mg_col)
+            _mg_col += 1
         else:
             self.state_widget = None
 
+        # Card: Cues Debug (row 1)
         if self.cue_engine:
             try:
-                cues_container = QFrame()
-                cues_container.setMinimumWidth(320)
-                cues_container.setMinimumHeight(280)
-                cues_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-                cues_layout = QVBoxLayout(cues_container)
-                cues_layout.setContentsMargins(0, 0, 0, 0)
+                cues_card = GlassCard("CUES ENGINE")
                 self.cues_debug_widget = create_cue_engine_debug_widget(self.cue_engine)
                 try:
                     self.cues_debug_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
                 except Exception:
                     pass
-                cues_layout.addWidget(self.cues_debug_widget)
-                widgets_row.addWidget(cues_container)
+                cues_card.add_widget(self.cues_debug_widget)
+                cues_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+                monitor_grid.addWidget(cues_card, 1, 0, 1, 2)
             except:
                 self.cues_debug_widget = None
         else:
             self.cues_debug_widget = None
-        
-        widgets_row.addStretch()
-        layout_monitor.addLayout(widgets_row)
 
-        status_section = QFrame()
-        status_section.setStyleSheet("QFrame{background:#141418; border:1px solid #2e2e38; border-radius:12px;}")
-        status_layout = QVBoxLayout(status_section)
-        status_layout.setContentsMargins(10, 10, 10, 10)
-        status_layout.setSpacing(8)
-        status_title = QLabel("ESTADO DE MÓDULOS")
-        status_title.setStyleSheet("QLabel{font-size:12px; font-weight:700; color:#f0f0f0;}")
-        status_layout.addWidget(status_title)
-        status_layout.addWidget(self.status_bajada_box)
-        status_layout.addWidget(self.status_golpe_box)
-        status_layout.addWidget(self.status_ataque_box)
-        status_layout.addWidget(self.status_brake_box)
-        layout_monitor.addWidget(status_section)
+        # Card: Module Status (row 1, spanning remaining cols)
+        status_card = GlassCard("ESTADO DE MÓDULOS")
+        status_inner = QVBoxLayout()
+        status_inner.setContentsMargins(CARD_PADDING, 0, CARD_PADDING, CARD_PADDING)
+        status_inner.setSpacing(S_SM)
+        status_inner.addWidget(self.status_bajada_box)
+        status_inner.addWidget(self.status_golpe_box)
+        status_inner.addWidget(self.status_ataque_box)
+        status_inner.addWidget(self.status_brake_box)
+        status_wrapper = QWidget()
+        status_wrapper.setLayout(status_inner)
+        status_card.add_widget(status_wrapper)
+        status_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        monitor_grid.addWidget(status_card, 1, 2, 1, max(_mg_col - 2, 1))
+
+        layout_monitor.addLayout(monitor_grid)
         layout_monitor.addStretch()
         
         self.view_stack.addWidget(tab_monitor)
@@ -1672,15 +1720,15 @@ class Main(QMainWindow):
         # === PANEL RED/CONSOLA UNIFICADO ===
         tab_net = QWidget()
         ln = QVBoxLayout(tab_net)
-        ln.setContentsMargins(12, 12, 12, 12)
-        ln.setSpacing(12)
+        ln.setContentsMargins(S_LG, S_LG, S_LG, S_LG)
+        ln.setSpacing(GRID_SPACING)
 
         # === Sección: LOAD SHOW (Perfil Único) ===
         show_frame = QFrame()
-        show_frame.setStyleSheet("QFrame{background:#1a141a; border:1px solid #4a2a4a; border-radius:12px;}")
+        show_frame.setStyleSheet(f"QFrame{{background:#1a141a; border:1px solid #4a2a4a; border-radius:{CARD_RADIUS}px;}}")
         show_layout = QVBoxLayout(show_frame)
-        show_layout.setContentsMargins(12, 12, 12, 12)
-        show_layout.setSpacing(8)
+        show_layout.setContentsMargins(CARD_PADDING, CARD_PADDING, CARD_PADDING, CARD_PADDING)
+        show_layout.setSpacing(S_SM)
         show_title = QLabel("LOAD SHOW")
         show_title.setStyleSheet("font-weight:700; color:#f8f; font-size:12px;")
         show_layout.addWidget(show_title)
@@ -1710,10 +1758,10 @@ class Main(QMainWindow):
 
         # === Sección: AUDIO DEVICE ===
         audio_frame = QFrame()
-        audio_frame.setStyleSheet("QFrame{background:#141a14; border:1px solid #2a4a2a; border-radius:12px;}")
+        audio_frame.setStyleSheet(f"QFrame{{background:#141a14; border:1px solid #2a4a2a; border-radius:{CARD_RADIUS}px;}}")
         audio_layout = QVBoxLayout(audio_frame)
-        audio_layout.setContentsMargins(12, 12, 12, 12)
-        audio_layout.setSpacing(8)
+        audio_layout.setContentsMargins(CARD_PADDING, CARD_PADDING, CARD_PADDING, CARD_PADDING)
+        audio_layout.setSpacing(S_SM)
         audio_title = QLabel("AUDIO DEVICE")
         audio_title.setStyleSheet("font-weight:700; color:#8f8; font-size:12px;")
         audio_layout.addWidget(audio_title)
@@ -1753,7 +1801,7 @@ class Main(QMainWindow):
 
         # Encabezado con estado
         header_frame = QFrame()
-        header_frame.setStyleSheet("QFrame{background:#141418; border:1px solid #2e2e38; border-radius:12px; padding:8px;}")
+        header_frame.setStyleSheet(f"QFrame{{background:{CARD_BACKGROUND}; border:1px solid {CARD_BORDER}; border-radius:{CARD_RADIUS}px; padding:{S_SM}px;}}")
         header_layout = QHBoxLayout(header_frame)
         self.net_status_badge = QLabel("● Desconectado")
         self.net_status_badge.setStyleSheet("color:#e74c3c; font-weight:700; font-size:14px;")
@@ -1775,10 +1823,10 @@ class Main(QMainWindow):
         # Contiene: Destino + NIC local + Transporte + Auto-connect
         # ================================================================
         net_card = QFrame()
-        net_card.setStyleSheet("QFrame{background:#141418; border:1px solid #2e2e38; border-radius:16px;}")
+        net_card.setStyleSheet(f"QFrame{{background:{CARD_BACKGROUND}; border:1px solid {CARD_BORDER}; border-radius:{CARD_RADIUS}px;}}")
         net_card_layout = QVBoxLayout(net_card)
-        net_card_layout.setContentsMargins(16, 16, 16, 16)
-        net_card_layout.setSpacing(12)
+        net_card_layout.setContentsMargins(CARD_PADDING, CARD_PADDING, CARD_PADDING, CARD_PADDING)
+        net_card_layout.setSpacing(S_MD)
 
         # Título de la tarjeta
         net_card_title = QLabel("RED / CONSOLA (Titan)")
@@ -1967,9 +2015,9 @@ class Main(QMainWindow):
 
         # === Sección: Avolites Cue Offset ===
         offset_frame = QFrame()
-        offset_frame.setStyleSheet("QFrame{background:#141418; border:1px solid #2e2e38; border-radius:12px;}")
+        offset_frame.setStyleSheet(f"QFrame{{background:{CARD_BACKGROUND}; border:1px solid {CARD_BORDER}; border-radius:{CARD_RADIUS}px;}}")
         offset_layout = QVBoxLayout(offset_frame)
-        offset_layout.setContentsMargins(12, 12, 12, 12)
+        offset_layout.setContentsMargins(CARD_PADDING, CARD_PADDING, CARD_PADDING, CARD_PADDING)
         offset_layout.setSpacing(8)
         offset_title = QLabel("AVOLITES CUE OFFSET")
         offset_title.setStyleSheet("font-weight:700; color:#f0f0f0; font-size:12px;")
@@ -2008,9 +2056,9 @@ class Main(QMainWindow):
 
         # Sección: Diagnóstico
         diag_frame = QFrame()
-        diag_frame.setStyleSheet("QFrame{background:#141418; border:1px solid #2e2e38; border-radius:12px;}")
+        diag_frame.setStyleSheet(f"QFrame{{background:{CARD_BACKGROUND}; border:1px solid {CARD_BORDER}; border-radius:{CARD_RADIUS}px;}}")
         diag_layout = QVBoxLayout(diag_frame)
-        diag_layout.setContentsMargins(12, 12, 12, 12)
+        diag_layout.setContentsMargins(CARD_PADDING, CARD_PADDING, CARD_PADDING, CARD_PADDING)
         diag_layout.setSpacing(8)
         diag_title = QLabel("DIAGNÓSTICO")
         diag_title.setStyleSheet("font-weight:700; color:#f0f0f0; font-size:12px;")
@@ -2051,8 +2099,8 @@ class Main(QMainWindow):
         # === PANEL HEALTH ===
         tab_health = QWidget()
         health_layout = QVBoxLayout(tab_health)
-        health_layout.setContentsMargins(12, 12, 12, 12)
-        health_layout.setSpacing(12)
+        health_layout.setContentsMargins(S_LG, S_LG, S_LG, S_LG)
+        health_layout.setSpacing(GRID_SPACING)
         
         self.health_widget = HealthMonitorWidget(self)
         health_layout.addWidget(self.health_widget)

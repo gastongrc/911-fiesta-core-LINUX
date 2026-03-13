@@ -86,6 +86,16 @@ R_SM = 8
 R_MD = 12
 R_LG = 16
 R_XL = 20
+R_2XL = 24
+
+# ---------------------------------------------------------------------------
+# Card / Grid — WEB: .g card tokens for workspace layout
+# ---------------------------------------------------------------------------
+CARD_BACKGROUND = BG_CARD_SOLID        # WEB: --glass solid fallback
+CARD_BORDER = BORDER_SOLID             # WEB: --glass-b solid fallback
+CARD_PADDING = S_XL                    # 24px — WEB: .g padding
+CARD_RADIUS = R_XL                     # 20px — WEB: .g border-radius
+GRID_SPACING = S_LG                    # 20px — WEB: card grid gap
 
 # ---------------------------------------------------------------------------
 # Main Window Stylesheet — dark canvas
@@ -664,19 +674,23 @@ QFrame {{
 """
 
 # ---------------------------------------------------------------------------
-# Sidebar Navigation — WEB: left nav panel
+# Sidebar Navigation — WEB: .side (glass nav panel, 68px)
 # ---------------------------------------------------------------------------
+SIDEBAR_WIDTH = 170          # px – slightly wider than WEB 68px to fit labels
 SIDEBAR_STYLE = f"""
 #Sidebar {{
     background: {BG_PANEL_SOLID};
     border-right: 1px solid {BORDER_SOLID};
+    min-width: {SIDEBAR_WIDTH}px;
+    max-width: {SIDEBAR_WIDTH}px;
 }}
 #Sidebar QLabel[role="section"] {{
     color: {TEXT_MUTED};
     font-size: 10px;
     font-weight: 700;
-    font-family: {FONT_BODY};
-    padding: 12px 12px 4px 12px;
+    font-family: {FONT_TITLE};
+    letter-spacing: 1px;
+    padding: 18px 14px 6px 14px;
     border: none;
     background: transparent;
 }}
@@ -684,21 +698,66 @@ SIDEBAR_STYLE = f"""
     background: transparent;
     color: {TEXT_SECONDARY};
     border: none;
-    border-radius: {R_SM}px;
+    border-radius: 0px;
     text-align: left;
-    padding: 8px 14px;
+    padding: 9px 14px;
     font-size: 12px;
     font-weight: 500;
     font-family: {FONT_BODY};
+    margin: 0px 6px;
+    border-radius: {R_SM}px;
 }}
 #Sidebar QPushButton:hover {{
     background: {BG_HOVER_SOLID};
     color: {TEXT_PRIMARY};
 }}
 #Sidebar QPushButton[active="true"] {{
-    background: #0d1a10;
+    background: rgba(0, 230, 118, 0.08);
     color: {NEON_GREEN};
-    border-left: 2px solid {NEON_GREEN};
+    border-left: 3px solid {NEON_GREEN};
+    border-radius: 0 {R_SM}px {R_SM}px 0;
+    margin-left: 0px;
+    padding-left: 11px;
+}}
+"""
+
+# ---------------------------------------------------------------------------
+# Workspace Card — WEB: .g (glass card) wrapper for module containers
+# ---------------------------------------------------------------------------
+WORKSPACE_CARD_STYLE = f"""
+#WorkspaceCard {{
+    background: {CARD_BACKGROUND};
+    border: 1px solid {CARD_BORDER};
+    border-radius: {CARD_RADIUS}px;
+    padding: 0px;
+}}
+#WorkspaceCard > QLabel[role="card-title"] {{
+    color: {TEXT_PRIMARY};
+    font-weight: 600;
+    font-size: 14px;
+    font-family: {FONT_TITLE};
+    padding: {S_BASE}px {CARD_PADDING}px {S_SM}px {CARD_PADDING}px;
+    border: none;
+    background: transparent;
+}}
+"""
+
+# ---------------------------------------------------------------------------
+# Header / TopBar — WEB: header flex row
+# ---------------------------------------------------------------------------
+HEADER_STYLE = f"""
+#TopBar {{
+    background: {BG_PANEL_SOLID};
+    border-bottom: 1px solid {BORDER_SOLID};
+    min-height: 48px;
+    max-height: 48px;
+}}
+#TopBar QLabel {{
+    color: {TEXT_SECONDARY};
+    font-size: 12px;
+    font-family: {FONT_BODY};
+    border: none;
+    background: transparent;
 }}
 """
 
@@ -711,6 +770,8 @@ def get_full_stylesheet() -> str:
     {MAIN_WINDOW_STYLE}
     {TAB_WIDGET_STYLE}
     {SIDEBAR_STYLE}
+    {WORKSPACE_CARD_STYLE}
+    {HEADER_STYLE}
     {BUTTON_STYLE}
     {PROGRESS_BAR_STYLE}
     {SLIDER_STYLE}
@@ -848,9 +909,13 @@ __all__ = [
     'FONT_TITLE', 'FONT_BODY', 'FONT_MONO',
     # Spacing
     'S_XS', 'S_SM', 'S_MD', 'S_BASE', 'S_LG', 'S_XL', 'S_2XL',
-    'R_SM', 'R_MD', 'R_LG', 'R_XL',
+    'R_SM', 'R_MD', 'R_LG', 'R_XL', 'R_2XL',
+    # Card / Grid tokens
+    'CARD_BACKGROUND', 'CARD_BORDER', 'CARD_PADDING', 'CARD_RADIUS', 'GRID_SPACING',
+    'SIDEBAR_WIDTH',
     # Stylesheets
     'MAIN_WINDOW_STYLE', 'TAB_WIDGET_STYLE', 'PANEL_STYLE', 'CARD_STYLE',
+    'SIDEBAR_STYLE', 'WORKSPACE_CARD_STYLE', 'HEADER_STYLE',
     'BUTTON_STYLE', 'BUTTON_PRIMARY_STYLE', 'BUTTON_DANGER_STYLE',
     'PROGRESS_BAR_STYLE', 'SLIDER_STYLE', 'COMBOBOX_STYLE',
     'LINEEDIT_STYLE', 'SPINBOX_STYLE', 'GROUPBOX_STYLE', 'SCROLLAREA_STYLE',
