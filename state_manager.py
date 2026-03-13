@@ -480,7 +480,7 @@ class StateManager:
                     "brake": getattr(self._mse_state, "P_brake", 0),
                 }
                 for k in scores:
-                    scores[k] = 0.45 * scores[k] + 0.55 * mse_probs.get(k, 0.0)
+                    scores[k] = 0.70 * scores[k] + 0.30 * mse_probs.get(k, 0.0)
 
         return self._apply_light_smoothing(scores)
     
@@ -615,8 +615,8 @@ class StateManager:
         - NUNCA pueden ser elegidos como winner
         """
         BRAKE_THRESHOLD = 0.65
-        ATAQUE_THRESHOLD = 0.68
-        GOLPE_THRESHOLD = 0.30  # V12.1: Lowered to 3/10 votes for better sensitivity
+        ATAQUE_THRESHOLD = 0.60
+        GOLPE_THRESHOLD = 0.45  # Raised: require real analyzer support, not MSE alone
         BAJADA_THRESHOLD = 0.35  # V12: Slightly lowered for stability
 
         # ✅ CALENDAR BRIDGE: Crear effective_scores (disabled = 0.0)
