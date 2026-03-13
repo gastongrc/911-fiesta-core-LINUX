@@ -619,6 +619,10 @@ class SidebarNav(QWidget):
             self.setFixedWidth(170)
         self._buttons: list[QPushButton] = []
         self._stack: QStackedWidget | None = None
+        # Maps button position → stack widget index
+        self._btn_to_stack: list[int] = []
+        # Maps stack widget index → button position
+        self._stack_to_btn: dict[int, int] = {}
 
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 8, 0, 8)
@@ -634,38 +638,59 @@ class SidebarNav(QWidget):
         self._layout.addWidget(lbl)
 
     def add_item(self, label: str, widget: QWidget):
-        idx = self._stack.indexOf(widget) if self._stack else -1
+        stack_idx = self._stack.indexOf(widget) if self._stack else -1
+        btn_idx = len(self._buttons)
         btn = QPushButton(label)
         btn.setCursor(Qt.PointingHandCursor)
-        btn.clicked.connect(lambda checked, i=idx: self._select(i))
+        btn.clicked.connect(lambda checked, bi=btn_idx: self._activate(bi))
         self._layout.addWidget(btn)
         self._buttons.append(btn)
+        self._btn_to_stack.append(stack_idx)
+        if stack_idx >= 0:
+            self._stack_to_btn[stack_idx] = btn_idx
 
     def finish(self):
         self._layout.addStretch()
         if self._buttons:
-            self._select(0)
+            self._activate(0)
 
     # -- internal ------------------------------------------------------------
-    def _select(self, index: int):
-        if self._stack is None:
+    def _activate(self, btn_index: int):
+        """Switch view by button index (not stack index)."""
+        if self._stack is None or btn_index < 0 or btn_index >= len(self._buttons):
             return
-        self._stack.setCurrentIndex(index)
+        stack_idx = self._btn_to_stack[btn_index]
+        if stack_idx >= 0:
+            self._stack.setCurrentIndex(stack_idx)
         for b in self._buttons:
             b.setProperty("active", "false")
             b.style().unpolish(b)
             b.style().polish(b)
-        if 0 <= index < len(self._buttons):
-            self._buttons[index].setProperty("active", "true")
-            self._buttons[index].style().unpolish(self._buttons[index])
-            self._buttons[index].style().polish(self._buttons[index])
+        self._buttons[btn_index].setProperty("active", "true")
+        self._buttons[btn_index].style().unpolish(self._buttons[btn_index])
+        self._buttons[btn_index].style().polish(self._buttons[btn_index])
 
     def select_widget(self, widget: QWidget):
+        """Switch view by widget reference."""
         if self._stack is None:
             return
-        idx = self._stack.indexOf(widget)
-        if idx >= 0:
-            self._select(idx)
+        stack_idx = self._stack.indexOf(widget)
+        btn_idx = self._stack_to_btn.get(stack_idx, -1)
+        if btn_idx >= 0:
+            self._activate(btn_idx)
+
+    def sync_highlight(self, stack_idx: int):
+        """Update button highlight when stack changes externally."""
+        btn_idx = self._stack_to_btn.get(stack_idx, -1)
+        if btn_idx < 0:
+            return
+        for b in self._buttons:
+            b.setProperty("active", "false")
+            b.style().unpolish(b)
+            b.style().polish(b)
+        self._buttons[btn_idx].setProperty("active", "true")
+        self._buttons[btn_idx].style().unpolish(self._buttons[btn_idx])
+        self._buttons[btn_idx].style().polish(self._buttons[btn_idx])
 
 
 # ---------------------------------------------------------------------------
@@ -1605,84 +1630,187 @@ class Main(QMainWindow):
         else:
             self.cues_tab = None
 
-        # Monitor — WEB-style grid dashboard
+        # ===================================================================
+        # Monitor — WEB Control Room Dashboard
+        # Layout: Metrics bar → 3-column card grid
+        # Matches webapp/src/pages/Home.jsx
+        # ===================================================================
         tab_monitor = QWidget()
         layout_monitor = QVBoxLayout(tab_monitor)
-        layout_monitor.setContentsMargins(S_LG, S_LG, S_LG, S_LG)
+        layout_monitor.setContentsMargins(S_XL, S_LG, S_XL, S_LG)
         layout_monitor.setSpacing(GRID_SPACING)
 
-        # Waveform (full-width)
+        # -- Waveform (full-width) -----------------------------------------
         layout_monitor.addWidget(self.waveform_hosts["monitor"])
 
-        # -- Grid workspace ------------------------------------------------
-        monitor_grid = QGridLayout()
-        monitor_grid.setSpacing(GRID_SPACING)
-        _mg_col = 0  # track column position in row 0
+        # -- Metrics Bar (WEB: 4-column top bar) ---------------------------
+        metrics_card = GlassCard()
+        metrics_grid = QGridLayout()
+        metrics_grid.setSpacing(GRID_SPACING)
+        metrics_grid.setContentsMargins(CARD_PADDING, S_BASE, CARD_PADDING, S_BASE)
 
-        # Card: VU Principal
-        vu_card = GlassCard("VU PRINCIPAL")
+        _inset_ss = (
+            f"QFrame{{background:{BG_INSET_SOLID}; border:1px solid #1e1e28; "
+            f"border-radius:{R_MD}px; padding:{S_MD}px;}}"
+        )
+
+        def _make_metric(title, initial="—"):
+            """Build a small inset metric panel (WEB: .inset inside metrics bar)."""
+            f = QFrame()
+            f.setStyleSheet(_inset_ss)
+            fl = QVBoxLayout(f)
+            fl.setContentsMargins(S_MD, S_SM, S_MD, S_SM)
+            fl.setSpacing(2)
+            t = QLabel(title)
+            t.setStyleSheet(f"color:{TEXT_MUTED}; font-size:10px; font-weight:600; font-family:{FONT_TITLE}; border:none; background:transparent;")
+            v = QLabel(initial)
+            v.setStyleSheet(f"color:{TEXT_PRIMARY}; font-size:18px; font-weight:700; font-family:{FONT_MONO}; border:none; background:transparent;")
+            fl.addWidget(t)
+            fl.addWidget(v)
+            return f, v
+
+        m_vu, self.dash_vu_value = _make_metric("NIVEL AUDIO", "— dBFS")
+        m_bpm, self.dash_bpm_value = _make_metric("BPM", "—")
+        m_conn, self.dash_conn_value = _make_metric("CONSOLA", "Desconectado")
+        m_state, self.dash_state_value = _make_metric("ESTADO", "—")
+
+        metrics_grid.addWidget(m_vu, 0, 0)
+        metrics_grid.addWidget(m_bpm, 0, 1)
+        metrics_grid.addWidget(m_conn, 0, 2)
+        metrics_grid.addWidget(m_state, 0, 3)
+        for c in range(4):
+            metrics_grid.setColumnStretch(c, 1)
+
+        metrics_w = QWidget()
+        metrics_w.setLayout(metrics_grid)
+        metrics_card.add_widget(metrics_w)
+        layout_monitor.addWidget(metrics_card)
+
+        # -- Card Grid (WEB: repeat(auto-fit, minmax(320px, 1fr))) ---------
+        dash_grid = QGridLayout()
+        dash_grid.setSpacing(GRID_SPACING)
+        for c in range(3):
+            dash_grid.setColumnStretch(c, 1)
+
+        _grid_row = 0
+        _grid_col = 0
+
+        def _next_cell():
+            nonlocal _grid_row, _grid_col
+            r, c = _grid_row, _grid_col
+            _grid_col += 1
+            if _grid_col >= 3:
+                _grid_col = 0
+                _grid_row += 1
+            return r, c
+
+        # Card: Placa de Sonido (Audio)
+        audio_card = GlassCard("PLACA DE SONIDO")
+        audio_inner = QVBoxLayout()
+        audio_inner.setContentsMargins(CARD_PADDING, 0, CARD_PADDING, CARD_PADDING)
+        audio_inner.setSpacing(S_SM)
         self.vu_main = QProgressBar()
         self.vu_main.setRange(0, 1000)
         self.vu_main.setTextVisible(False)
-        self.vu_main.setFixedHeight(20)
+        self.vu_main.setFixedHeight(8)
         self.vu_main.setStyleSheet(
-            f"QProgressBar{{background:{BG_INSET_SOLID}; border:1px solid {BORDER_SOLID}; border-radius:{R_LG}px;}} "
-            f"QProgressBar::chunk{{background:#22aa88; border-radius:{R_LG}px;}}"
+            f"QProgressBar{{background:{BG_INSET_SOLID}; border:1px solid {BORDER_SOLID}; border-radius:4px;}} "
+            f"QProgressBar::chunk{{background:qlineargradient(x1:0,y1:0,x2:1,y2:0, "
+            f"stop:0 {NEON_GREEN}, stop:1 #4dd0e1); border-radius:3px;}}"
         )
-        vu_card.add_widget(self.vu_main)
-        monitor_grid.addWidget(vu_card, 0, _mg_col)
-        _mg_col += 1
+        self.dash_audio_device = QLabel("—")
+        self.dash_audio_device.setStyleSheet(f"color:{TEXT_SECONDARY}; font-size:11px; border:none; background:transparent;")
+        self.dash_audio_level = QLabel("Nivel: —")
+        self.dash_audio_level.setStyleSheet(f"color:{TEXT_PRIMARY}; font-size:13px; font-weight:600; font-family:{FONT_MONO}; border:none; background:transparent;")
+        audio_inner.addWidget(self.dash_audio_device)
+        audio_inner.addWidget(self.dash_audio_level)
+        audio_inner.addWidget(self.vu_main)
+        audio_w = QWidget()
+        audio_w.setLayout(audio_inner)
+        audio_card.add_widget(audio_w)
+        r, c = _next_cell()
+        dash_grid.addWidget(audio_card, r, c)
 
-        # Card: Haze Bar (Vision System)
-        if VISION_AVAILABLE:
-            haze_card = GlassCard("HAZE")
-            self.haze_bar = QProgressBar()
-            self.haze_bar.setOrientation(Qt.Vertical)
-            self.haze_bar.setRange(0, 100)
-            self.haze_bar.setValue(0)
-            self.haze_bar.setTextVisible(False)
-            self.haze_bar.setFixedWidth(20)
-            self.haze_bar.setMinimumHeight(180)
-            self.haze_bar.setStyleSheet(
-                f"QProgressBar{{background:{BG_INSET_SOLID}; border:1px solid {BORDER_SOLID}; border-radius:10px;}} "
-                "QProgressBar::chunk{background:qlineargradient(x1:0, y1:1, x2:0, y2:0, "
-                "stop:0 #4a90e2, stop:0.5 #7ec8e3, stop:1 #aaddff); border-radius:10px;}"
-            )
-            haze_card.add_widget(self.haze_bar)
-            haze_card.setFixedWidth(80)
-            monitor_grid.addWidget(haze_card, 0, _mg_col)
-            _mg_col += 1
-        else:
-            self.haze_bar = None
+        # Card: Consola Avolites
+        console_card = GlassCard("CONSOLA AVOLITES")
+        console_inner = QVBoxLayout()
+        console_inner.setContentsMargins(CARD_PADDING, 0, CARD_PADDING, CARD_PADDING)
+        console_inner.setSpacing(S_SM)
+        self.dash_console_ip = QLabel("IP: —")
+        self.dash_console_ip.setStyleSheet(f"color:{TEXT_SECONDARY}; font-size:11px; border:none; background:transparent;")
+        self.dash_console_status = QLabel("● Desconectado")
+        self.dash_console_status.setStyleSheet(f"color:#e74c3c; font-size:13px; font-weight:700; border:none; background:transparent;")
+        self.dash_console_latency = QLabel("Latencia: —")
+        self.dash_console_latency.setStyleSheet(f"color:{TEXT_MUTED}; font-size:11px; border:none; background:transparent;")
+        console_inner.addWidget(self.dash_console_ip)
+        console_inner.addWidget(self.dash_console_status)
+        console_inner.addWidget(self.dash_console_latency)
+        console_w = QWidget()
+        console_w.setLayout(console_inner)
+        console_card.add_widget(console_w)
+        r, c = _next_cell()
+        dash_grid.addWidget(console_card, r, c)
+
+        # Card: Red Local (Network)
+        net_card_dash = GlassCard("RED LOCAL")
+        net_inner = QVBoxLayout()
+        net_inner.setContentsMargins(CARD_PADDING, 0, CARD_PADDING, CARD_PADDING)
+        net_inner.setSpacing(S_SM)
+        self.dash_net_ip = QLabel("IP: —")
+        self.dash_net_ip.setStyleSheet(f"color:{TEXT_SECONDARY}; font-size:11px; border:none; background:transparent;")
+        self.dash_net_iface = QLabel("Interfaz: —")
+        self.dash_net_iface.setStyleSheet(f"color:{TEXT_MUTED}; font-size:11px; border:none; background:transparent;")
+        net_inner.addWidget(self.dash_net_ip)
+        net_inner.addWidget(self.dash_net_iface)
+        net_w = QWidget()
+        net_w.setLayout(net_inner)
+        net_card_dash.add_widget(net_w)
+        r, c = _next_cell()
+        dash_grid.addWidget(net_card_dash, r, c)
 
         # Card: Energy Monitor
         if ENERGY_AVAILABLE:
             energy_card = GlassCard("ENERGY")
             self.energy_widget = EnergyMonitorWidget(self.energy_detector)
             self.energy_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-            self.energy_widget.setMinimumHeight(220)
+            self.energy_widget.setMinimumHeight(180)
             energy_card.add_widget(self.energy_widget)
             energy_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-            monitor_grid.addWidget(energy_card, 0, _mg_col)
-            _mg_col += 1
+            r, c = _next_cell()
+            dash_grid.addWidget(energy_card, r, c)
 
-        # Card: State Monitor
+        # Card: Current State
         if STATE_WIDGET_AVAILABLE:
-            state_card = GlassCard("ESTADO")
+            state_card = GlassCard("CURRENT STATE")
             self.state_widget = StateMonitorWidget(self.state_manager)
             self.state_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-            self.state_widget.setMinimumHeight(220)
+            self.state_widget.setMinimumHeight(180)
             state_card.add_widget(self.state_widget)
             state_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-            monitor_grid.addWidget(state_card, 0, _mg_col)
-            _mg_col += 1
+            r, c = _next_cell()
+            dash_grid.addWidget(state_card, r, c)
         else:
             self.state_widget = None
 
-        # Card: Cues Debug (row 1)
+        # Card: Modules (WEB: 4 module rows with LED dots)
+        modules_card = GlassCard("MODULES")
+        modules_inner = QVBoxLayout()
+        modules_inner.setContentsMargins(CARD_PADDING, 0, CARD_PADDING, CARD_PADDING)
+        modules_inner.setSpacing(S_SM)
+        modules_inner.addWidget(self.status_bajada_box)
+        modules_inner.addWidget(self.status_golpe_box)
+        modules_inner.addWidget(self.status_ataque_box)
+        modules_inner.addWidget(self.status_brake_box)
+        modules_wrapper = QWidget()
+        modules_wrapper.setLayout(modules_inner)
+        modules_card.add_widget(modules_wrapper)
+        r, c = _next_cell()
+        dash_grid.addWidget(modules_card, r, c)
+
+        # Card: Cues Engine
         if self.cue_engine:
             try:
-                cues_card = GlassCard("CUES ENGINE")
+                cues_card = GlassCard("LAST CUE")
                 self.cues_debug_widget = create_cue_engine_debug_widget(self.cue_engine)
                 try:
                     self.cues_debug_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -1690,28 +1818,59 @@ class Main(QMainWindow):
                     pass
                 cues_card.add_widget(self.cues_debug_widget)
                 cues_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-                monitor_grid.addWidget(cues_card, 1, 0, 1, 2)
+                r, c = _next_cell()
+                dash_grid.addWidget(cues_card, r, c)
             except:
                 self.cues_debug_widget = None
         else:
             self.cues_debug_widget = None
 
-        # Card: Module Status (row 1, spanning remaining cols)
-        status_card = GlassCard("ESTADO DE MÓDULOS")
-        status_inner = QVBoxLayout()
-        status_inner.setContentsMargins(CARD_PADDING, 0, CARD_PADDING, CARD_PADDING)
-        status_inner.setSpacing(S_SM)
-        status_inner.addWidget(self.status_bajada_box)
-        status_inner.addWidget(self.status_golpe_box)
-        status_inner.addWidget(self.status_ataque_box)
-        status_inner.addWidget(self.status_brake_box)
-        status_wrapper = QWidget()
-        status_wrapper.setLayout(status_inner)
-        status_card.add_widget(status_wrapper)
-        status_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        monitor_grid.addWidget(status_card, 1, 2, 1, max(_mg_col - 2, 1))
+        # Card: Haze (Vision)
+        if VISION_AVAILABLE:
+            haze_card = GlassCard("HAZE")
+            haze_inner = QHBoxLayout()
+            haze_inner.setContentsMargins(CARD_PADDING, 0, CARD_PADDING, CARD_PADDING)
+            haze_inner.setSpacing(S_SM)
+            self.haze_bar = QProgressBar()
+            self.haze_bar.setOrientation(Qt.Vertical)
+            self.haze_bar.setRange(0, 100)
+            self.haze_bar.setValue(0)
+            self.haze_bar.setTextVisible(False)
+            self.haze_bar.setFixedWidth(20)
+            self.haze_bar.setMinimumHeight(120)
+            self.haze_bar.setStyleSheet(
+                f"QProgressBar{{background:{BG_INSET_SOLID}; border:1px solid {BORDER_SOLID}; border-radius:10px;}} "
+                "QProgressBar::chunk{background:qlineargradient(x1:0, y1:1, x2:0, y2:0, "
+                "stop:0 #4a90e2, stop:0.5 #7ec8e3, stop:1 #aaddff); border-radius:10px;}"
+            )
+            self.dash_haze_pct = QLabel("0%")
+            self.dash_haze_pct.setStyleSheet(f"color:{TEXT_PRIMARY}; font-size:20px; font-weight:700; font-family:{FONT_MONO}; border:none; background:transparent;")
+            self.dash_haze_pct.setAlignment(Qt.AlignCenter)
+            haze_inner.addWidget(self.haze_bar)
+            haze_inner.addWidget(self.dash_haze_pct, 1)
+            haze_w = QWidget()
+            haze_w.setLayout(haze_inner)
+            haze_card.add_widget(haze_w)
+            r, c = _next_cell()
+            dash_grid.addWidget(haze_card, r, c)
+        else:
+            self.haze_bar = None
 
-        layout_monitor.addLayout(monitor_grid)
+        # Card: Transport
+        transport_card = GlassCard("TRANSPORT")
+        transport_inner = QVBoxLayout()
+        transport_inner.setContentsMargins(CARD_PADDING, 0, CARD_PADDING, CARD_PADDING)
+        transport_inner.setSpacing(S_SM)
+        self.dash_transport_mode = QLabel("HTTP")
+        self.dash_transport_mode.setStyleSheet(f"color:{NEON_GREEN}; font-size:14px; font-weight:700; font-family:{FONT_MONO}; border:none; background:transparent;")
+        transport_inner.addWidget(self.dash_transport_mode)
+        transport_w = QWidget()
+        transport_w.setLayout(transport_inner)
+        transport_card.add_widget(transport_w)
+        r, c = _next_cell()
+        dash_grid.addWidget(transport_card, r, c)
+
+        layout_monitor.addLayout(dash_grid)
         layout_monitor.addStretch()
         
         self.view_stack.addWidget(tab_monitor)
@@ -2196,6 +2355,9 @@ class Main(QMainWindow):
         self.view_stack.currentChanged.connect(self._on_tab_changed)
 
         # -- Sidebar navigation items ----------------------------------------
+        self.sidebar.add_section("DASHBOARD")
+        self.sidebar.add_item("Control Room", tab_monitor)
+
         self.sidebar.add_section("ANALYZERS")
         self.sidebar.add_item("Bajada", tab_bajada)
         self.sidebar.add_item("Base Golpe", tab_golpe)
@@ -2206,7 +2368,6 @@ class Main(QMainWindow):
         self.sidebar.add_section("MONITORING")
         if self.cues_tab:
             self.sidebar.add_item("Cues Monitor", self.cues_tab)
-        self.sidebar.add_item("Monitor", tab_monitor)
         self.sidebar.add_item("Health", tab_health)
 
         self.sidebar.add_section("SYSTEM")
