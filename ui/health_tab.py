@@ -35,9 +35,10 @@ _RED = "#ff5252"
 _MUTED = "rgba(240,240,240,0.38)"
 _TEXT = "#f0f0f0"
 _TEXT2 = "rgba(240,240,240,0.65)"
-_BG_CARD = "rgba(255,255,255,0.05)"
+_BG_CARD = "rgba(255,255,255,0.04)"
 _BG_PANEL = "rgba(255,255,255,0.04)"
-_BORDER = "rgba(255,255,255,0.10)"
+_BORDER = "rgba(255,255,255,0.12)"
+_BORDER_INSET = "rgba(255,255,255,0.08)"
 
 # Status colors
 _OK_COLOR = _GREEN
@@ -334,15 +335,15 @@ class HealthMonitorWidget(QWidget):
 
         container = QWidget()
         layout = QVBoxLayout(container)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(14)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(16)
         scroll.setWidget(container)
 
         # --- GLOBAL STATUS BANNER ---
         self.frm_global = QFrame()
         self.frm_global.setStyleSheet(_card_style())
         gl = QHBoxLayout(self.frm_global)
-        gl.setContentsMargins(14, 10, 14, 10)
+        gl.setContentsMargins(16, 12, 16, 12)
         self.lbl_global_dot = QLabel()
         self.lbl_global_dot.setTextFormat(Qt.RichText)
         self.lbl_global_dot.setText(_status_dot(_OK_COLOR))
@@ -359,8 +360,8 @@ class HealthMonitorWidget(QWidget):
         # --- HARDWARE ---
         hw_frame = self._make_section("HARDWARE")
         hw_grid = QGridLayout()
-        hw_grid.setSpacing(6)
-        hw_grid.setContentsMargins(0, 4, 0, 0)
+        hw_grid.setSpacing(8)
+        hw_grid.setContentsMargins(0, 8, 0, 0)
 
         r = 0
         # CPU
@@ -385,8 +386,8 @@ class HealthMonitorWidget(QWidget):
         # --- PROCESS ---
         proc_frame = self._make_section("PROCESO 911")
         proc_grid = QGridLayout()
-        proc_grid.setSpacing(6)
-        proc_grid.setContentsMargins(0, 4, 0, 0)
+        proc_grid.setSpacing(8)
+        proc_grid.setContentsMargins(0, 8, 0, 0)
         r = 0
         self.lbl_pid = self._add_row(proc_grid, r, "PID", "---"); r += 1
         self.lbl_proc_cpu = self._add_row(proc_grid, r, "CPU %", "---"); r += 1
@@ -401,8 +402,8 @@ class HealthMonitorWidget(QWidget):
         # --- RED / CONECTIVIDAD ---
         net_frame = self._make_section("RED / CONECTIVIDAD")
         net_grid = QGridLayout()
-        net_grid.setSpacing(6)
-        net_grid.setContentsMargins(0, 4, 0, 0)
+        net_grid.setSpacing(8)
+        net_grid.setContentsMargins(0, 8, 0, 0)
         r = 0
         self.lbl_net_ip = self._add_row(net_grid, r, "IP Local", "---"); r += 1
         # Avolites
@@ -425,8 +426,8 @@ class HealthMonitorWidget(QWidget):
         audio_vbox = audio_frame.layout()
 
         audio_grid = QGridLayout()
-        audio_grid.setSpacing(6)
-        audio_grid.setContentsMargins(0, 4, 0, 0)
+        audio_grid.setSpacing(8)
+        audio_grid.setContentsMargins(0, 8, 0, 0)
         r = 0
         self.lbl_audio_source = self._add_row(audio_grid, r, "Detection", "---"); r += 1
         self.lbl_audio_active = self._add_row(audio_grid, r, "Active Input", "---"); r += 1
@@ -464,8 +465,8 @@ class HealthMonitorWidget(QWidget):
         # --- CALENDAR ---
         cal_frame = self._make_section("CALENDAR RUNTIME")
         cal_grid = QGridLayout()
-        cal_grid.setSpacing(6)
-        cal_grid.setContentsMargins(0, 4, 0, 0)
+        cal_grid.setSpacing(8)
+        cal_grid.setContentsMargins(0, 8, 0, 0)
         r = 0
         self.lbl_cal_mode = self._add_row(cal_grid, r, "Current Mode", "---"); r += 1
         self.lbl_cal_next = self._add_row(cal_grid, r, "Next Mode", "---"); r += 1
@@ -506,8 +507,8 @@ class HealthMonitorWidget(QWidget):
         frame = QFrame()
         frame.setStyleSheet(_card_style())
         vbox = QVBoxLayout(frame)
-        vbox.setContentsMargins(14, 10, 14, 12)
-        vbox.setSpacing(4)
+        vbox.setContentsMargins(16, 12, 16, 12)
+        vbox.setSpacing(8)
         lbl = QLabel(title)
         lbl.setStyleSheet(_section_title_style())
         vbox.addWidget(lbl)

@@ -41,10 +41,40 @@ TEXT_MUTED = "rgba(240, 240, 240, 0.38)"
 TEXT_FAINT = "rgba(240, 240, 240, 0.20)"
 
 # Borders (glass-style)
-BORDER_DEFAULT = "rgba(255, 255, 255, 0.10)"
+BORDER_DEFAULT = "rgba(255, 255, 255, 0.12)"
 BORDER_MEDIUM = "rgba(255, 255, 255, 0.15)"
 BORDER_STRONG = "rgba(255, 255, 255, 0.20)"
 BORDER_GREEN = "rgba(0, 230, 118, 0.30)"
+
+# ── Reusable card / inset CSS fragments ───────────────────────────────────────
+# Use these in inline setStyleSheet() calls for consistency.
+
+CARD_CSS = (
+    "background: rgba(255,255,255,0.04);"
+    "border: 1px solid rgba(255,255,255,0.12);"
+    "border-radius: 14px;"
+)
+
+CARD_HOVER_CSS = (
+    "background: rgba(255,255,255,0.06);"
+    "border: 1px solid rgba(255,255,255,0.15);"
+    "border-radius: 14px;"
+)
+
+INSET_CSS = (
+    "background: rgba(255,255,255,0.03);"
+    "border: 1px solid rgba(255,255,255,0.08);"
+    "border-radius: 10px;"
+)
+
+# Convenience functions for inline use
+def card_frame_css(extra: str = "") -> str:
+    """QFrame card style for setStyleSheet(). Pass extra CSS if needed."""
+    return f"QFrame{{{CARD_CSS} {extra}}}"
+
+def inset_frame_css(extra: str = "") -> str:
+    """QFrame inset panel style for setStyleSheet()."""
+    return f"QFrame{{{INSET_CSS} {extra}}}"
 
 # State colors (unchanged — architectural)
 STATE_BAJADA = "#4CAF50"
@@ -144,29 +174,26 @@ QTabBar::tab:hover:!selected {{
 }}
 """
 
-# Frame/Panel stylesheet — glass card appearance
+# Frame/Panel stylesheet — glass card appearance (global default)
 PANEL_STYLE = f"""
 QFrame {{
-    background: {BG_PANEL_SOLID};
-    border: 1px solid {BORDER_DEFAULT};
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.12);
     border-radius: {RAD_LG}px;
-}}
-QFrame:hover {{
-    border: 1px solid {BORDER_MEDIUM};
 }}
 """
 
 # Card widget stylesheet (for analyzer cards) — glass card
 CARD_STYLE = f"""
 QFrame#AnalyzerCard {{
-    background: {BG_CARD_SOLID};
-    border: 1px solid {BORDER_MEDIUM};
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.12);
     border-radius: {RAD_LG}px;
     padding: {SP_BASE}px;
 }}
 QFrame#AnalyzerCard:hover {{
-    border: 1px solid {BORDER_STRONG};
-    background: {BG_HOVER_SOLID};
+    border: 1px solid {BORDER_MEDIUM};
+    background: rgba(255,255,255,0.06);
 }}
 """
 
@@ -610,26 +637,28 @@ def energy_indicator_style(energy: str) -> str:
 
 ANALYZER_ACTIVE_STYLE = f"""
 QFrame {{
-    background: {BG_CARD_SOLID};
+    background: rgba(255,255,255,0.04);
     border: 1px solid rgba(0,230,118,0.30);
     border-radius: {RAD_LG}px;
+    padding: {SP_BASE}px;
 }}
 """
 
 ANALYZER_INACTIVE_STYLE = f"""
 QFrame {{
-    background: {BG_CARD_SOLID};
-    border: 1px solid {BORDER_DEFAULT};
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.12);
     border-radius: {RAD_LG}px;
+    padding: {SP_BASE}px;
 }}
 """
 
 ANALYZER_PLACEHOLDER_STYLE = f"""
 QFrame {{
-    background: rgba(0,0,0,0.15);
-    border: 1px dashed {BORDER_MEDIUM};
+    background: rgba(255,255,255,0.02);
+    border: 1px dashed rgba(255,255,255,0.12);
     border-radius: {RAD_LG}px;
-    opacity: 0.5;
+    padding: {SP_BASE}px;
 }}
 """
 
@@ -655,7 +684,7 @@ QProgressBar::chunk {{
 WAVEFORM_STYLE = f"""
 QFrame {{
     background: rgba(0,0,0,0.25);
-    border: 1px solid {BORDER_DEFAULT};
+    border: 1px solid rgba(255,255,255,0.08);
     border-radius: {RAD_MD}px;
 }}
 """
@@ -664,16 +693,16 @@ QFrame {{
 
 HEALTH_PANEL_STYLE = f"""
 QFrame {{
-    background: {BG_PANEL_SOLID};
-    border: 1px solid {BORDER_DEFAULT};
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.12);
     border-radius: {RAD_LG}px;
 }}
 """
 
 HEALTH_SECTION_STYLE = f"""
 QFrame {{
-    background: {BG_CARD_SOLID};
-    border: 1px solid {BORDER_DEFAULT};
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
     border-radius: {RAD_MD}px;
 }}
 """
@@ -716,6 +745,7 @@ def get_full_stylesheet() -> str:
     return f"""
     {MAIN_WINDOW_STYLE}
     {TAB_WIDGET_STYLE}
+    {PANEL_STYLE}
     {BUTTON_STYLE}
     {PROGRESS_BAR_STYLE}
     {SLIDER_STYLE}
@@ -750,6 +780,8 @@ __all__ = [
     'TEXT_PRIMARY', 'TEXT_SECONDARY', 'TEXT_MUTED', 'TEXT_FAINT',
     'BORDER_DEFAULT', 'BORDER_MEDIUM', 'BORDER_STRONG', 'BORDER_GREEN',
     'OFF_COLOR',
+    'CARD_CSS', 'CARD_HOVER_CSS', 'INSET_CSS',
+    'card_frame_css', 'inset_frame_css',
     # State / Energy
     'STATE_BAJADA', 'STATE_GOLPE', 'STATE_ATAQUE', 'STATE_BRAKE',
     'ENERGY_BAJA', 'ENERGY_MEDIA', 'ENERGY_ALTA',

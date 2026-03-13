@@ -35,13 +35,13 @@ class CameraConfigPanel(QWidget):
     def _build_ui(self):
         """Construye la UI del panel de cámara con soporte dual protocolo."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(4)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
 
         # Header con checkbox enable
         header = QHBoxLayout()
         self.chk_enabled = QCheckBox(f"{self.icon} {self.camera_name.upper()}")
-        self.chk_enabled.setStyleSheet("font-weight:700; color:#ddd;")
+        self.chk_enabled.setStyleSheet("font-weight:700; color:#f0f0f0;")
         header.addWidget(self.chk_enabled)
 
         # Status LED
@@ -60,9 +60,9 @@ class CameraConfigPanel(QWidget):
         self.combo_protocol.addItem("MJPEG (HTTP)", "mjpeg")
         self.combo_protocol.addItem("RTSP (H.264)", "rtsp")
         self.combo_protocol.setStyleSheet(
-            "QComboBox{background:#333; color:#ccc; border:1px solid #555; padding:4px; border-radius:3px;}"
+            "QComboBox{background:rgba(255,255,255,0.06); color:#e0e0e0; border:1px solid rgba(255,255,255,0.12); padding:4px 8px; border-radius:8px;}"
             "QComboBox::drop-down{border:none;}"
-            "QComboBox QAbstractItemView{background:#333; color:#ccc; selection-background-color:#3498db;}"
+            "QComboBox QAbstractItemView{background:#141419; color:#e0e0e0; selection-background-color:#42a5f5;}"
         )
         self.combo_protocol.setFixedWidth(120)
         proto_layout.addWidget(self.combo_protocol)
@@ -71,8 +71,8 @@ class CameraConfigPanel(QWidget):
         layout.addLayout(proto_layout)
 
         # Style común para inputs
-        input_style = "QLineEdit{background:#333; color:#ccc; border:1px solid #555; padding:4px; border-radius:3px;}"
-        spin_style = "QSpinBox,QDoubleSpinBox{background:#333; color:#ccc; border:1px solid #555; padding:2px; border-radius:3px;}"
+        input_style = "QLineEdit{background:rgba(255,255,255,0.06); color:#e0e0e0; border:1px solid rgba(255,255,255,0.12); padding:4px 8px; border-radius:8px;}"
+        spin_style = "QSpinBox,QDoubleSpinBox{background:rgba(255,255,255,0.06); color:#e0e0e0; border:1px solid rgba(255,255,255,0.12); padding:2px 6px; border-radius:8px;}"
 
         # === STACKED WIDGET FOR PROTOCOL-SPECIFIC FIELDS ===
         self.stacked_fields = QStackedWidget()
@@ -80,8 +80,8 @@ class CameraConfigPanel(QWidget):
         # --- PAGE 0: MJPEG FIELDS ---
         mjpeg_widget = QWidget()
         mjpeg_layout = QGridLayout(mjpeg_widget)
-        mjpeg_layout.setSpacing(4)
-        mjpeg_layout.setContentsMargins(0, 0, 0, 0)
+        mjpeg_layout.setSpacing(8)
+        mjpeg_layout.setContentsMargins(0, 4, 0, 4)
 
         # Host/IP
         mjpeg_layout.addWidget(QLabel("Host:"), 0, 0)
@@ -116,8 +116,8 @@ class CameraConfigPanel(QWidget):
         # --- PAGE 1: RTSP FIELDS ---
         rtsp_widget = QWidget()
         rtsp_layout = QGridLayout(rtsp_widget)
-        rtsp_layout.setSpacing(4)
-        rtsp_layout.setContentsMargins(0, 0, 0, 0)
+        rtsp_layout.setSpacing(8)
+        rtsp_layout.setContentsMargins(0, 4, 0, 4)
 
         # URL Main (Channel 101)
         rtsp_layout.addWidget(QLabel("URL Main:"), 0, 0)
@@ -139,7 +139,7 @@ class CameraConfigPanel(QWidget):
         self.combo_preferred.addItem("Substream (720p)", "sub")
         self.combo_preferred.addItem("Mainstream (Full)", "main")
         self.combo_preferred.setStyleSheet(
-            "QComboBox{background:#333; color:#ccc; border:1px solid #555; padding:4px; border-radius:3px;}"
+            "QComboBox{background:rgba(255,255,255,0.06); color:#e0e0e0; border:1px solid rgba(255,255,255,0.12); padding:4px 8px; border-radius:8px;}"
         )
         self.combo_preferred.setFixedWidth(140)
         rtsp_layout.addWidget(self.combo_preferred, 2, 1)
@@ -157,7 +157,7 @@ class CameraConfigPanel(QWidget):
         self.combo_transport.addItem("UDP (baja latencia)", "udp")
         self.combo_transport.addItem("TCP (más estable)", "tcp")
         self.combo_transport.setStyleSheet(
-            "QComboBox{background:#333; color:#ccc; border:1px solid #555; padding:4px; border-radius:3px;}"
+            "QComboBox{background:rgba(255,255,255,0.06); color:#e0e0e0; border:1px solid rgba(255,255,255,0.12); padding:4px 8px; border-radius:8px;}"
         )
         self.combo_transport.setFixedWidth(140)
         rtsp_layout.addWidget(self.combo_transport, 3, 1)
@@ -165,7 +165,7 @@ class CameraConfigPanel(QWidget):
         # Low Latency checkbox
         self.chk_low_latency = QCheckBox("Low Latency Mode")
         self.chk_low_latency.setChecked(True)
-        self.chk_low_latency.setStyleSheet("color:#ccc;")
+        self.chk_low_latency.setStyleSheet("color:#e0e0e0;")
         self.chk_low_latency.setToolTip("Activa opciones FFmpeg para mínima latencia (nobuffer, low_delay)")
         rtsp_layout.addWidget(self.chk_low_latency, 3, 2, 1, 2)
 
@@ -175,7 +175,7 @@ class CameraConfigPanel(QWidget):
 
         # === COMMON FIELDS (FPS / Timeout) ===
         common_grid = QGridLayout()
-        common_grid.setSpacing(4)
+        common_grid.setSpacing(8)
 
         common_grid.addWidget(QLabel("FPS:"), 0, 0)
         self.spin_fps = QSpinBox()
@@ -199,9 +199,9 @@ class CameraConfigPanel(QWidget):
         # Botón Test
         self.btn_test = QPushButton("Test")
         self.btn_test.setStyleSheet(
-            "QPushButton{background:#3498db; color:#fff; border:none; padding:4px 8px; border-radius:3px;}"
-            "QPushButton:hover{background:#5dade2;}"
-            "QPushButton:disabled{background:#555;}"
+            "QPushButton{background:rgba(66,165,245,0.15); color:#42a5f5; border:1px solid rgba(66,165,245,0.3); padding:4px 12px; border-radius:10px; font-weight:600;}"
+            "QPushButton:hover{background:rgba(66,165,245,0.25);}"
+            "QPushButton:disabled{background:rgba(255,255,255,0.04); color:#555; border-color:rgba(255,255,255,0.08);}"
         )
         self.btn_test.setFixedWidth(60)
         layout.addWidget(self.btn_test, alignment=Qt.AlignRight)
@@ -356,10 +356,10 @@ class VisionConfigWidget(QWidget):
             running = self.vision_manager.is_running()
             if running:
                 self.status_label.setText("Sistema: CORRIENDO")
-                self.status_label.setStyleSheet("color:#2ecc71; font-weight:700;")
+                self.status_label.setStyleSheet("color:#00e676; font-weight:700;")
             else:
                 self.status_label.setText("Sistema: DETENIDO")
-                self.status_label.setStyleSheet("color:#e74c3c; font-weight:700;")
+                self.status_label.setStyleSheet("color:#ff5252; font-weight:700;")
         except Exception as e:
             print(f"[VisionConfigWidget] Error updating status: {e}")
 
@@ -371,36 +371,36 @@ class VisionConfigWidget(QWidget):
 
         # Frame principal
         frame = QFrame()
-        frame.setStyleSheet("QFrame{background:#1a1a1a; border:1px solid #333; border-radius:6px;}")
+        frame.setStyleSheet("QFrame{background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.12); border-radius:14px;}")
         frame_layout = QVBoxLayout(frame)
-        frame_layout.setContentsMargins(12, 12, 12, 12)
-        frame_layout.setSpacing(8)
+        frame_layout.setContentsMargins(16, 16, 16, 16)
+        frame_layout.setSpacing(12)
 
         # Título
         title = QLabel("VISION PRO - CÁMARAS IP (MJPEG + RTSP)")
-        title.setStyleSheet("font-weight:700; color:#ddd; font-size:12px;")
+        title.setStyleSheet("font-weight:700; color:#f0f0f0; font-size:12px;")
         frame_layout.addWidget(title)
 
         # Estado del sistema
         status_layout = QHBoxLayout()
         self.status_label = QLabel("Sistema: DETENIDO")
-        self.status_label.setStyleSheet("color:#e74c3c; font-weight:700;")
+        self.status_label.setStyleSheet("color:#ff5252; font-weight:700;")
         status_layout.addWidget(self.status_label)
         status_layout.addStretch()
 
         # Botones de control
         self.btn_start = QPushButton("Iniciar")
         self.btn_start.setStyleSheet(
-            "QPushButton{background:#27ae60; border:1px solid #229954; border-radius:4px; padding:6px 12px; color:#fff;}"
-            "QPushButton:hover{background:#2ecc71;}"
+            "QPushButton{background:rgba(0,230,118,0.15); border:1px solid rgba(0,230,118,0.3); border-radius:10px; padding:6px 16px; color:#00e676; font-weight:600;}"
+            "QPushButton:hover{background:rgba(0,230,118,0.25);}"
         )
         self.btn_start.clicked.connect(self._on_start)
         status_layout.addWidget(self.btn_start)
 
         self.btn_stop = QPushButton("Detener")
         self.btn_stop.setStyleSheet(
-            "QPushButton{background:#e74c3c; border:1px solid #c0392b; border-radius:4px; padding:6px 12px; color:#fff;}"
-            "QPushButton:hover{background:#ec7063;}"
+            "QPushButton{background:rgba(255,82,82,0.15); border:1px solid rgba(255,82,82,0.3); border-radius:10px; padding:6px 16px; color:#ff5252; font-weight:600;}"
+            "QPushButton:hover{background:rgba(255,82,82,0.25);}"
         )
         self.btn_stop.clicked.connect(self._on_stop)
         status_layout.addWidget(self.btn_stop)
@@ -410,7 +410,7 @@ class VisionConfigWidget(QWidget):
         # Separador
         sep1 = QFrame()
         sep1.setFrameShape(QFrame.HLine)
-        sep1.setStyleSheet("background:#333;")
+        sep1.setStyleSheet("background:rgba(255,255,255,0.08); border:none; max-height:1px;")
         frame_layout.addWidget(sep1)
 
         # Paneles de cámaras
@@ -425,7 +425,7 @@ class VisionConfigWidget(QWidget):
         # Separador
         sep2 = QFrame()
         sep2.setFrameShape(QFrame.HLine)
-        sep2.setStyleSheet("background:#333;")
+        sep2.setStyleSheet("background:rgba(255,255,255,0.08); border:none; max-height:1px;")
         frame_layout.addWidget(sep2)
 
         # Botones globales
@@ -433,16 +433,16 @@ class VisionConfigWidget(QWidget):
 
         self.btn_save = QPushButton("Guardar")
         self.btn_save.setStyleSheet(
-            "QPushButton{background:#9b59b6; border:none; border-radius:4px; padding:8px 16px; color:#fff; font-weight:700;}"
-            "QPushButton:hover{background:#a569bd;}"
+            "QPushButton{background:rgba(156,89,182,0.15); border:1px solid rgba(156,89,182,0.3); border-radius:10px; padding:8px 16px; color:#ce93d8; font-weight:700;}"
+            "QPushButton:hover{background:rgba(156,89,182,0.25);}"
         )
         self.btn_save.clicked.connect(self._on_save)
         buttons_layout.addWidget(self.btn_save)
 
         self.btn_apply = QPushButton("Aplicar")
         self.btn_apply.setStyleSheet(
-            "QPushButton{background:#3498db; border:none; border-radius:4px; padding:8px 16px; color:#fff; font-weight:700;}"
-            "QPushButton:hover{background:#5dade2;}"
+            "QPushButton{background:rgba(66,165,245,0.15); border:1px solid rgba(66,165,245,0.3); border-radius:10px; padding:8px 16px; color:#42a5f5; font-weight:700;}"
+            "QPushButton:hover{background:rgba(66,165,245,0.25);}"
         )
         self.btn_apply.clicked.connect(self._on_apply)
         buttons_layout.addWidget(self.btn_apply)
@@ -451,7 +451,7 @@ class VisionConfigWidget(QWidget):
 
         # FPS Label
         self.fps_label = QLabel("FPS: 0.0")
-        self.fps_label.setStyleSheet("color:#27ae60; font-weight:700;")
+        self.fps_label.setStyleSheet("color:#00e676; font-weight:700;")
         buttons_layout.addWidget(self.fps_label)
 
         frame_layout.addLayout(buttons_layout)
@@ -554,18 +554,18 @@ class VisionConfigWidget(QWidget):
             url_main = cam_config.get("url_main", "")
             url_sub = cam_config.get("url_sub", "")
             if not url_main and not url_sub:
-                panel.set_status("URL RTSP requerida", "#e74c3c")
+                panel.set_status("URL RTSP requerida", "#ff5252")
                 return
 
             # Validar formato URL
             test_url = url_sub if cam_config.get("preferred") == "sub" and url_sub else (url_main or url_sub)
             if not test_url.lower().startswith("rtsp://"):
-                panel.set_status("URL debe empezar con rtsp://", "#e74c3c")
+                panel.set_status("URL debe empezar con rtsp://", "#ff5252")
                 return
 
             # Check for mixed protocol error
             if "http://" in test_url.lower() or "https://" in test_url.lower():
-                panel.set_status("ERROR: URL mixta (rtsp+http)", "#e74c3c")
+                panel.set_status("ERROR: URL mixta (rtsp+http)", "#ff5252")
                 print(f"[VisionUI] ERROR: Mixed protocol URL detected: {test_url}")
                 return
 
@@ -574,22 +574,22 @@ class VisionConfigWidget(QWidget):
             host = cam_config.get("host", "")
 
             if not host or host == "0.0.0.0":
-                panel.set_status("Host inválido", "#e74c3c")
+                panel.set_status("Host inválido", "#ff5252")
                 return
 
             # Check for rtsp:// in host (user pasted RTSP URL in MJPEG mode)
             if host.lower().startswith("rtsp://"):
-                panel.set_status("Usar protocolo RTSP", "#f39c12")
+                panel.set_status("Usar protocolo RTSP", "#ffd740")
                 print(f"[VisionUI] WARNING: RTSP URL in MJPEG host field - switch protocol")
                 return
 
             # Validar posible typo en IP (192.160 vs 192.168)
             if "192.160" in host:
-                panel.set_status("WARNING: 192.160? (typo 192.168?)", "#f39c12")
+                panel.set_status("WARNING: 192.160? (typo 192.168?)", "#ffd740")
                 print(f"[VisionUI] WARNING: host {host} parece tener typo (192.160 vs 192.168)")
                 # Continuar de todos modos para que el usuario vea el error
 
-        panel.set_status("Conectando...", "#f39c12")
+        panel.set_status("Conectando...", "#ffd740")
         panel.btn_test.setEnabled(False)
 
         # Test en thread separado
@@ -667,9 +667,9 @@ class VisionConfigWidget(QWidget):
 
         status_type, message = result
         if status_type == "ok":
-            panel.set_status(message, "#27ae60")
+            panel.set_status(message, "#00e676")
         else:
-            panel.set_status(message, "#e74c3c")
+            panel.set_status(message, "#ff5252")
 
     def _on_start(self):
         """Inicia el sistema Vision."""
@@ -701,10 +701,10 @@ class VisionConfigWidget(QWidget):
             running = self.vision_manager.is_running()
             if running:
                 self.status_label.setText("Sistema: CORRIENDO")
-                self.status_label.setStyleSheet("color:#2ecc71; font-weight:700;")
+                self.status_label.setStyleSheet("color:#00e676; font-weight:700;")
             else:
                 self.status_label.setText("Sistema: DETENIDO")
-                self.status_label.setStyleSheet("color:#e74c3c; font-weight:700;")
+                self.status_label.setStyleSheet("color:#ff5252; font-weight:700;")
 
             # Actualizar FPS
             fps = self.vision_manager.get_fps()
@@ -720,11 +720,11 @@ class VisionConfigWidget(QWidget):
                     drops = status.get("drops", 0)
 
                     if drops > 0:
-                        panel.set_status(f"{cam_type} {fps_read:.1f}fps (d:{drops})", "#27ae60")
+                        panel.set_status(f"{cam_type} {fps_read:.1f}fps (d:{drops})", "#00e676")
                     else:
-                        panel.set_status(f"{cam_type} @ {fps_read:.1f}fps", "#27ae60")
+                        panel.set_status(f"{cam_type} @ {fps_read:.1f}fps", "#00e676")
                 elif status["enabled"] and status["configured"]:
-                    panel.set_status("Conectando...", "#f39c12")
+                    panel.set_status("Conectando...", "#ffd740")
                 elif not status["configured"]:
                     panel.set_status("No configurada", "#888")
                 else:

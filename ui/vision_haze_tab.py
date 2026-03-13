@@ -92,8 +92,8 @@ class VisionHazeTab(QWidget):
     def _build_ui(self):
         """Construye la interfaz del tab."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(16)
 
         # Panel superior: Preview + Controles
         top_layout = QHBoxLayout()
@@ -114,7 +114,7 @@ class VisionHazeTab(QWidget):
         # Canvas para preview
         self.preview_label = QLabel()
         self.preview_label.setMinimumSize(640, 480)
-        self.preview_label.setStyleSheet("border: 2px solid #333; background-color: #000;")
+        self.preview_label.setStyleSheet("border: 1px solid rgba(255,255,255,0.12); background-color: #000; border-radius: 10px;")
         self.preview_label.setAlignment(Qt.AlignCenter)
         self.preview_label.setText("No hay video")
         layout.addWidget(self.preview_label)
@@ -122,7 +122,7 @@ class VisionHazeTab(QWidget):
         # Info bar
         info_layout = QHBoxLayout()
         self.fps_label = QLabel("FPS: 0.0")
-        self.fps_label.setStyleSheet("color: #27ae60; font-weight: bold;")
+        self.fps_label.setStyleSheet("color: #00e676; font-weight: bold;")
         info_layout.addWidget(self.fps_label)
 
         info_layout.addStretch()
@@ -151,7 +151,7 @@ class VisionHazeTab(QWidget):
         status_frame = QFrame()
         status_frame.setFrameShape(QFrame.StyledPanel)
         status_layout = QHBoxLayout(status_frame)
-        status_layout.setContentsMargins(5, 5, 5, 5)
+        status_layout.setContentsMargins(12, 12, 12, 12)
 
         status_layout.addWidget(QLabel("Estado:"))
 
@@ -174,7 +174,7 @@ class VisionHazeTab(QWidget):
         cues_frame = QFrame()
         cues_frame.setFrameShape(QFrame.StyledPanel)
         cues_layout = QHBoxLayout(cues_frame)
-        cues_layout.setContentsMargins(5, 5, 5, 5)
+        cues_layout.setContentsMargins(12, 12, 12, 12)
 
         cues_layout.addWidget(QLabel("Cues:"))
 
@@ -212,7 +212,7 @@ class VisionHazeTab(QWidget):
 
         grid.addWidget(QLabel("Cooldown:"), 3, 0)
         self.cooldown_label = QLabel("0s")
-        self.cooldown_label.setStyleSheet("font-weight: bold; color: #e74c3c;")
+        self.cooldown_label.setStyleSheet("font-weight: bold; color: #ff5252;")
         grid.addWidget(self.cooldown_label, 3, 1)
 
         layout.addLayout(grid)
@@ -224,7 +224,7 @@ class VisionHazeTab(QWidget):
         self.haze_bar = QFrame()
         self.haze_bar.setFixedHeight(20)
         self.haze_bar.setFrameShape(QFrame.StyledPanel)
-        self.haze_bar.setStyleSheet("background-color: #00FF64; border: 1px solid #333;")
+        self.haze_bar.setStyleSheet("background-color: #00FF64; border: 1px solid rgba(255,255,255,0.12);")
         haze_bar_layout.addWidget(self.haze_bar)
 
         self.haze_bar_label = QLabel("0.0")
@@ -302,7 +302,7 @@ class VisionHazeTab(QWidget):
         btn_layout.addWidget(self.calibrate_btn)
 
         self.apply_btn = QPushButton("Aplicar Cambios")
-        self.apply_btn.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold;")
+        self.apply_btn.setStyleSheet("background:rgba(0,230,118,0.15); color:#00e676; border:1px solid rgba(0,230,118,0.3); border-radius:10px; padding:8px 16px; font-weight:bold;")
         self.apply_btn.clicked.connect(self._on_apply)
         btn_layout.addWidget(self.apply_btn)
 
@@ -426,7 +426,7 @@ class VisionHazeTab(QWidget):
             else:
                 bar_color = "#FF3333"  # Rojo
 
-            self.haze_bar.setStyleSheet(f"background-color: {bar_color}; border: 1px solid #333;")
+            self.haze_bar.setStyleSheet(f"background-color: {bar_color}; border: 1px solid rgba(255,255,255,0.12);")
             self.haze_bar_label.setText(f"{haze_value:.2f}")
 
             # LEDs de estado

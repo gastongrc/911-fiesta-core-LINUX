@@ -162,12 +162,12 @@ class LayerListWidget(QWidget):
     def _build_ui(self):
         """Construye la UI del panel de layers."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(8)
 
         # Título mejorado
         header = QFrame()
-        header.setStyleSheet("background: #252525; border-radius: 4px;")
+        header.setStyleSheet("background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px;")
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(8, 6, 8, 6)
 
@@ -186,26 +186,26 @@ class LayerListWidget(QWidget):
         self.layer_list = QListWidget()
         self.layer_list.setStyleSheet("""
             QListWidget {
-                background: #1a1a1a;
-                border: 2px solid #333;
-                border-radius: 6px;
-                color: #ddd;
+                background: rgba(255,255,255,0.03);
+                border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 10px;
+                color: #e0e0e0;
                 font-size: 11px;
                 outline: none;
             }
             QListWidget::item {
                 padding: 6px 8px;
-                border-bottom: 1px solid #2a2a2a;
+                border-bottom: 1px solid rgba(255,255,255,0.06);
                 margin: 2px 4px;
-                border-radius: 4px;
+                border-radius: 8px;
             }
             QListWidget::item:selected {
-                background: #1e5799;
-                border: 2px solid #3498db;
+                background: rgba(66,165,245,0.2);
+                border: 1px solid rgba(66,165,245,0.4);
                 color: #fff;
             }
             QListWidget::item:hover:!selected {
-                background: #2a2a2a;
+                background: rgba(255,255,255,0.06);
             }
         """)
         self.layer_list.itemClicked.connect(self._on_layer_clicked)
@@ -216,23 +216,24 @@ class LayerListWidget(QWidget):
             self.btn_add = QPushButton("+ AGREGAR ZONA")
             self.btn_add.setStyleSheet("""
                 QPushButton {
-                    background: #27ae60;
-                    border: none;
-                    border-radius: 6px;
+                    background: rgba(0,230,118,0.15);
+                    border: 1px solid rgba(0,230,118,0.3);
+                    border-radius: 10px;
                     padding: 10px;
-                    color: #fff;
+                    color: #00e676;
                     font-weight: bold;
                     font-size: 11px;
                 }
                 QPushButton:hover {
-                    background: #2ecc71;
+                    background: rgba(0,230,118,0.25);
                 }
                 QPushButton:pressed {
-                    background: #1e8449;
+                    background: rgba(0,230,118,0.10);
                 }
                 QPushButton:disabled {
-                    background: #444;
-                    color: #666;
+                    background: rgba(255,255,255,0.04);
+                    color: #555;
+                    border-color: rgba(255,255,255,0.08);
                 }
             """)
             self.btn_add.clicked.connect(self._on_add_zone)
@@ -313,20 +314,22 @@ class LayerListWidget(QWidget):
             state_label.setAlignment(Qt.AlignCenter)
             if is_active:
                 state_label.setStyleSheet("""
-                    background: #27ae60;
-                    color: #fff;
+                    background: rgba(0,230,118,0.2);
+                    color: #00e676;
                     font-weight: bold;
                     font-size: 9px;
-                    border-radius: 3px;
+                    border-radius: 6px;
                     padding: 2px 4px;
+                    border: 1px solid rgba(0,230,118,0.3);
                 """)
             else:
                 state_label.setStyleSheet("""
-                    background: #555;
-                    color: #999;
+                    background: rgba(255,255,255,0.06);
+                    color: #888;
                     font-size: 9px;
-                    border-radius: 3px;
+                    border-radius: 6px;
                     padding: 2px 4px;
+                    border: 1px solid rgba(255,255,255,0.08);
                 """)
             state_label.setToolTip("Estado de detección")
             item_layout.addWidget(state_label)
@@ -341,14 +344,14 @@ class LayerListWidget(QWidget):
                     height: 18px;
                 }
                 QCheckBox::indicator:checked {
-                    background: #3498db;
-                    border: 2px solid #3498db;
-                    border-radius: 3px;
+                    background: rgba(66,165,245,0.3);
+                    border: 2px solid #42a5f5;
+                    border-radius: 4px;
                 }
                 QCheckBox::indicator:unchecked {
-                    background: #333;
-                    border: 2px solid #555;
-                    border-radius: 3px;
+                    background: rgba(255,255,255,0.06);
+                    border: 2px solid rgba(255,255,255,0.15);
+                    border-radius: 4px;
                 }
             """)
             vis_check.stateChanged.connect(
@@ -361,15 +364,15 @@ class LayerListWidget(QWidget):
             lock_btn.setFixedSize(24, 24)
             lock_btn.setStyleSheet(f"""
                 QPushButton {{
-                    background: {'#e74c3c' if locked else '#444'};
-                    border: none;
-                    border-radius: 4px;
+                    background: {'rgba(255,82,82,0.2)' if locked else 'rgba(255,255,255,0.06)'};
+                    border: 1px solid {'rgba(255,82,82,0.3)' if locked else 'rgba(255,255,255,0.12)'};
+                    border-radius: 6px;
                     font-size: 10px;
                     font-weight: bold;
-                    color: #fff;
+                    color: {'#ff5252' if locked else '#888'};
                 }}
                 QPushButton:hover {{
-                    background: {'#c0392b' if locked else '#666'};
+                    background: {'rgba(255,82,82,0.3)' if locked else 'rgba(255,255,255,0.10)'};
                 }}
             """)
             lock_btn.setToolTip("Bloqueado" if locked else "Desbloqueado")
@@ -384,18 +387,18 @@ class LayerListWidget(QWidget):
                 del_btn.setFixedSize(24, 24)
                 del_btn.setStyleSheet("""
                     QPushButton {
-                        background: #c0392b;
-                        border: none;
-                        border-radius: 4px;
+                        background: rgba(255,82,82,0.15);
+                        border: 1px solid rgba(255,82,82,0.3);
+                        border-radius: 6px;
                         font-size: 11px;
                         font-weight: bold;
-                        color: #fff;
+                        color: #ff5252;
                     }
                     QPushButton:hover {
-                        background: #e74c3c;
+                        background: rgba(255,82,82,0.25);
                     }
                     QPushButton:pressed {
-                        background: #a93226;
+                        background: rgba(255,82,82,0.10);
                     }
                 """)
                 del_btn.setToolTip("Eliminar zona")
@@ -457,7 +460,7 @@ class LayeredCanvas(QLabel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(640, 480)
-        self.setStyleSheet("border: 2px solid #333; background-color: #000;")
+        self.setStyleSheet("border: 1px solid rgba(255,255,255,0.12); background-color: #000; border-radius: 10px;")
         self.setAlignment(Qt.AlignCenter)
 
         # Estado
@@ -914,7 +917,7 @@ class LayeredZoneEditor(QWidget):
         """Construye la UI del editor."""
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(5)
+        layout.setSpacing(8)
 
         # Panel izquierdo: Lista de layers
         self.layer_list_widget = LayerListWidget(self.max_zones, self.camera_type)

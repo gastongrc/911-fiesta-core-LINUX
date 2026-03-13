@@ -427,8 +427,8 @@ def sanitize_audio(x):
 def make_grid(modules, cols=3):
     gridw = QWidget()
     grid = QGridLayout(gridw)
-    grid.setContentsMargins(10,10,10,10)
-    grid.setSpacing(12)
+    grid.setContentsMargins(16,16,16,16)
+    grid.setSpacing(16)
     for i in range((len(modules) + cols - 1) // cols):
         grid.setRowMinimumHeight(i, 280)
     for c in range(cols):
@@ -463,7 +463,7 @@ class EnergyMonitorWidget(QWidget):
         self.energy_main.setAlignment(Qt.AlignCenter)
         self.energy_main.setStyleSheet(
             "color:#FF9800; font-weight:700; font-size:18px; font-family:'JetBrains Mono','Consolas',monospace; "
-            "background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.10); border-radius:12px; padding:8px;"
+            "background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.12); border-radius:12px; padding:8px;"
         )
         layout.addWidget(self.energy_main)
         info_layout = QHBoxLayout()
@@ -484,7 +484,7 @@ class EnergyMonitorWidget(QWidget):
         layout.addWidget(self.btn_reset)
         layout.addStretch()
         self.setStyleSheet(
-            "QWidget{background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.10); border-radius:14px;} "
+            "QWidget{background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.12); border-radius:14px;} "
             "QLabel{color:#f0f0f0;}"
         )
 
@@ -500,7 +500,7 @@ class EnergyMonitorWidget(QWidget):
                 self._last_color = color
                 self.energy_main.setStyleSheet(
                     f"color:{color}; font-weight:700; font-size:18px; font-family:'JetBrains Mono','Consolas',monospace; "
-                    "background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.10); border-radius:12px; padding:8px;"
+                    "background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.12); border-radius:12px; padding:8px;"
                 )
             score = self.energy_detector.get_energy_score()
             self.score_label.setText(f"{score:.3f}")
@@ -1338,7 +1338,7 @@ class Main(QMainWindow):
 
         top = QWidget()
         top_layout = QHBoxLayout(top)
-        top_layout.setContentsMargins(8,8,8,8)
+        top_layout.setContentsMargins(16,8,16,8)
 
         # V13: Only status indicators in top bar - all controls in Red/Consola tab
         top_layout.addStretch()
@@ -1369,8 +1369,8 @@ class Main(QMainWindow):
         # Bajada
         tab_bajada = QWidget()
         layout_bajada = QVBoxLayout(tab_bajada)
-        layout_bajada.setContentsMargins(8, 8, 8, 8)
-        layout_bajada.setSpacing(10)
+        layout_bajada.setContentsMargins(16, 16, 16, 16)
+        layout_bajada.setSpacing(16)
         layout_bajada.addWidget(self.waveform_hosts["bajada"])
         layout_bajada.addWidget(self.status_bajada_box)
         layout_bajada.addWidget(make_grid(self.modules_bajada, cols=4))
@@ -1380,8 +1380,8 @@ class Main(QMainWindow):
         # Golpe
         tab_golpe = QWidget()
         layout_golpe = QVBoxLayout(tab_golpe)
-        layout_golpe.setContentsMargins(8, 8, 8, 8)
-        layout_golpe.setSpacing(10)
+        layout_golpe.setContentsMargins(16, 16, 16, 16)
+        layout_golpe.setSpacing(16)
         layout_golpe.addWidget(self.waveform_hosts["golpe"])
         layout_golpe.addWidget(self.status_golpe_box)
         layout_golpe.addWidget(make_grid(self.modules_golpe, cols=4))
@@ -1391,8 +1391,8 @@ class Main(QMainWindow):
         # Ataque
         tab_ataque = QWidget()
         layout_ataque = QVBoxLayout(tab_ataque)
-        layout_ataque.setContentsMargins(8, 8, 8, 8)
-        layout_ataque.setSpacing(10)
+        layout_ataque.setContentsMargins(16, 16, 16, 16)
+        layout_ataque.setSpacing(16)
         layout_ataque.addWidget(self.waveform_hosts["ataque"])
         layout_ataque.addWidget(self.status_ataque_box)
         layout_ataque.addWidget(make_grid(self.modules_ataque, cols=3))
@@ -1402,8 +1402,8 @@ class Main(QMainWindow):
         # Brake
         tab_brake = QWidget()
         layout_brake = QVBoxLayout(tab_brake)
-        layout_brake.setContentsMargins(8, 8, 8, 8)
-        layout_brake.setSpacing(10)
+        layout_brake.setContentsMargins(16, 16, 16, 16)
+        layout_brake.setSpacing(16)
         layout_brake.addWidget(self.waveform_hosts["brake"])
         layout_brake.addWidget(self.status_brake_box)
         layout_brake.addWidget(make_grid(self.modules_brake, cols=3))
@@ -1413,8 +1413,8 @@ class Main(QMainWindow):
         # V12: Legacy Analyzers Tab
         tab_legacy = QWidget()
         layout_legacy = QVBoxLayout(tab_legacy)
-        layout_legacy.setContentsMargins(8, 8, 8, 8)
-        layout_legacy.setSpacing(10)
+        layout_legacy.setContentsMargins(16, 16, 16, 16)
+        layout_legacy.setSpacing(16)
 
         # Legacy title
         legacy_title = QLabel("ANALIZADORES ADICIONALES / LEGACY")
@@ -1479,16 +1479,16 @@ class Main(QMainWindow):
         # Monitor
         tab_monitor = QWidget()
         layout_monitor = QVBoxLayout(tab_monitor)
-        layout_monitor.setContentsMargins(8, 8, 8, 8)
-        layout_monitor.setSpacing(8)
+        layout_monitor.setContentsMargins(16, 16, 16, 16)
+        layout_monitor.setSpacing(16)
         
         layout_monitor.addWidget(self.waveform_hosts["monitor"])
         
         vu_section = QFrame()
-        vu_section.setStyleSheet("QFrame{background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.10); border-radius:14px;}")
+        vu_section.setStyleSheet("QFrame{background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.12); border-radius:14px;}")
         vu_layout = QVBoxLayout(vu_section)
-        vu_layout.setContentsMargins(8, 8, 8, 8)
-        vu_layout.setSpacing(4)
+        vu_layout.setContentsMargins(16, 16, 16, 16)
+        vu_layout.setSpacing(8)
         vu_lbl = QLabel("VU PRINCIPAL")
         vu_lbl.setStyleSheet("QLabel{font-size:13px; font-weight:700; color:#f0f0f0; font-family:'Space Grotesk','Inter',sans-serif;}")
         vu_layout.addWidget(vu_lbl)
@@ -1504,18 +1504,18 @@ class Main(QMainWindow):
         layout_monitor.addWidget(vu_section)
 
         widgets_row = QHBoxLayout()
-        widgets_row.setContentsMargins(8, 8, 8, 8)
-        widgets_row.setSpacing(8)
+        widgets_row.setContentsMargins(0, 0, 0, 0)
+        widgets_row.setSpacing(16)
 
         # Vision System - Vertical Haze Bar (Phase 6)
         if VISION_AVAILABLE:
             haze_container = QFrame()
-            haze_container.setStyleSheet("QFrame{background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.10); border-radius:14px;}")
+            haze_container.setStyleSheet("QFrame{background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.12); border-radius:14px;}")
             haze_container.setFixedWidth(40)
             haze_container.setMinimumHeight(260)
             haze_layout = QVBoxLayout(haze_container)
-            haze_layout.setContentsMargins(10, 10, 10, 10)
-            haze_layout.setSpacing(4)
+            haze_layout.setContentsMargins(8, 16, 8, 16)
+            haze_layout.setSpacing(8)
 
             haze_lbl = QLabel("HAZE")
             haze_lbl.setStyleSheet("QLabel{font-size:11px; font-weight:700; color:#f0f0f0; font-family:'Space Grotesk','Inter',sans-serif;}")
@@ -1588,10 +1588,10 @@ class Main(QMainWindow):
         layout_monitor.addLayout(widgets_row)
 
         status_section = QFrame()
-        status_section.setStyleSheet("QFrame{background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.10); border-radius:14px;}")
+        status_section.setStyleSheet("QFrame{background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.12); border-radius:14px;}")
         status_layout = QVBoxLayout(status_section)
-        status_layout.setContentsMargins(10, 10, 10, 10)
-        status_layout.setSpacing(8)
+        status_layout.setContentsMargins(16, 16, 16, 16)
+        status_layout.setSpacing(12)
         status_title = QLabel("ESTADO DE MÓDULOS")
         status_title.setStyleSheet("QLabel{font-size:13px; font-weight:700; color:#f0f0f0; font-family:'Space Grotesk','Inter',sans-serif;}")
         status_layout.addWidget(status_title)
@@ -1608,15 +1608,15 @@ class Main(QMainWindow):
         # === PANEL RED/CONSOLA UNIFICADO ===
         tab_net = QWidget()
         ln = QVBoxLayout(tab_net)
-        ln.setContentsMargins(12, 12, 12, 12)
-        ln.setSpacing(12)
+        ln.setContentsMargins(16, 16, 16, 16)
+        ln.setSpacing(16)
 
         # === Sección: LOAD SHOW (Perfil Único) ===
         show_frame = QFrame()
         show_frame.setStyleSheet("QFrame{background:rgba(153,69,255,0.06); border:1px solid rgba(153,69,255,0.20); border-radius:14px;}")
         show_layout = QVBoxLayout(show_frame)
-        show_layout.setContentsMargins(12, 12, 12, 12)
-        show_layout.setSpacing(8)
+        show_layout.setContentsMargins(16, 16, 16, 16)
+        show_layout.setSpacing(12)
         show_title = QLabel("LOAD SHOW")
         show_title.setStyleSheet("font-weight:700; color:#9945ff; font-size:14px; font-family:'Space Grotesk','Inter',sans-serif;")
         show_layout.addWidget(show_title)
@@ -1626,7 +1626,7 @@ class Main(QMainWindow):
         self.txt_show_path = QLineEdit()
         self.txt_show_path.setText(self.preset_path)
         self.txt_show_path.setReadOnly(True)
-        self.txt_show_path.setStyleSheet("background:rgba(0,0,0,0.20); border:1px solid rgba(255,255,255,0.10); border-radius:10px; padding:8px; color:#f0f0f0; font-family:'JetBrains Mono','Consolas',monospace;")
+        self.txt_show_path.setStyleSheet("background:rgba(0,0,0,0.20); border:1px solid rgba(255,255,255,0.12); border-radius:10px; padding:8px; color:#f0f0f0; font-family:'JetBrains Mono','Consolas',monospace;")
         row_show_path.addWidget(self.txt_show_path, 2)
         self.btn_show_browse = QPushButton("Elegir...")
         self.btn_show_browse.setStyleSheet("QPushButton{background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.15); border-radius:10px; padding:8px 12px; color:#f0f0f0;} QPushButton:hover{background:rgba(255,255,255,0.10);}")
@@ -1648,8 +1648,8 @@ class Main(QMainWindow):
         audio_frame = QFrame()
         audio_frame.setStyleSheet("QFrame{background:rgba(0,230,118,0.04); border:1px solid rgba(0,230,118,0.15); border-radius:14px;}")
         audio_layout = QVBoxLayout(audio_frame)
-        audio_layout.setContentsMargins(12, 12, 12, 12)
-        audio_layout.setSpacing(8)
+        audio_layout.setContentsMargins(16, 16, 16, 16)
+        audio_layout.setSpacing(12)
         audio_title = QLabel("AUDIO DEVICE")
         audio_title.setStyleSheet("font-weight:700; color:#00e676; font-size:14px; font-family:'Space Grotesk','Inter',sans-serif;")
         audio_layout.addWidget(audio_title)
@@ -1689,7 +1689,7 @@ class Main(QMainWindow):
 
         # Encabezado con estado
         header_frame = QFrame()
-        header_frame.setStyleSheet("QFrame{background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.10); border-radius:14px; padding:8px;}")
+        header_frame.setStyleSheet("QFrame{background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.12); border-radius:14px; padding:8px;}")
         header_layout = QHBoxLayout(header_frame)
         self.net_status_badge = QLabel("● Desconectado")
         self.net_status_badge.setStyleSheet("color:#ff5252; font-weight:700; font-size:14px;")
@@ -1903,10 +1903,10 @@ class Main(QMainWindow):
 
         # === Sección: Avolites Cue Offset ===
         offset_frame = QFrame()
-        offset_frame.setStyleSheet("QFrame{background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.10); border-radius:14px;}")
+        offset_frame.setStyleSheet("QFrame{background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.12); border-radius:14px;}")
         offset_layout = QVBoxLayout(offset_frame)
-        offset_layout.setContentsMargins(12, 12, 12, 12)
-        offset_layout.setSpacing(8)
+        offset_layout.setContentsMargins(16, 16, 16, 16)
+        offset_layout.setSpacing(12)
         offset_title = QLabel("AVOLITES CUE OFFSET")
         offset_title.setStyleSheet("font-weight:700; color:#f0f0f0; font-size:13px; font-family:'Space Grotesk','Inter',sans-serif;")
         offset_layout.addWidget(offset_title)
@@ -1944,10 +1944,10 @@ class Main(QMainWindow):
 
         # Sección: Diagnóstico
         diag_frame = QFrame()
-        diag_frame.setStyleSheet("QFrame{background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.10); border-radius:14px;}")
+        diag_frame.setStyleSheet("QFrame{background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.12); border-radius:14px;}")
         diag_layout = QVBoxLayout(diag_frame)
-        diag_layout.setContentsMargins(12, 12, 12, 12)
-        diag_layout.setSpacing(8)
+        diag_layout.setContentsMargins(16, 16, 16, 16)
+        diag_layout.setSpacing(12)
         diag_title = QLabel("DIAGNÓSTICO")
         diag_title.setStyleSheet("font-weight:700; color:#f0f0f0; font-size:13px; font-family:'Space Grotesk','Inter',sans-serif;")
         diag_layout.addWidget(diag_title)
@@ -1987,8 +1987,8 @@ class Main(QMainWindow):
         # === PANEL HEALTH ===
         tab_health = QWidget()
         health_layout = QVBoxLayout(tab_health)
-        health_layout.setContentsMargins(12, 12, 12, 12)
-        health_layout.setSpacing(12)
+        health_layout.setContentsMargins(16, 16, 16, 16)
+        health_layout.setSpacing(16)
         
         self.health_widget = HealthMonitorWidget(self)
         health_layout.addWidget(self.health_widget)
@@ -3480,11 +3480,11 @@ class Main(QMainWindow):
 
     def _build_status_box(self, modules):
         frame = QFrame()
-        frame.setStyleSheet("QFrame{background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px;}")
+        frame.setStyleSheet("QFrame{background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px;}")
         frame.setFixedHeight(65)
         layout = QGridLayout(frame)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(6)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
         labels = {}
         cols = 6
         for i, m in enumerate(modules):

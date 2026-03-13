@@ -97,8 +97,8 @@ class VisionArtistTab(QWidget):
     def _build_ui(self):
         """Build the UI."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(16)
 
         # Top panel: Preview + Controls
         top_layout = QHBoxLayout()
@@ -128,15 +128,15 @@ class VisionArtistTab(QWidget):
         info_layout = QHBoxLayout()
 
         self.fps_label = QLabel("FPS: 0.0")
-        self.fps_label.setStyleSheet("color: #27ae60; font-weight: bold;")
+        self.fps_label.setStyleSheet("color: #00e676; font-weight: bold;")
         info_layout.addWidget(self.fps_label)
 
         self.infer_label = QLabel("Infer: 0ms")
-        self.infer_label.setStyleSheet("color: #3498db;")
+        self.infer_label.setStyleSheet("color: #42a5f5;")
         info_layout.addWidget(self.infer_label)
 
         self.dropped_label = QLabel("Dropped: 0")
-        self.dropped_label.setStyleSheet("color: #e67e22;")
+        self.dropped_label.setStyleSheet("color: #ffd740;")
         info_layout.addWidget(self.dropped_label)
 
         info_layout.addStretch()
@@ -166,7 +166,7 @@ class VisionArtistTab(QWidget):
         cues_frame = QFrame()
         cues_frame.setFrameShape(QFrame.StyledPanel)
         cues_layout = QGridLayout(cues_frame)
-        cues_layout.setContentsMargins(5, 5, 5, 5)
+        cues_layout.setContentsMargins(12, 12, 12, 12)
 
         cues_layout.addWidget(QLabel("Cues (C72-C79):"), 0, 0, 1, 4)
 
@@ -199,7 +199,7 @@ class VisionArtistTab(QWidget):
             # TEST FIRE button
             fire_btn = QPushButton("FIRE")
             fire_btn.setFixedWidth(50)
-            fire_btn.setStyleSheet("background-color: #e74c3c; color: white; font-size: 10px;")
+            fire_btn.setStyleSheet("background:rgba(255,82,82,0.15); color:#ff5252; border:1px solid rgba(255,82,82,0.3); border-radius:8px; font-size:10px; font-weight:600;")
             fire_btn.setToolTip(f"Test fire C{cue_id} for zone {zone_id}")
             fire_btn.clicked.connect(lambda checked, zid=zone_id: self._on_test_fire(zid))
             self.test_fire_btns.append(fire_btn)
@@ -211,7 +211,7 @@ class VisionArtistTab(QWidget):
         status_frame = QFrame()
         status_frame.setFrameShape(QFrame.StyledPanel)
         status_layout = QGridLayout(status_frame)
-        status_layout.setContentsMargins(5, 5, 5, 5)
+        status_layout.setContentsMargins(12, 12, 12, 12)
 
         status_layout.addWidget(QLabel("Estado:"), 0, 0)
         self.detector_state_label = QLabel("idle")
@@ -220,7 +220,7 @@ class VisionArtistTab(QWidget):
 
         status_layout.addWidget(QLabel("Zonas Activas:"), 1, 0)
         self.active_zones_label = QLabel("None")
-        self.active_zones_label.setStyleSheet("font-weight: bold; color: #e67e22;")
+        self.active_zones_label.setStyleSheet("font-weight: bold; color: #ffd740;")
         status_layout.addWidget(self.active_zones_label, 1, 1)
 
         status_layout.addWidget(QLabel("YOLO:"), 2, 0)
@@ -244,7 +244,7 @@ class VisionArtistTab(QWidget):
         zone_layout.addWidget(self.remove_zone_btn)
 
         self.kill_all_btn = QPushButton("KILL ALL")
-        self.kill_all_btn.setStyleSheet("background-color: #2c3e50; color: white;")
+        self.kill_all_btn.setStyleSheet("background:rgba(255,255,255,0.06); color:#e0e0e0; border:1px solid rgba(255,255,255,0.12); border-radius:10px; font-weight:600;")
         self.kill_all_btn.clicked.connect(self._on_kill_all)
         zone_layout.addWidget(self.kill_all_btn)
 
@@ -262,7 +262,7 @@ class VisionArtistTab(QWidget):
 
         # Apply button
         self.apply_btn = QPushButton("Aplicar Cambios")
-        self.apply_btn.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold;")
+        self.apply_btn.setStyleSheet("background:rgba(0,230,118,0.15); color:#00e676; border:1px solid rgba(0,230,118,0.3); border-radius:10px; padding:8px 16px; font-weight:bold;")
         self.apply_btn.clicked.connect(self._on_apply)
         layout.addWidget(self.apply_btn)
 
@@ -463,11 +463,11 @@ class VisionArtistTab(QWidget):
 
                 # Color based on state
                 if state_str == "active":
-                    self.detector_state_label.setStyleSheet("font-weight: bold; color: #e67e22;")
+                    self.detector_state_label.setStyleSheet("font-weight: bold; color: #ffd740;")
                 elif state_str == "disabled":
-                    self.detector_state_label.setStyleSheet("font-weight: bold; color: #7f8c8d;")
+                    self.detector_state_label.setStyleSheet("font-weight: bold; color: #666;")
                 else:
-                    self.detector_state_label.setStyleSheet("font-weight: bold; color: #3498db;")
+                    self.detector_state_label.setStyleSheet("font-weight: bold; color: #42a5f5;")
 
                 # Active zones
                 active_zones = detector_state.get("active_zones", [])
@@ -479,12 +479,12 @@ class VisionArtistTab(QWidget):
                 # YOLO status
                 yolo_available = detector_state.get("detector_available", False)
                 self.yolo_status_label.setText("OK" if yolo_available else "No disponible")
-                self.yolo_status_label.setStyleSheet("color: #27ae60;" if yolo_available else "color: #e74c3c;")
+                self.yolo_status_label.setStyleSheet("color: #00e676;" if yolo_available else "color: #ff5252;")
 
                 # Degraded status
                 degraded = detector_state.get("degraded", False)
                 self.degraded_label.setText("SI" if degraded else "No")
-                self.degraded_label.setStyleSheet("color: #e74c3c; font-weight: bold;" if degraded else "")
+                self.degraded_label.setStyleSheet("color: #ff5252; font-weight: bold;" if degraded else "")
 
                 # Update LEDs based on active zones
                 for i in range(8):

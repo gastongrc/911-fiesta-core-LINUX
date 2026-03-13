@@ -24,12 +24,12 @@ from PySide6.QtGui import QFont
 
 # Colores por modo
 MODE_COLORS = {
-    "OFF": "#e74c3c",       # Rojo
-    "BOLICHE": "#f39c12",   # Naranja
-    "ARTISTA": "#2ecc71",   # Verde
-    "TEATRO": "#3498db",    # Azul
-    "ESCENA": "#9b59b6",    # Púrpura
-    "CLIMA": "#1abc9c",     # Turquesa
+    "OFF": "#ff5252",       # Red
+    "BOLICHE": "#ffd740",   # Amber
+    "ARTISTA": "#00e676",   # Green
+    "TEATRO": "#42a5f5",    # Blue
+    "ESCENA": "#ce93d8",    # Purple
+    "CLIMA": "#4dd0e1",     # Cyan
 }
 
 # Iconos de permisos (texto simple)
@@ -62,8 +62,8 @@ class CalendarStatusWidget(QWidget):
     def _setup_ui(self):
         """Configura la interfaz del widget"""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
-        layout.setSpacing(8)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(12)
 
         # ===== TÍTULO =====
         title = QLabel("📅 CALENDARIO")
@@ -74,10 +74,10 @@ class CalendarStatusWidget(QWidget):
         # ===== ESTADO ACTUAL =====
         state_frame = QFrame()
         state_frame.setFrameShape(QFrame.StyledPanel)
-        state_frame.setStyleSheet("QFrame { background-color: #2c3e50; border-radius: 5px; }")
+        state_frame.setStyleSheet("QFrame { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 14px; }")
         state_layout = QVBoxLayout(state_frame)
-        state_layout.setContentsMargins(10, 8, 10, 8)
-        state_layout.setSpacing(4)
+        state_layout.setContentsMargins(16, 12, 16, 12)
+        state_layout.setSpacing(8)
 
         # Modo actual (grande)
         self.mode_label = QLabel("OFF")
@@ -98,7 +98,7 @@ class CalendarStatusWidget(QWidget):
         clock_frame = QFrame()
         clock_frame.setFrameShape(QFrame.StyledPanel)
         clock_layout = QHBoxLayout(clock_frame)
-        clock_layout.setContentsMargins(8, 4, 8, 4)
+        clock_layout.setContentsMargins(12, 8, 12, 8)
 
         clock_icon = QLabel("🕐")
         clock_layout.addWidget(clock_icon)
@@ -115,8 +115,8 @@ class CalendarStatusWidget(QWidget):
         timeline_frame = QFrame()
         timeline_frame.setFrameShape(QFrame.StyledPanel)
         timeline_layout = QVBoxLayout(timeline_frame)
-        timeline_layout.setContentsMargins(8, 6, 8, 6)
-        timeline_layout.setSpacing(4)
+        timeline_layout.setContentsMargins(12, 10, 12, 10)
+        timeline_layout.setSpacing(8)
 
         timeline_title = QLabel("Timeline")
         timeline_title.setStyleSheet("color: #7f8c8d; font-size: 10px;")
@@ -129,12 +129,13 @@ class CalendarStatusWidget(QWidget):
         self.timeline_bar.setMaximumHeight(12)
         self.timeline_bar.setStyleSheet("""
             QProgressBar {
-                background-color: #34495e;
-                border-radius: 4px;
+                background-color: rgba(255,255,255,0.06);
+                border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 6px;
             }
             QProgressBar::chunk {
-                background-color: #3498db;
-                border-radius: 4px;
+                background-color: #42a5f5;
+                border-radius: 6px;
             }
         """)
         timeline_layout.addWidget(self.timeline_bar)
@@ -150,8 +151,8 @@ class CalendarStatusWidget(QWidget):
         perms_frame = QFrame()
         perms_frame.setFrameShape(QFrame.StyledPanel)
         perms_layout = QVBoxLayout(perms_frame)
-        perms_layout.setContentsMargins(8, 6, 8, 6)
-        perms_layout.setSpacing(4)
+        perms_layout.setContentsMargins(12, 10, 12, 10)
+        perms_layout.setSpacing(8)
 
         perms_title = QLabel("Permisos Activos")
         perms_title.setStyleSheet("color: #7f8c8d; font-size: 10px;")
@@ -256,10 +257,10 @@ class CalendarStatusWidget(QWidget):
 
             if enabled:
                 label.setText(f"{icon} {name}: ON")
-                label.setStyleSheet("color: #2ecc71; font-size: 9px; font-weight: bold;")
+                label.setStyleSheet("color: #00e676; font-size: 9px; font-weight: bold;")
             else:
                 label.setText(f"{icon} {name}: OFF")
-                label.setStyleSheet("color: #e74c3c; font-size: 9px;")
+                label.setStyleSheet("color: #ff5252; font-size: 9px;")
 
     def _update_timeline(self, state: Dict[str, Any]):
         """Actualiza la barra de timeline"""
@@ -297,20 +298,21 @@ class CalendarStatusWidget(QWidget):
 
             # Color según progreso
             if progress < 50:
-                bar_color = "#3498db"  # Azul
+                bar_color = "#42a5f5"  # Blue
             elif progress < 80:
-                bar_color = "#f39c12"  # Naranja
+                bar_color = "#ffd740"  # Amber
             else:
-                bar_color = "#e74c3c"  # Rojo
+                bar_color = "#ff5252"  # Red
 
             self.timeline_bar.setStyleSheet(f"""
                 QProgressBar {{
-                    background-color: #34495e;
-                    border-radius: 4px;
+                    background-color: rgba(255,255,255,0.06);
+                    border: 1px solid rgba(255,255,255,0.08);
+                    border-radius: 6px;
                 }}
                 QProgressBar::chunk {{
                     background-color: {bar_color};
-                    border-radius: 4px;
+                    border-radius: 6px;
                 }}
             """)
 

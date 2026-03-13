@@ -57,8 +57,8 @@ class BpmMasterTab(QWidget):
     def _setup_ui(self):
         """Configura la interfaz."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(16)
 
         # === PANEL SUPERIOR: INDICADORES ===
         indicators = self._build_indicators_panel()
@@ -84,17 +84,18 @@ class BpmMasterTab(QWidget):
         group.setStyleSheet("""
             QGroupBox {
                 font-weight: bold;
-                border: 2px solid #444;
-                border-radius: 6px;
-                margin-top: 10px;
-                padding-top: 10px;
-                background: #1a1a1a;
+                border: 1px solid rgba(255,255,255,0.12);
+                border-radius: 14px;
+                margin-top: 12px;
+                padding: 16px;
+                padding-top: 20px;
+                background: rgba(255,255,255,0.04);
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 subcontrol-position: top left;
-                padding: 0 5px;
-                color: #aaa;
+                padding: 0 8px;
+                color: #b0b0b0;
             }
         """)
 
@@ -197,17 +198,18 @@ class BpmMasterTab(QWidget):
         group.setStyleSheet("""
             QGroupBox {
                 font-weight: bold;
-                border: 2px solid #444;
-                border-radius: 6px;
-                margin-top: 10px;
-                padding-top: 10px;
-                background: #1a1a1a;
+                border: 1px solid rgba(255,255,255,0.12);
+                border-radius: 14px;
+                margin-top: 12px;
+                padding: 16px;
+                padding-top: 20px;
+                background: rgba(255,255,255,0.04);
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 subcontrol-position: top left;
-                padding: 0 5px;
-                color: #aaa;
+                padding: 0 8px;
+                color: #b0b0b0;
             }
         """)
 
@@ -237,18 +239,18 @@ class BpmMasterTab(QWidget):
         # Botones
         btn_style = """
             QPushButton {
-                background: #333;
-                border: 1px solid #555;
-                border-radius: 4px;
+                background: rgba(255,255,255,0.06);
+                border: 1px solid rgba(255,255,255,0.12);
+                border-radius: 10px;
                 padding: 8px 16px;
-                color: #ccc;
+                color: #e0e0e0;
                 font-weight: bold;
             }
             QPushButton:hover {
-                background: #444;
+                background: rgba(255,255,255,0.10);
             }
             QPushButton:pressed {
-                background: #222;
+                background: rgba(255,255,255,0.03);
             }
         """
 
