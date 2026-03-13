@@ -10,7 +10,15 @@
 # - Improved hysteresis to prevent false transitions
 # ========================================================================================================
 import time
+import os
 from collections import deque
+
+# AUDIT: Debug instrumentation for state scoring pipeline
+# Enable with environment variable: STATE_DEBUG=1
+# Throttle rate with: STATE_DEBUG_INTERVAL=10 (print every N ticks, default 10)
+_STATE_DEBUG = os.environ.get("STATE_DEBUG", "0") == "1"
+_STATE_DEBUG_INTERVAL = int(os.environ.get("STATE_DEBUG_INTERVAL", "10"))
+_STATE_DEBUG_VERBOSE = os.environ.get("STATE_DEBUG_VERBOSE", "0") == "1"
 
 
 # V13: Presets for optional tuning (FAST is now the default baseline)
@@ -191,7 +199,12 @@ class StateManager:
         # V13: Current preset name (FAST is default baseline)
         self._current_preset = "FAST"
 
+        # AUDIT: Debug tick counter
+        self._debug_tick = 0
+
         print(f"[StateManager] V13 FAST BASELINE - hold={min_hold_seconds}s, cooldown={cooldown_seconds}s, hysteresis={hysteresis_margin}, stability={self.STABILITY_WINDOW_MS}ms, ema={self._ema_alpha}, buffer={self.buffer_size}")
+        if _STATE_DEBUG:
+            print(f"[StateManager] STATE_DEBUG ENABLED (interval={_STATE_DEBUG_INTERVAL}, verbose={_STATE_DEBUG_VERBOSE})")
     
     # ✅ ====== NUEVO: MÉTODOS PÚBLICOS PARA CUEENGINE ======
     def get_state(self) -> str:
@@ -362,11 +375,55 @@ class StateManager:
             # Guardar en estadísticas
             self.stats["last_scores"] = {
                 "bajada": scores.get("bajada", 0.0),
-                "base_golpe": scores.get("base_golpe", 0.0), 
+                "base_golpe": scores.get("base_golpe", 0.0),
                 "ataque": scores.get("ataque", 0.0),
                 "brake": scores.get("brake", 0.0)
             }
-            
+
+            # AUDIT: Debug instrumentation - print state scores every N ticks
+            if _STATE_DEBUG:
+                self._debug_tick += 1
+                if self._debug_tick % _STATE_DEBUG_INTERVAL == 0:
+                    sm = self._scores_smooth
+                    mse_info = ""
+                    if self._mse_enabled and self._mse_state is not None:
+                        conf = getattr(self._mse_state, "confidence", 0)
+                        mse_info = (
+                            f" | MSE(conf={conf:.2f})"
+                            f" Pb={getattr(self._mse_state, 'P_bajada', 0):.2f}"
+                            f" Pg={getattr(self._mse_state, 'P_base', 0):.2f}"
+                            f" Pa={getattr(self._mse_state, 'P_ataque', 0):.2f}"
+                            f" Pk={getattr(self._mse_state, 'P_brake', 0):.2f}"
+                            f" sug={getattr(self._mse_state, 'suggested_state', '?')}"
+                        )
+                    vote_info = ""
+                    if _STATE_DEBUG_VERBOSE:
+                        n_baj = len(modules_bajada) if modules_bajada else 0
+                        n_gol = len(modules_golpe) if modules_golpe else 0
+                        n_atk = len(modules_ataque) if modules_ataque else 0
+                        n_brk = len(modules_brake) if modules_brake else 0
+                        a_baj = sum(1 for m in (modules_bajada or []) if self._is_module_active(m))
+                        a_gol = sum(1 for m in (modules_golpe or []) if self._is_module_active(m))
+                        a_atk = sum(1 for m in (modules_ataque or []) if self._is_module_active(m))
+                        a_brk = sum(1 for m in (modules_brake or []) if self._is_module_active(m))
+                        vote_info = f" | VOTES baj={a_baj}/{n_baj} gol={a_gol}/{n_gol} atk={a_atk}/{n_atk} brk={a_brk}/{n_brk}"
+                    hold_info = f" hold={self.hold_remaining:.2f}" if self.hold_remaining > 0 else ""
+                    cd_info = f" cd={self.cooldown_remaining:.2f}" if self.cooldown_remaining > 0 else ""
+                    print(
+                        f"[STATE_DEBUG] "
+                        f"ATAQUE:{sm['ataque']:.2f} "
+                        f"GOLPE:{sm['base_golpe']:.2f} "
+                        f"BAJADA:{sm['bajada']:.2f} "
+                        f"BRAKE:{sm['brake']:.2f} "
+                        f"| raw AT:{scores.get('ataque', 0):.2f} "
+                        f"BG:{scores.get('base_golpe', 0):.2f} "
+                        f"BJ:{scores.get('bajada', 0):.2f} "
+                        f"BK:{scores.get('brake', 0):.2f} "
+                        f"| SELECTED:{self.current_state}"
+                        f"{hold_info}{cd_info}"
+                        f"{mse_info}{vote_info}"
+                    )
+
             # V13: Determinar próximo estado + timestamp
             next_state = self._determine_next_state_responsive(scores)
             self._t_candidate = time.perf_counter()

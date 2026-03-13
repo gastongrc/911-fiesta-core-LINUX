@@ -1,0 +1,495 @@
+================================================================================
+  STAGEMANAGER DECISION PIPELINE — FULL DIAGNOSTIC AUDIT
+  Date: 2026-03-13
+  Scope: Audio input → State selection (no behavioral changes applied)
+================================================================================
+
+
+1. DECISION PIPELINE DIAGRAM
+================================================================================
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │                        AUDIO INPUT                                  │
+  │  engine_audio.py → DC block → HP filter → Gate (Schmitt trigger)   │
+  │  Output: mono float32 block (~11025 samples @ 44100Hz, ~250ms)     │
+  └───────────────┬──────────────────────────────────┬──────────────────┘
+                  │                                  │
+         ┌────────▼────────┐               ┌────────▼────────┐
+         │  CLASSIC         │               │  MSE (Music      │
+         │  ANALYZERS       │               │  Structure       │
+         │  (46 modules)    │               │  Engine)         │
+         │                  │               │                  │
+         │  Each analyzer:  │               │  Pipeline:       │
+         │  block → process │               │  BeatEngine      │
+         │  → card.set_on() │               │  EnergyEngine    │
+         │  → card._on bool │               │  TransientEngine │
+         │                  │               │  PhraseEngine    │
+         └────────┬─────────┘               │  DropEngine      │
+                  │                         │  StateInference  │
+                  │                         └────────┬─────────┘
+                  │                                  │
+         ┌────────▼────────┐               ┌────────▼──────────┐
+         │ MODULE GROUPING  │               │ MSE PROBABILITIES │
+         │                  │               │                   │
+         │ BAJADA:   5 mods │               │ P_bajada  [0,1]   │
+         │ GOLPE:  9-10 mods│               │ P_base    [0,1]   │
+         │ ATAQUE:   3 mods │               │ P_ataque  [0,1]   │
+         │ BRAKE:   3-4 mods│               │ P_brake   [0,1]   │
+         │                  │               │ confidence [0,1]  │
+         └────────┬─────────┘               └────────┬──────────┘
+                  │                                  │
+         ┌────────▼──────────────────────────────────▼──────────┐
+         │              SCORE AGGREGATION                        │
+         │  state_manager._calculate_scores_responsive()         │
+         │                                                       │
+         │  Step 1: Voting                                       │
+         │    score[state] = active_modules / total_modules       │
+         │    (binary vote per module: card.is_on() → 0 or 1)    │
+         │                                                       │
+         │  Step 2: MSE Blending (if confidence >= 0.4)          │
+         │    score[k] = 0.45 * analyzer_vote + 0.55 * MSE_prob  │
+         │                                                       │
+         │  Step 3: Light Smoothing (buffer avg, size=2)         │
+         │    avg over last 2 score snapshots                     │
+         └──────────────────────┬────────────────────────────────┘
+                                │
+         ┌──────────────────────▼────────────────────────────────┐
+         │              EMA SMOOTHING                             │
+         │  _scores_smooth[k] = α*score + (1-α)*prev             │
+         │  α = 0.5 (FAST) or 0.3 (STABLE)                      │
+         └──────────────────────┬────────────────────────────────┘
+                                │
+         ┌──────────────────────▼────────────────────────────────┐
+         │           STATE DECISION LOGIC                         │
+         │  _determine_next_state_responsive()                    │
+         │                                                       │
+         │  Priority order (highest first):                       │
+         │    1. BRAKE   >= 0.65                                  │
+         │    2. ATAQUE  >= 0.68 + clean_rise OR already ATAQUE   │
+         │    3. GOLPE   >= 0.30 + persistence >= 2/3 frames      │
+         │    4. BAJADA  >= 0.35 + clean_drop (2/3 frames)        │
+         │                                                       │
+         │  Tie-breaker: |diff| <= 0.03 → least recently used    │
+         │  Disabled states (calendar): effective_score = 0.0     │
+         │  ATAQUE persistence: if in ATAQUE & 2/3 frames, stay  │
+         └──────────────────────┬────────────────────────────────┘
+                                │
+         ┌──────────────────────▼────────────────────────────────┐
+         │           STATE CHANGE VALIDATION                      │
+         │  _can_change_state_responsive()                        │
+         │                                                       │
+         │  Checks (all must pass):                               │
+         │  1. Inter-state cooldown (0ms default, BRAKE bypasses) │
+         │  2. Stability window (120ms consistency required)      │
+         │  3. ATAQUE margin >= 0.12 over second score            │
+         │  4. ATAQUE override if score >= 0.80 (2+ frames)      │
+         │  5. ATAQUE persistence lock (exit blocked if 2/3)      │
+         │  6. Peak lock (0.18s post-ATAQUE anti-bounce)          │
+         │  7. Hold remaining (per-state hard hold)               │
+         │  8. Cooldown remaining (post-ATAQUE/BRAKE)             │
+         │  9. Hysteresis check (new > current + margin)          │
+         │  10. Min confidence (0.50)                             │
+         └──────────────────────┬────────────────────────────────┘
+                                │
+         ┌──────────────────────▼────────────────────────────────┐
+         │              STATE COMMITTED                           │
+         │  _change_state()                                       │
+         │                                                       │
+         │  Actions:                                              │
+         │  - Set hold: BAJADA=0.32s GOLPE=0.48s ATAQUE=0.96s    │
+         │              BRAKE=0.96s                               │
+         │  - Post-ATAQUE/BRAKE cooldown: 0.2s                   │
+         │  - Global lock: 0.12s                                  │
+         │  - Peak lock on ATAQUE entry: 0.18s                   │
+         │  - Clear stability buffer                              │
+         │  - Log transition with lag stats                       │
+         └──────────────────────────────────────────────────────┘
+
+
+2. ANALYZERS PER STATE
+================================================================================
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  BAJADA (5 Motor Real analyzers)                                    │
+  ├─────────────────┬───────────────────────┬───────────┬──────────────┤
+  │ Analyzer        │ Metric                │ Range     │ Active When  │
+  ├─────────────────┼───────────────────────┼───────────┼──────────────┤
+  │ NoHits          │ Absence of hits       │ [0,1]     │ lo<=v<=hi &  │
+  │                 │ (inverse percussive)  │           │ v*100>=match │
+  │ DeepListener    │ Low-freq sustained    │ [0,1]     │ same pattern │
+  │ SoftPeaks       │ Gentle amplitude var  │ [0,1]     │ same pattern │
+  │ RampDown        │ Energy decline rate   │ [0,1]     │ same pattern │
+  │ BreakSpotter    │ Break detection       │ [0,1]     │ same pattern │
+  └─────────────────┴───────────────────────┴───────────┴──────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  BASE_GOLPE (9-10 Motor Real analyzers)                             │
+  ├─────────────────┬───────────────────────┬───────────┬──────────────┤
+  │ Analyzer        │ Metric                │ Range     │ Active When  │
+  ├─────────────────┼───────────────────────┼───────────┼──────────────┤
+  │ YesHits         │ Percussive hit detect │ [0,1]     │ hit>=0.65    │
+  │                 │ (50ms hold, 15ms ref) │           │ + 50ms hold  │
+  │ AccentCatcher   │ Accent vs background  │ [0,1]     │ v>0.35       │
+  │                 │ (MAD-based)           │           │ + 60ms hold  │
+  │ GrooveKeeper    │ Swing ratio regularity│ [0,1]     │ swing in tol │
+  │                 │ (onset gap analysis)  │           │ + 120ms hold │
+  │ PatternLock     │ Rhythmic similarity   │ [0,1]     │ v>=0.65      │
+  │                 │ (cross-correlation)   │           │ + 120ms hold │
+  │ CadenceSpotter  │ Onset regularity (MAD)│ [0,1]     │ v>=0.60      │
+  │                 │                       │           │ + 100ms hold │
+  │ FlowMonitor     │ Onset density+gaps    │ [0,1]     │ v>=0.60      │
+  │                 │ (3.0/s target)        │           │ + 120ms hold │
+  │ DynamicPulse    │ Peak variation ratio  │ [0,1]     │ v>=0.60      │
+  │                 │ (MAD/median)          │           │ + 120ms hold │
+  │ PulseFinderAn.  │ Constant pattern det. │ [0,1]     │ pattern &    │
+  │ (conditional)   │ (legacy wrapper)      │           │ v>0.4        │
+  │ RhythmHighlight │ Density+accent ratio  │ [0,1]     │ v>=0.60      │
+  │                 │ (2.5/s, ratio 1.6)    │           │ + 120ms hold │
+  │ BurstSharpness  │ Spectral sharpness    │ [0,1]     │ multi-gate   │
+  │                 │ (crest+centroid+flux)  │           │ + hysteresis │
+  └─────────────────┴───────────────────────┴───────────┴──────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  ATAQUE (3 Motor Real analyzers)                                    │
+  ├─────────────────┬───────────────────────┬───────────┬──────────────┤
+  │ Analyzer        │ Metric                │ Range     │ Active When  │
+  ├─────────────────┼───────────────────────┼───────────┼──────────────┤
+  │ SnareRoll       │ Snare roll detection  │ [0,1]     │ lo<=v<=hi &  │
+  │                 │ (repetitive transient)│           │ v*100>=match │
+  │ HiRoll          │ Hi-hat roll detection │ [0,1]     │ same pattern │
+  │ BurstSharpness  │ Spectral sharpness    │ [0,1]     │ multi-gate   │
+  │                 │ (separate instance)   │           │ + hysteresis │
+  └─────────────────┴───────────────────────┴───────────┴──────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  BRAKE (3-4 Motor Real analyzers)                                   │
+  ├─────────────────┬───────────────────────┬───────────┬──────────────┤
+  │ Analyzer        │ Metric                │ Range     │ Active When  │
+  ├─────────────────┼───────────────────────┼───────────┼──────────────┤
+  │ EnergyCliff     │ Sudden energy drop    │ [0,1]     │ lo<=v<=hi &  │
+  │                 │ (cliff detection)     │           │ v*100>=match │
+  │ WidebandBlackout│ Broadband silence     │ [0,1]     │ same pattern │
+  │ RhythmVoid      │ Rhythm disappearance  │ [0,1]     │ same pattern │
+  │ BrakeAnalyzer   │ Dedicated brake det.  │ [0,1]     │ card._on     │
+  │ (conditional)   │ (if available)        │           │              │
+  └─────────────────┴───────────────────────┴───────────┴──────────────┘
+
+  Update rate: All analyzers process every tick (~33-40ms)
+  All values normalized to [0,1] before card.set_on()
+  Card defaults: lo=0.25, hi=0.75, match=0.50 (50%)
+  Active condition: card.is_on() returns self._on (bool)
+
+
+3. SCORE AGGREGATION LOGIC
+================================================================================
+
+  Phase A: ANALYZER VOTING
+  ─────────────────────────
+  For each state S ∈ {bajada, base_golpe, ataque, brake}:
+
+    raw_score[S] = count(card.is_on() == True) / count(modules_in_group)
+
+    Module counts:
+      BAJADA:     5 analyzers  → 1 vote = 0.20
+      BASE_GOLPE: 10 analyzers → 1 vote = 0.10
+      ATAQUE:     3 analyzers  → 1 vote = 0.33
+      BRAKE:      3-4 analyzers→ 1 vote = 0.25-0.33
+
+  Phase B: MSE BLENDING (if MSE confidence >= 0.4)
+  ──────────────────────────────────────────────────
+    blended_score[k] = 0.45 * raw_score[k] + 0.55 * MSE_probability[k]
+
+    Weight split: Analyzers 45% / MSE 55%
+    MSE dominates when confidence is sufficient.
+
+  Phase C: LIGHT SMOOTHING (buffer averaging)
+  ────────────────────────────────────────────
+    Maintains buffer of last 2 score snapshots (FAST preset)
+    smoothed[k] = avg(buffer[0][k], buffer[1][k])
+
+  Phase D: EMA SMOOTHING
+  ───────────────────────
+    _scores_smooth[k] = 0.5 * smoothed[k] + 0.5 * _scores_smooth_prev[k]
+    (α = 0.5 for FAST, α = 0.3 for STABLE)
+
+  Phase E: THRESHOLD COMPARISON (priority order)
+  ───────────────────────────────────────────────
+    1. BRAKE   ≥ 0.65  → select BRAKE
+    2. ATAQUE  ≥ 0.68  → select ATAQUE (if clean_rise or already ATAQUE)
+    3. GOLPE   ≥ 0.30  → select BASE_GOLPE (if persistence ≥ 2/3 frames)
+    4. BAJADA  ≥ 0.35  → select BAJADA (if clean_drop 2/3 frames)
+    else: keep current state
+
+  Phase F: VALIDATION GATES (all must pass for change)
+  ─────────────────────────────────────────────────────
+    - Stability window: 120ms consistency
+    - ATAQUE margin: ≥ 0.12 over second score
+    - Hold timer not active
+    - Cooldown not active
+    - Hysteresis: new_score > current_score + 0.04
+    - Min confidence: ≥ 0.50
+
+
+4. MSE CONTRIBUTION ANALYSIS
+================================================================================
+
+  WHAT MSE MEASURES:
+  ──────────────────
+  The Music Structure Engine (MSE) is an audio analysis pipeline that
+  produces probabilities for each state based on real audio features:
+
+  Sub-engine          Metric                  Range       Update Rate
+  ─────────────────── ─────────────────────── ─────────── ───────────
+  BeatEngine          Tempo (BPM)             70-180      Every 8 ticks
+                      Beat phase              [0,1)       Every tick
+                      Beat confidence         [0,1]       Every 8 ticks
+  EnergyEngine        Overall RMS (EMA α=0.3) [0,1]       Every tick
+                      Band energies (lo/mi/hi)[0,1]       Every tick
+                      Energy trend            RISING/     Every tick
+                                              FALLING/
+                                              STABLE
+  TransientEngine     Transient density       [0,~20/s]   Every tick
+                      Transient spike         bool        Every tick
+  PhraseEngine        Phrase position         [0,1)       Every tick
+                      Boundary probability    [0,1]       Every tick
+  DropEngine          Drop state machine      NONE/BUILD/ Every tick
+                                              PRE_DROP/
+                                              DROP
+                      Drop confidence         [0,1]       Every tick
+
+  HOW MSE PRODUCES PROBABILITIES (state_inference.py):
+  ────────────────────────────────────────────────────
+
+  P_bajada (raw, before normalization):
+    +0.40 if energy < 0.15
+    +0.20 if energy < 0.25
+    +0.25 if trend FALLING
+    +0.15 if trend STABLE & energy < 0.2
+    +0.20 if transient_density < 3.0
+    +0.15 if beat_confidence < 0.3
+    Max raw: 1.0, clamped to [0,1]
+
+  P_base (raw, before normalization):
+    +0.30 if 0.08 < energy < 0.45
+    +0.25 if beat_confidence > 0.3
+    +0.20 if trend STABLE
+    +0.15 if 3.0 < transient_density < 15.0
+    +0.10 if drop_state == NONE
+    Max raw: 1.0, clamped to [0,1]
+
+  P_ataque (raw, before normalization):
+    +0.25 if energy > 0.3
+    +0.15 if energy > 0.5
+    +0.20 if trend RISING
+    +0.15 if transient_density > 10.0
+    +0.15 if transient_spike True
+    +0.20 if drop_state in (BUILD, PRE_DROP, DROP)
+    +0.10 if beat_confidence > 0.5 & tempo > 120
+    Max raw: 1.20, clamped to [0,1]
+
+  P_brake (raw, before normalization):
+    +0.30 if trend FALLING & energy > 0.15
+    +0.20 if phrase_boundary > 0.5 & trend FALLING
+    +0.15 if transient_density < 2.0 & energy > 0.1
+    +0.10 if drop_state NONE & trend FALLING
+    Max raw: 0.75, clamped to [0,1]
+
+  NORMALIZATION: All four probabilities are divided by their sum → sum = 1.0
+
+  CONFIDENCE: margin(winner - second) + 0.3 * beat_confidence
+              Threshold for MSE effect: confidence >= 0.4
+
+  CAN MSE DOMINATE?
+  ──────────────────
+  YES. MSE weight is 55% vs analyzers 45%. When MSE confidence >= 0.4,
+  MSE probabilities have majority influence on the final score.
+
+  CRITICAL: P_base has a STRUCTURAL ADVANTAGE — see section 5.
+
+
+5. WHY BASE_GOLPE DOMINATES — ROOT CAUSE ANALYSIS
+================================================================================
+
+  CAUSE 1: P_base (MSE) has the WIDEST activation range
+  ───────────────────────────────────────────────────────
+  For typical dance/electronic music during playback:
+    - energy_level ∈ [0.08, 0.45] → very common → +0.30
+    - beat_confidence > 0.3       → almost always → +0.25
+    - energy_trend STABLE         → most of the time → +0.20
+    - transient_density ∈ (3,15)  → typical range → +0.15
+    - drop_state == NONE          → >90% of time → +0.10
+                                              Total: 1.00 raw
+
+  P_base reaches its MAXIMUM (1.0) under NORMAL music conditions.
+  No other state achieves maximum under normal conditions.
+
+  After normalization, P_base = 1.0/total where total includes all states.
+  Even with P_ataque = 0.65 simultaneously, P_base still wins:
+    P_base_norm = 1.0 / (1.0 + 0.65 + ~0.35 + ~0.15) ≈ 0.47
+    P_ataque_norm = 0.65 / 2.15 ≈ 0.30
+
+  CAUSE 2: BASE_GOLPE has the LOWEST threshold (0.30)
+  ────────────────────────────────────────────────────
+  Threshold comparison for activation:
+    BRAKE:      0.65 (very selective)
+    ATAQUE:     0.68 (very selective)
+    BASE_GOLPE: 0.30 (extremely permissive)
+    BAJADA:     0.35 (permissive)
+
+  With MSE blend: blended_golpe = 0.45 * votes + 0.55 * P_base
+  If only 2/10 analyzers active (votes = 0.20) and P_base = 0.47:
+    blended_golpe = 0.45 * 0.20 + 0.55 * 0.47 = 0.09 + 0.26 = 0.35
+    This PASSES the 0.30 threshold.
+
+  Even with ZERO analyzer votes:
+    blended_golpe = 0.45 * 0.0 + 0.55 * 0.47 = 0.26
+    This is just BELOW 0.30 but after smoothing may cross.
+
+  CAUSE 3: BASE_GOLPE has the MOST analyzers (10)
+  ─────────────────────────────────────────────────
+  More analyzers = higher probability of achieving any given vote ratio.
+  With 10 rhythm-detecting analyzers, even 3 being active gives 0.30.
+  Rhythm detection is inherently "easy" for music with any beat.
+
+  CAUSE 4: Persistence requirement is easily met
+  ───────────────────────────────────────────────
+  BASE_GOLPE persistence: 2/3 frames with _scores_smooth >= 0.52
+  BUT the threshold check uses RAW scores (0.30), not smooth scores.
+  Persistence check uses _golpe_persistence which tracks smooth >= 0.52.
+  This creates a DISCONNECT:
+    - Raw score passes threshold (0.30) → state selected
+    - Smooth score may not reach 0.52 → persistence blocks
+    - BUT once smooth score reaches 0.52 for 2/3 frames → locks in
+    - Once locked in, BASE_GOLPE's 0.48s hold prevents leaving
+
+  CAUSE 5: ATAQUE is structurally difficult to reach
+  ───────────────────────────────────────────────────
+  ATAQUE has only 3 analyzers (SnareRoll, HiRoll, BurstSharpness).
+  Threshold: 0.68, meaning 3/3 analyzers must be active (2/3 = 0.67 < 0.68).
+  ALL THREE must fire simultaneously, which requires a very specific
+  audio pattern (snare roll + hi-hat roll + spectral burst).
+
+  Additionally:
+    - ATAQUE needs clean_rise (3 consecutive increasing scores)
+    - ATAQUE needs 0.12 margin over second-place score
+    - P_ataque in MSE peaks only during high energy + rising trend
+
+  CAUSE 6: MSE P_base and P_bajada OVERLAP with P_brake
+  ──────────────────────────────────────────────────────
+  P_brake requires: trend FALLING + energy > 0.15
+  But P_bajada also activates on FALLING trend + low energy.
+  When energy falls from medium to low, BOTH P_bajada and P_brake increase,
+  diluting each other. Meanwhile P_base may still be high from its STABLE
+  energy condition (trend detection has latency).
+
+  CAUSE 7: Double smoothing creates momentum
+  ───────────────────────────────────────────
+  Scores pass through:
+    1. Light smoothing (buffer avg, size=2)
+    2. EMA smoothing (α=0.5)
+  This creates inertia — once BASE_GOLPE scores are high, they decay slowly.
+  Combined with the 0.48s hold, BASE_GOLPE can persist through brief
+  interruptions that should trigger other states.
+
+  CAUSE 8: Priority ordering creates a "gravity well"
+  ────────────────────────────────────────────────────
+  The decision logic checks states in priority order:
+    BRAKE → ATAQUE → BASE_GOLPE → BAJADA
+  Since BRAKE and ATAQUE have HIGH thresholds (0.65, 0.68), they rarely
+  activate. BASE_GOLPE with 0.30 is the first "easy" threshold to pass.
+  The system falls through to BASE_GOLPE as the default "active music" state.
+
+  SUMMARY OF ROOT CAUSES (ranked by severity):
+  ─────────────────────────────────────────────
+  [CRITICAL] MSE P_base structural advantage — reaches max under normal music
+  [CRITICAL] BASE_GOLPE threshold (0.30) too low relative to MSE contribution
+  [HIGH]     ATAQUE requires ALL 3/3 analyzers (threshold 0.68 > 2/3=0.67)
+  [HIGH]     MSE weight (55%) allows P_base to single-handedly pass threshold
+  [MEDIUM]   Double smoothing creates score momentum favoring current state
+  [MEDIUM]   10 rhythm analyzers make BASE_GOLPE voting inherently easy
+  [LOW]      Hold timers prevent quick corrections after false BASE_GOLPE entry
+
+
+6. DEBUG INSTRUMENTATION
+================================================================================
+
+  ADDED: state_manager.py — optional debug logging
+
+  ACTIVATION:
+    export STATE_DEBUG=1                  # Enable debug output
+    export STATE_DEBUG_INTERVAL=10        # Print every N ticks (default: 10)
+    export STATE_DEBUG_VERBOSE=1          # Include per-module vote counts
+
+  OUTPUT FORMAT:
+    [STATE_DEBUG] ATAQUE:0.32 GOLPE:0.81 BAJADA:0.18 BRAKE:0.05
+    | raw AT:0.30 BG:0.80 BJ:0.20 BK:0.04
+    | SELECTED:BASE_GOLPE hold=0.35
+    | MSE(conf=0.62) Pb=0.12 Pg=0.48 Pa=0.28 Pk=0.12 sug=BASE_GOLPE
+    | VOTES baj=1/5 gol=8/10 atk=0/3 brk=0/3
+
+  FIELDS:
+    ATAQUE/GOLPE/BAJADA/BRAKE   — EMA-smoothed final scores
+    raw AT/BG/BJ/BK             — Pre-EMA scores (post-MSE-blend + light smooth)
+    SELECTED                    — Current state (not necessarily the candidate)
+    hold=X.XX                   — Hold timer remaining (if active)
+    cd=X.XX                     — Cooldown remaining (if active)
+    MSE(conf=X.XX)              — MSE confidence level
+    Pb/Pg/Pa/Pk                 — MSE raw probabilities
+    sug=STATE                   — MSE suggested state
+    VOTES baj/gol/atk/brk       — Active/total modules per group (verbose only)
+
+  NO BEHAVIORAL CHANGES. Debug logging is purely observational.
+
+
+7. MODULES INVOLVED (complete list)
+================================================================================
+
+  Core Pipeline:
+    engine_audio.py                              Audio I/O + filtering
+    core/music_structure_engine/
+      music_structure_engine.py                  MSE orchestrator
+      beat_engine.py                             Tempo + beat tracking
+      energy_engine.py                           Multiband RMS + trend
+      transient_engine.py                        Transient density + spike
+      phrase_engine.py                           Phrase structure tracking
+      drop_engine.py                             Drop state machine
+      state_inference.py                         Probability computation
+      buffers.py                                 Ring buffer primitives
+      math_utils.py                              Signal processing utils
+    state_manager.py                             Score aggregation + decision
+    main.py                                      Module registration + tick loop
+    cue_engine.py                                Module execution + family mgmt
+
+  Analyzer Modules (Motor Real only — used for voting):
+    analyzers/no_hits.py                         BAJADA
+    analyzers/deep_listener.py                   BAJADA
+    analyzers/soft_peaks.py                      BAJADA
+    analyzers/ramp_down.py                       BAJADA
+    analyzers/break_spotter.py                   BAJADA
+    analyzers/yes_hits.py                        BASE_GOLPE
+    analyzers/accent_catcher.py                  BASE_GOLPE
+    analyzers/groove_keeper.py                   BASE_GOLPE
+    analyzers/pattern_lock.py                    BASE_GOLPE
+    analyzers/cadence_spotter.py                 BASE_GOLPE
+    analyzers/flow_monitor.py                    BASE_GOLPE
+    analyzers/dynamic_pulse.py                   BASE_GOLPE
+    analyzers/pulse_finder_wrapper.py            BASE_GOLPE (conditional)
+    analyzers/rhythm_highlighter.py              BASE_GOLPE
+    analyzers/burst_sharpness.py                 BASE_GOLPE + ATAQUE (2 instances)
+    analyzers/snare_roll.py                      ATAQUE
+    analyzers/hi_roll.py                         ATAQUE
+    analyzers/energy_cliff.py                    BRAKE
+    analyzers/wideband_blackout.py               BRAKE
+    analyzers/rhythm_void.py                     BRAKE
+    analyzers/brake.py                           BRAKE (conditional)
+
+  Support:
+    module_card.py                               Card UI + is_on()/thresholds
+    services/analyzer_service.py                 Read-only analyzer state API
+    analyzers/energy_detector.py                 Energy level for state manager
+    music_intelligence_lite/weigher.py           Music profile weighting
+
+
+================================================================================
+  END OF AUDIT
+================================================================================
