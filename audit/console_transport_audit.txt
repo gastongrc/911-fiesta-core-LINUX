@@ -1,0 +1,605 @@
+================================================================================
+ CONSOLE TRANSPORT AUDIT — 911 Fiesta Core
+ Date: 2026-03-14
+ Scope: Cue dispatch pipeline + transport layer + ArtNet/sACN readiness
+ Purpose: Pre-implementation audit for Reactive Cue Engine
+================================================================================
+
+
+========================================
+1. CUE DISPATCH PIPELINE — FULL TRACE
+========================================
+
+The complete path from music analysis to console output:
+
+  AudioEngine._callback()
+       |
+  MusicStructureEngine.process()
+       |
+  StateManager._calculate_scores_responsive()
+       |
+  CueEngine.update()
+       |
+  AvolitesController.fire_cue() / kill_cue()
+       |
+  TitanQueue.fire() / kill()
+       |
+  TitanTransport.send_fire() / send_kill()
+       |
+  Avolites Titan Console (HTTP API)
+
+
+--- STAGE 1: Audio Capture ---
+
+  File:    engine_audio.py
+  Class:   AudioEngine
+  Method:  _callback()
+  Detail:  Captures raw audio via sounddevice stream.
+           DC block filter -> HP 30Hz filter -> Schmitt trigger gate (80ms hold).
+           Outputs mono float32 block (~11025 samples @ 44100Hz).
+           Callback period: ~23ms (1024 samples).
+
+--- STAGE 2: Music Structure Analysis ---
+
+  File:    core/music_structure_engine/music_structure_engine.py
+  Class:   MusicStructureEngine
+  Method:  process(block, sr)
+
+  Sub-engines executed in sequence:
+    1. beat_engine.py      -> BeatEngine      -> tempo, beat_phase, beat_confidence
+    2. energy_engine.py    -> EnergyEngine    -> energy_level, energy_trend (RISING/FALLING/STABLE)
+    3. transient_engine.py -> TransientEngine -> transient_density, transient_spike (bool)
+    4. phrase_engine.py    -> PhraseEngine    -> phrase_position [0,1), phrase_boundary_probability
+    5. drop_engine.py      -> DropEngine      -> drop_state (NONE/BUILD/PRE_DROP/DROP), drop_confidence
+    6. state_inference.py  -> StateInference  -> P_bajada, P_base, P_ataque, P_brake (normalized)
+
+--- STAGE 3: State Decision ---
+
+  File:    state_manager.py
+  Class:   StateManager
+  Methods: _calculate_scores_responsive(), _determine_next_state_responsive(), _change_state()
+
+  Multi-phase scoring pipeline:
+    Phase 1: Analyzer Voting (45% weight)
+             46 analyzer modules vote per state group:
+               BAJADA:     5 analyzers  (NoHits, DeepListener, SoftPeaks, RampDown, BreakSpotter)
+               BASE_GOLPE: 10 analyzers (YesHits, AccentCatcher, GrooveKeeper, etc.)
+               ATAQUE:     3 analyzers  (SnareRoll, HiRoll, BurstSharpness)
+               BRAKE:      3-4 analyzers (EnergyCliff, WidebandBlackout, RhythmVoid)
+    Phase 2: MSE Blending (55% weight, if MSE confidence >= 0.4)
+    Phase 3: Light Smoothing (buffer size=2)
+    Phase 4: EMA Smoothing (alpha=0.5 for FAST preset)
+    Phase 5: Threshold Comparison (priority order):
+               BRAKE:      >= 0.65 (highest priority)
+               ATAQUE:     >= 0.68 (needs clean rise + 0.12 margin)
+               BASE_GOLPE: >= 0.30
+               BAJADA:     >= 0.35
+    Phase 6: Validation Gates:
+               Stability window 120ms, ATAQUE margin check,
+               hold timer, cooldown, hysteresis (new > current + 0.04),
+               min confidence >= 0.50
+
+  State committed via _change_state():
+    Hold timers: BAJADA=0.32s, GOLPE=0.48s, ATAQUE=0.96s, BRAKE=0.96s
+    Post-ATAQUE/BRAKE cooldown: 0.2s
+
+--- STAGE 4: Cue Selection & Dispatch ---
+
+  File:    cue_engine.py
+  Class:   CueEngine (v6.0 - DETERMINISTIC)
+  Method:  update() [line 619]
+
+  Pipeline:
+    1. Read state from StateManager: get_state(), get_energy()
+    2. State change detection: off_now_for_state(old_state) -> KILL all cues of old state
+    3. Module execution in strict order:
+         m_control -> ControlDimmerModule  (C41)
+         m_break   -> BreakModule          (C42-44)
+         m_ataque  -> AtaqueModule         (C37-39)
+         m_bg      -> BaseGolpeModule      (C1-9, C51-59)
+         m_bajada  -> BajadaModule         (C10-18, C19-27)
+         m_move    -> MovimientoModule     (C28-36)
+         m_timed   -> TimedSequenceModule  (C45-50)
+
+  Central fire method: fire(cue_id, source, meta) [line 210]
+    - Resolve family from cue_id
+    - Kill-before-fire: eliminate sibling cues in same family
+    - Log to fire history for CueMonitor
+    - Delegate to av.fire_cue(cue_id)
+
+--- STAGE 5: Console Controller Bridge ---
+
+  File:    avolites_config.py
+  Class:   AvolitesController (v5.1)
+
+  Public API:
+    fire_cue(cue_id)       -> delegates to TitanQueue.fire()
+    kill_cue(cue_id)       -> delegates to TitanQueue.kill()
+    kill_pool(cue_ids)     -> batch kill with priority boost
+    fire_cue_critical(id)  -> fast-path fire via TitanQueue.fire_immediate()
+    is_active(cue_id)      -> checks TitanSync state
+
+--- STAGE 6: Transport Queue ---
+
+  File:    core/transport/titan_queue.py
+  Class:   TitanQueue (v1.4 - ATOMIC PER FAMILY)
+
+  Implementation:
+    - PriorityQueue (max 512 tasks)
+    - Single worker thread (daemon)
+    - Task priority: KILL=1 > FIRE=2 > PING=3
+    - Rate limit: 60ms minimum between HTTP requests
+    - Anti-dedup: 50ms window rejects duplicate cue+action
+    - Per-family locks ensure atomic FIRE/KILL (no interleaving)
+    - 3 retries with exponential backoff (50ms, 100ms, 200ms)
+    - KILL never dropped (purges oldest FIRE if queue full)
+
+  Family lock ranges:
+    BASE_GOLPE:   C1-9, C51-59
+    BAJADA_COLOR: C10-18
+    BAJADA_POS:   C19-27
+    MOVIMIENTO:   C28-36
+    ATAQUE:       C37-39
+    BRAKE:        C42-44
+
+--- STAGE 7: HTTP Transport ---
+
+  File:    core/transport/titan_transport.py
+  Class:   TitanTransport (v1.1 - LEGACY COMPATIBLE)
+
+  FIRE endpoint:
+    GET /titan/script/Playbacks/FirePlaybackAtLevel?userNumber={cue+offset}&level=1.0&bool=false
+
+  KILL endpoint:
+    GET /titan/script/Playbacks/KillPlayback?userNumber={cue+offset}
+
+  Configuration:
+    Console IP:       192.168.1.20 (configurable)
+    Port:             80
+    Offset:           169 (maps logical cue_id to Titan playback userNumber)
+    Connect timeout:  1.2s
+    Read timeout:     1.0s
+    Session pool:     2 connections, max 4
+
+  Cue encoding:
+    real_cue = cue_id + user_number_offset (default 169)
+    Example: logical C1 -> Titan userNumber 170
+
+--- STAGE 8: State Sync Watchdog ---
+
+  File:    core/transport/titan_sync.py
+  Class:   TitanStateSync
+
+  Independent daemon thread polling every 2 seconds.
+  Detects orphaned cues (active in Titan but not in 911) with 500ms grace period.
+  Auto-kills orphans via TitanQueue.kill() with priority boost.
+  NOTE: Disabled in legacy mode (consoles without GetActivePlaybacks).
+
+
+========================================
+2. CUE SENDER IDENTIFICATION
+========================================
+
+PRIMARY DISPATCHER:
+  Class:   CueEngine (cue_engine.py)
+  Method:  fire(cue_id, source, meta) [line 210]
+  Role:    All cue triggers pass through this single method.
+
+CUE ID ENCODING:
+  Logical cue IDs: C1 through C82 (integers)
+  Family resolution: CueEngine resolves family from cue_id at fire time
+  Network encoding: TitanTransport._map_cue(cue_id) = cue_id + 169
+  URL parameter: userNumber={mapped_id}
+
+TRANSPORT SELECTION:
+  File:    avolites_config.py
+  Method:  set_transport(transport: str)
+  Logic:   Only accepts "http" or "https" — all other values silently rejected.
+  Storage: self.config_manager.config["transport"]
+  Effect:  Updates TitanQueue -> TitanTransport -> rebuilds HTTP session
+
+CRITICAL FINDING:
+  The set_transport() method on AvolitesController only accepts "http"/"https".
+  ArtNet and sACN are NOT wired into the transport dispatch.
+  The UI allows selecting ArtNet/sACN but the backend ignores non-HTTP values.
+
+
+========================================
+3. TRANSPORT CARD IMPLEMENTATION AUDIT
+========================================
+
+--- UI Layer (Desktop - Qt) ---
+
+  File:    main.py [lines 1820-1890]
+  Widget:  Radio button group in Network -> Console -> Transport section
+
+  Options:
+    radio_http    -> QRadioButton("HTTP")     [default]
+    radio_artnet  -> QRadioButton("Art-Net")
+    radio_sacn    -> QRadioButton("sACN")
+
+  ArtNet sub-parameters (visible when Art-Net selected):
+    spin_artnet_net      -> QSpinBox (0-127)
+    spin_artnet_subnet   -> QSpinBox (0-15)
+    spin_artnet_universe -> QSpinBox (0-15)
+
+  sACN sub-parameters (visible when sACN selected):
+    spin_sacn_universe   -> QSpinBox (1-63999)
+    spin_sacn_priority   -> QSpinBox (0-200, default 100)
+
+  Apply handler: _on_apply_transport() [line 3140]
+    - Reads selected transport
+    - Saves sub-parameters to preset JSON under net_panel.artnet / net_panel.sacn
+    - Calls avolites.set_transport(transport)
+    - Calls avolites.reconnect()
+
+--- UI Layer (Web - React) ---
+
+  File:    webapp/src/pages/ConfigPro.jsx [lines 236-258]
+  Widget:  <select> dropdown with options: HTTP, sACN, Art-Net, DMX
+
+  NOTE: The web UI adds a 4th option "DMX" not present in the Qt UI.
+  The "Guardar" (Save) button exists but the handler is not wired to backend transport.
+
+--- Backend Transport Handling ---
+
+  HTTP TRANSPORT: FULLY IMPLEMENTED
+    File:    core/transport/titan_transport.py
+    Class:   TitanTransport
+    Detail:  Complete HTTP client with session pooling, retries, timeouts.
+             Sends GET requests to Avolites Titan HTTP API.
+
+  ArtNet TRANSPORT: NOT IMPLEMENTED
+    No ArtNet transport class exists in core/transport/.
+    No ArtNet packet construction code anywhere in the codebase.
+    No UDP socket for ArtNet (port 6454) exists.
+    Libraries installed: pyartnet==1.0.1, python_artnet==1.2.0 (in requirements.txt)
+    Status: UI + config persistence only. No backend execution.
+
+  sACN TRANSPORT: NOT IMPLEMENTED
+    No sACN transport class exists in core/transport/.
+    No E1.31 packet construction code anywhere in the codebase.
+    No multicast UDP socket for sACN exists.
+    Library installed: sacn==1.11.0 (in requirements.txt)
+    Status: UI + config persistence only. No backend execution.
+
+SUMMARY:
+  +----------+--------+---------------+------------------+-----------+
+  | Protocol | UI     | Config Saved  | Backend Class    | Functional|
+  +----------+--------+---------------+------------------+-----------+
+  | HTTP     | Yes    | Yes           | TitanTransport   | YES       |
+  | ArtNet   | Yes    | Yes           | NONE             | NO        |
+  | sACN     | Yes    | Yes           | NONE             | NO        |
+  | DMX      | Web UI | No            | NONE             | NO        |
+  +----------+--------+---------------+------------------+-----------+
+
+
+========================================
+4. ArtNet CUE TRIGGERING — CAPABILITY VERIFICATION
+========================================
+
+QUESTION: Can ArtNet already be used to trigger cues via channel pulse (255->0)?
+
+ANSWER: NO. ArtNet cue triggering does NOT work.
+
+Detailed findings:
+
+  Universe configuration:
+    UI allows setting net (0-127), subnet (0-15), universe (0-15).
+    Values are persisted in preset JSON under net_panel.artnet.
+    But NO code reads these values to construct ArtNet packets.
+
+  Channel mapping:
+    No channel-to-cue mapping exists anywhere in the codebase.
+    The cue system uses logical IDs (C1-C82) mapped to Titan userNumbers via offset.
+    No DMX channel allocation table exists.
+
+  Pulse behavior (255->0):
+    No pulse generation code exists.
+    No ArtNet DMX output code exists.
+    The concept of "channel pulse = cue trigger" is not implemented.
+
+  Packet timing:
+    No ArtNet packet timing code exists.
+    Standard ArtNet refresh is 44Hz (every ~23ms per universe).
+
+  Libraries available but unused:
+    pyartnet==1.0.1       -> async ArtNet node library (supports channel fading)
+    python_artnet==1.2.0  -> ArtNet packet construction library
+    sacn==1.11.0          -> sACN/E1.31 sender library
+
+  CONCLUSION:
+    ArtNet is completely non-functional. The UI creates the illusion of support,
+    but selecting ArtNet in the Transport card does nothing — cues continue to
+    be sent via HTTP because set_transport() silently rejects non-HTTP values.
+
+  TO MAKE ARTNET WORK, the following would be required:
+    1. New class: ArtNetTransport (implements send_fire/send_kill interface)
+    2. Channel mapping: cue_id -> DMX channel number
+    3. Pulse logic: set channel to 255, wait ~100ms, set to 0
+    4. UDP socket on port 6454
+    5. Universe/subnet/net from UI config
+    6. Integration into AvolitesController.set_transport() to accept "artnet"
+    7. TitanQueue adaptation or bypass (ArtNet has different timing needs)
+
+
+========================================
+5. TRANSPORT LATENCY CHARACTERISTICS
+========================================
+
+  +----------+-------------------+-------------------+--------------------+
+  | Property | HTTP              | ArtNet            | sACN               |
+  +----------+-------------------+-------------------+--------------------+
+  | Protocol | TCP (HTTP/1.1)    | UDP               | UDP multicast      |
+  | Latency  | 5-100ms typical   | <1ms (LAN)        | <1ms (LAN)         |
+  |          | 200ms+ w/retries  | ~23ms refresh      | ~23ms refresh      |
+  | Reliable | Yes (TCP+200 OK)  | No (UDP, no ACK)  | No (UDP, no ACK)   |
+  | Overhead | TCP handshake,    | 18-byte header     | ~126-byte header   |
+  |          | HTTP headers,     | + 512 DMX bytes    | + 512 DMX bytes    |
+  |          | keep-alive pool   |                    |                    |
+  | Max freq | ~16/sec (60ms     | 44Hz per universe  | 44Hz per universe  |
+  |          | rate limit)       | (standard)         | (standard)         |
+  |          |                   | Up to custom rate  | Up to custom rate  |
+  | Confirm  | HTTP 200 = OK     | None (fire & forget)| None              |
+  | Retries  | 3x exponential    | N/A (too slow)     | N/A (too slow)     |
+  +----------+-------------------+-------------------+--------------------+
+
+  WHY HTTP IS PROBLEMATIC FOR HIGH-FREQUENCY TRIGGERS:
+
+    1. TCP overhead: Each request requires TCP handshake (mitigated by keep-alive,
+       but connection can drop). Connection pooling helps but doesn't eliminate
+       the fundamental overhead of HTTP framing.
+
+    2. Rate limit bottleneck: The TitanQueue enforces 60ms minimum between requests.
+       This limits throughput to ~16 cues/second. A Reactive Cue Engine generating
+       micro-event triggers (kick, snare, accent at 120+ BPM) could easily exceed
+       this rate.
+
+    3. Serial queue processing: Single worker thread processes one request at a time.
+       If a request takes 100ms (timeout + retry), all subsequent cues are delayed.
+
+    4. Retry amplification: Each failed request adds 50-200ms of retry delay,
+       blocking the queue for all pending cues.
+
+    5. Jitter: HTTP latency is variable (5-100ms). For beat-synchronized triggers,
+       this jitter can cause visible timing drift in lighting output.
+
+    6. Console HTTP API limits: Avolites Titan's HTTP API was designed for
+       occasional control, not real-time streaming. Rapid-fire requests can
+       overwhelm the console's web server.
+
+  ArtNet/sACN ADVANTAGES FOR REACTIVE TRIGGERS:
+
+    1. UDP = no handshake, no connection state, minimal overhead
+    2. Sub-millisecond LAN latency
+    3. Native lighting protocol (consoles are optimized for DMX input)
+    4. Can send entire universe state in single packet
+    5. Multiple channels can trigger simultaneously (batch triggers)
+    6. Standard 44Hz refresh provides consistent timing baseline
+    7. No queue bottleneck — each packet is independent
+
+
+========================================
+6. INSERTION POINT FOR REACTIVE CUE ENGINE
+========================================
+
+PROPOSED ARCHITECTURE:
+
+  Current:
+    AudioEngine -> MSE -> StateManager -> CueEngine -> AvolitesController -> TitanQueue -> Console
+
+  With ReactiveCueEngine:
+    AudioEngine -> MSE -> StateManager -> CueEngine ---------> AvolitesController -> TitanQueue -> Console
+                    |                                                 ^
+                    +----> ReactiveCueEngine (micro-events) ----------+
+                           kick / snare / accent / fill / impact
+
+RECOMMENDED INSERTION POINT:
+
+  The ReactiveCueEngine should:
+
+    1. RECEIVE data from MusicStructureEngine (Stage 2 output)
+       - Specifically: beat_phase, transient_spike, energy sub-bands
+       - This is the same data that feeds StateManager
+       - File: core/music_structure_engine/music_structure_engine.py
+       - Access point: MusicStructureEngine.process() return value
+
+    2. OPERATE independently from StateManager/CueEngine
+       - It should NOT go through state decision (Stage 3)
+       - Micro-events (kick, snare) are transient — no state machine needed
+       - Direct: micro-event detected -> fire reactive cue immediately
+
+    3. DISPATCH through the SAME AvolitesController
+       - File: avolites_config.py
+       - Method: fire_cue(cue_id) or fire_cue_critical(cue_id) for low-latency
+       - This ensures: same transport, same queue, same conflict resolution
+
+  SPECIFIC WIRING:
+
+    In the main loop (likely main.py or the orchestrator that calls update()):
+
+      mse_result = music_structure_engine.process(audio_block, sr)
+
+      # Existing path
+      state_manager.feed(mse_result)
+      cue_engine.update()
+
+      # NEW path (parallel)
+      reactive_engine.process(mse_result, audio_block)
+      # -> internally calls avolites.fire_cue() for detected micro-events
+
+  CUE ID ALLOCATION:
+
+    Current cue ranges: C1-C82
+    Recommended reactive cue range: C83-C99 (or C100+)
+    Each micro-event type maps to a dedicated cue ID or small family.
+
+  TRANSPORT SHARING:
+
+    ReactiveCueEngine -> AvolitesController.fire_cue(cue_id)
+                         -> TitanQueue.fire(cue_id)    [goes through queue]
+                      OR -> TitanQueue.fire_immediate() [bypasses queue for speed]
+
+    The TitanQueue is already thread-safe and supports multiple producers.
+    No new transport layer needed — reactive cues use the same pipe.
+
+  IF ARTNET IS IMPLEMENTED:
+
+    The ideal architecture would be:
+      StageManager cues -> HTTP (reliable, confirmed delivery)
+      Reactive cues     -> ArtNet (low-latency, high-frequency)
+
+    This avoids HTTP congestion from high-frequency reactive triggers
+    while maintaining reliable delivery for state-change cues.
+
+
+========================================
+7. SIMULTANEOUS CUE DISPATCH — SAFETY ANALYSIS
+========================================
+
+QUESTION: Can multiple cue sources safely dispatch to the same transport?
+
+ANSWER: YES. The current architecture fully supports this.
+
+  THREAD SAFETY MECHANISMS:
+
+    1. queue.PriorityQueue is thread-safe (CPython implementation)
+       Multiple threads can enqueue simultaneously without corruption.
+
+    2. Per-family locks (6 independent locks):
+       BASE_GOLPE, BAJADA_COLOR, BAJADA_POS, MOVIMIENTO, ATAQUE, BRAKE
+       Each lock ensures atomic FIRE/KILL within a family.
+       Different families can execute concurrently.
+
+    3. Dedup lock (_dedup_lock):
+       Prevents duplicate fire/kill of same cue within 50ms window.
+       Thread-safe via threading.Lock().
+
+    4. Active cues lock (_active_lock):
+       Tracks which cues are currently "on".
+       Protected read/write.
+
+    5. Rate limit lock (_rate_lock):
+       Ensures 60ms minimum between HTTP sends.
+       Thread-safe via threading.Lock().
+
+  EXISTING CONCURRENT SOURCES (already working):
+
+    Source 1: CueEngine (main state-driven cues)
+    Source 2: VisionManager (3 concurrent camera loops)
+    Source 3: FamilyManager (extended families C60-C82)
+    Source 4: HTTP REST API (manual fire/kill from web UI)
+    Source 5: AvolitesController direct API
+
+    All 5 sources dispatch simultaneously in production today.
+
+  RISKS WITH ADDING ReactiveCueEngine:
+
+    Risk 1: HTTP REQUEST OVERLAP
+      Severity: MEDIUM
+      Detail:   Reactive triggers increase queue depth. At 60ms rate limit,
+                queue can back up if reactive events fire faster than 16/sec.
+      Mitigation: Use dedicated cue family for reactive cues. Consider
+                  fire_immediate() for time-critical triggers (bypasses queue).
+
+    Risk 2: TRANSPORT QUEUE SATURATION
+      Severity: MEDIUM
+      Detail:   Queue max = 512 tasks. High-frequency reactive events could
+                fill the queue, causing FIRE drops (KILL never dropped).
+      Mitigation: Add reactive-specific dedup with shorter window.
+                  Implement reactive event throttling (max N triggers/sec).
+
+    Risk 3: RACE CONDITIONS
+      Severity: LOW
+      Detail:   All locks properly protect shared state.
+                New producer thread just needs to call fire_cue() — no new
+                locking required.
+      Mitigation: None needed. Existing locks are sufficient.
+
+    Risk 4: DUPLICATE TRIGGERS
+      Severity: LOW
+      Detail:   If StageManager fires C5 and ReactiveEngine fires C5
+                simultaneously, dedup catches it (50ms window).
+      Mitigation: Use separate cue ID ranges (C83+) for reactive cues
+                  to eliminate any overlap with StageManager cues.
+
+    Risk 5: TIMING INTERFERENCE
+      Severity: HIGH (HTTP only)
+      Detail:   A burst of reactive triggers can delay StageManager state
+                transitions. If reactive fires 10 cues in 100ms, the next
+                StageManager KILL is delayed by 600ms (10 * 60ms rate limit).
+      Mitigation: Priority system already exists (KILL > FIRE).
+                  Consider: reactive FIRE at lower priority than state FIRE.
+                  Best fix: use ArtNet for reactive, HTTP for state.
+
+
+========================================
+8. SUMMARY & RECOMMENDATIONS
+========================================
+
+--- Architecture Summary ---
+
+  The cue dispatch system is a well-engineered 7-stage pipeline:
+    Audio -> Analysis -> State Decision -> Cue Selection -> Queue -> HTTP -> Console
+
+  It supports 82 logical cues organized in families with atomic per-family locking.
+  The transport layer is thread-safe with multiple concurrent producers already active.
+
+--- Transport Implementation Status ---
+
+  HTTP:   FULLY FUNCTIONAL — production-grade with retries, pooling, rate limiting
+  ArtNet: UI ONLY — config persisted but no backend implementation exists
+  sACN:   UI ONLY — config persisted but no backend implementation exists
+  DMX:    Web UI label only — no implementation at any level
+
+--- ArtNet Readiness ---
+
+  Libraries are installed (pyartnet, python_artnet) but completely unused.
+  No ArtNet transport class, no DMX channel mapping, no UDP socket.
+  ArtNet would need to be built from scratch.
+
+--- Recommended Insertion Point for ReactiveCueEngine ---
+
+  Input:  MusicStructureEngine.process() output (beat_phase, transients, energy)
+  Output: AvolitesController.fire_cue() (shared transport)
+  Cue range: C83+ (dedicated range, no overlap with existing C1-C82)
+
+  Best architecture:
+    Reactive cues -> ArtNet (fast, fire-and-forget, <1ms)
+    State cues    -> HTTP   (reliable, confirmed, existing infrastructure)
+
+--- Transport Limitations ---
+
+  HTTP bottleneck: 60ms rate limit = max 16 cues/sec
+  HTTP jitter: 5-100ms variable latency
+  HTTP retry blocking: failed requests block queue for all cues
+  Queue capacity: 512 tasks, reactive bursts could saturate
+
+--- Critical Recommendations ---
+
+  1. IMPLEMENT ArtNet transport before building ReactiveCueEngine.
+     HTTP cannot sustain the trigger frequency that reactive micro-events demand.
+
+  2. CREATE transport abstraction interface:
+       class CueTransport(ABC):
+           def send_fire(self, cue_id: int) -> bool
+           def send_kill(self, cue_id: int) -> bool
+     TitanTransport and ArtNetTransport both implement this interface.
+
+  3. ALLOCATE dedicated cue range C83-C99 for reactive cues.
+     Register as new family in FAMILY_RANGES with its own lock.
+
+  4. CONSIDER dual-transport architecture:
+     TitanQueue routes state cues to HTTP, reactive cues to ArtNet.
+     Selection based on cue_id range or source tag.
+
+  5. FIX set_transport() in AvolitesController to accept "artnet"/"sacn"
+     when those transports are implemented.
+
+  6. ADD reactive-specific throttling (configurable max triggers/sec)
+     to prevent queue saturation during dense musical passages.
+
+
+================================================================================
+ END OF AUDIT — No code changes made.
+================================================================================
