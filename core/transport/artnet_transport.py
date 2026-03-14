@@ -111,11 +111,8 @@ class ArtNetTransport:
         # ArtNet sequence counter (1-255, wraps, 0 = disable sequencing)
         self._sequence = 1
 
-        # UDP socket (TX — outbound ArtDMX)
+        # Single shared UDP socket (TX + RX on port 6454)
         self._socket: Optional[socket.socket] = None
-
-        # UDP socket (RX — inbound ArtPoll listener)
-        self._rx_socket: Optional[socket.socket] = None
 
         # Threads
         self._tx_thread: Optional[threading.Thread] = None
@@ -127,7 +124,6 @@ class ArtNetTransport:
 
         # Initialize
         self._setup_socket()
-        self._setup_rx_socket()
         self._start_tx_thread()
         self._start_poll_listener()
 
@@ -143,7 +139,13 @@ class ArtNetTransport:
     # ===== SOCKET SETUP =====
 
     def _setup_socket(self):
-        """Create and configure UDP socket for ArtNet."""
+        """
+        Create a single shared UDP socket bound to 0.0.0.0:6454.
+
+        This socket is used by both:
+          - TX thread: sendto() for ArtDMX packets
+          - RX thread: recvfrom() for ArtPoll listening + sendto() for ArtPollReply
+        """
         if self._socket:
             try:
                 self._socket.close()
@@ -151,38 +153,18 @@ class ArtNetTransport:
                 pass
 
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        if self.config.broadcast:
-            self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        # Non-blocking not needed — sendto is fast for UDP
-        logger.debug("[ArtNetTransport] UDP socket created")
-
-    # ===== RX SOCKET (ArtPoll listener) =====
-
-    def _setup_rx_socket(self):
-        """Create UDP socket for receiving ArtPoll packets on port 6454."""
-        if self._rx_socket:
-            try:
-                self._rx_socket.close()
-            except Exception:
-                pass
-
-        try:
-            self._rx_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self._rx_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self._rx_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            self._rx_socket.settimeout(1.0)  # Allow periodic stop_event checks
-            self._rx_socket.bind(("0.0.0.0", ARTNET_PORT))
-            logger.debug("[ArtNet] RX socket bound to 0.0.0.0:6454")
-        except OSError as e:
-            logger.warning(f"[ArtNet] Failed to bind RX socket on port {ARTNET_PORT}: {e}")
-            self._rx_socket = None
+        self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        self._socket.settimeout(1.0)  # Allow periodic stop_event checks in RX loop
+        self._socket.bind(("0.0.0.0", ARTNET_PORT))
+        logger.debug(f"[ArtNet] Socket bound to 0.0.0.0:{ARTNET_PORT}")
 
     # ===== ArtPoll LISTENER =====
 
     def _start_poll_listener(self):
         """Start the ArtPoll listener thread."""
-        if self._rx_socket is None:
-            logger.warning("[ArtNet] Poll listener not started — RX socket unavailable")
+        if self._socket is None:
+            logger.warning("[ArtNet] Poll listener not started — socket unavailable")
             return
         if self._rx_thread and self._rx_thread.is_alive():
             return
@@ -199,7 +181,7 @@ class ArtNetTransport:
         """Listen for incoming ArtNet packets and handle ArtPoll."""
         while not self._stop_event.is_set():
             try:
-                data, addr = self._rx_socket.recvfrom(1024)
+                data, addr = self._socket.recvfrom(1024)
                 self._handle_poll_packet(data, addr)
             except socket.timeout:
                 continue
@@ -399,20 +381,10 @@ class ArtNetTransport:
         """Send ArtPollReply to the address that sent the ArtPoll."""
         try:
             reply = self._build_poll_reply()
-            # Reply to the sender's IP on ArtNet port
             target = (addr[0], ARTNET_PORT)
-
-            if self._rx_socket:
-                self._rx_socket.sendto(reply, target)
-            elif self._socket:
-                self._socket.sendto(reply, target)
-            else:
-                logger.warning("[ArtNet] No socket available to send PollReply")
-                return
-
+            self._socket.sendto(reply, target)
             self.stats.poll_replies_sent += 1
             logger.info(f"[ArtNet] PollReply sent to {addr[0]}")
-
         except Exception as e:
             logger.error(f"[ArtNet] Failed to send PollReply: {e}")
 
@@ -502,6 +474,8 @@ class ArtNetTransport:
             self._socket.sendto(packet, (self.config.target_ip, ARTNET_PORT))
             self.stats.packets_sent += 1
             self.stats.sequence_number = self._sequence
+        except socket.timeout:
+            pass  # sendto should not block, but ignore if it does
         except Exception as e:
             logger.warning(f"[ArtNetTransport] sendto failed: {e}")
             self.stats.last_error = str(e)
@@ -709,7 +683,7 @@ class ArtNetTransport:
         self.stats = ArtNetStats()
 
     def close(self):
-        """Shutdown ArtNet transport: stop TX/RX threads and close sockets."""
+        """Shutdown ArtNet transport: stop TX/RX threads and close socket."""
         logger.info("[ArtNetTransport] Closing...")
 
         # Signal all threads to stop
@@ -725,21 +699,13 @@ class ArtNetTransport:
             self._rx_thread.join(timeout=2.0)
         self._rx_thread = None
 
-        # Close TX socket
+        # Close shared socket
         if self._socket:
             try:
                 self._socket.close()
             except Exception:
                 pass
             self._socket = None
-
-        # Close RX socket
-        if self._rx_socket:
-            try:
-                self._rx_socket.close()
-            except Exception:
-                pass
-            self._rx_socket = None
 
         logger.info("[ArtNetTransport] Closed")
 
