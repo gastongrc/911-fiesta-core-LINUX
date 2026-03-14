@@ -2769,6 +2769,12 @@ class Main(QMainWindow):
                     else:
                         self.cmb_artnet_mode.setCurrentIndex(1)  # Unicast
 
+            # Aplicar transporte al controller si no es HTTP (HTTP es el default)
+            if transport == "artnet" and hasattr(self.avolites, 'set_transport'):
+                artnet = net.get("artnet", {})
+                self.avolites.set_transport("artnet", artnet_params=artnet)
+                print(f"[NET] Restored ArtNet transport from preset")
+
             # Cargar cue offset desde profile (net_panel.cue_offset)
             try:
                 offset = int(net.get("cue_offset", 169))

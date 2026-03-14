@@ -274,6 +274,11 @@ class AvolitesController:
         self._titan_queue.start()
         # self._titan_sync.start()  # DESACTIVADO en legacy
 
+        # Si el transporte configurado es ArtNet, hacer swap ahora
+        if self.transport == "artnet":
+            artnet_cfg = self.config_manager.config.get("artnet", {})
+            self.set_transport("artnet", artnet_params=artnet_cfg)
+
         # Session para ping y BPM (operaciones directas)
         self.session: Optional[requests.Session] = None
         self._setup_session()
