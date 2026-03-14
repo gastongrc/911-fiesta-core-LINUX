@@ -1,0 +1,736 @@
+================================================================================
+ CUE-TO-DMX MAPPING AUDIT & ArtNet TRANSPORT DESIGN
+ Date: 2026-03-14
+ Scope: Cue mapping chain, DMX channel allocation, ArtNetTransport architecture
+ Purpose: Pre-implementation design for ArtNet transport mode
+================================================================================
+
+
+========================================
+1. CURRENT CUE MAPPING (HTTP MODE)
+========================================
+
+--- Mapping Chain ---
+
+  CueEngine.fire(cue_id)
+       |
+  AvolitesController.fire_cue(cue_id)
+       |
+  TitanQueue.fire(cue_id)
+       |
+  TitanTransport.send_fire(cue_id)
+       |
+  TitanTransport._map_cue(cue_id)
+       |  real_cue = cue_id + user_number_offset
+       |
+  HTTP GET /titan/script/Playbacks/FirePlaybackAtLevel?userNumber={real_cue}&level=1.0&bool=false
+
+--- Offset ---
+
+  Default: 169
+  Source:  TransportConfig.user_number_offset (core/transport/titan_transport.py:58)
+  Config:  avolites_config.json -> "user_number_offset"
+  UI:      Network -> Console -> Cue Offset spinner (main.py:3202)
+  Runtime: AvolitesController.set_cue_offset(offset) propagates to all layers
+
+--- Complete Cue ID Space ---
+
+  C1-C9     BASE_GOLPE (primary)       9 cues
+  C10-C18   BAJADA_COLORES             9 cues
+  C19-C27   BAJADA_POSICIONES          9 cues
+  C28-C36   MOVIMIENTO                 9 cues
+  C37-C39   ATAQUE                     3 cues
+  C40       [UNUSED / RESERVED]        -
+  C41       DIMMER                     1 cue
+  C42-C44   BRAKE                      3 cues
+  C45-C50   TIMED SEQUENCE (AUX)       6 cues
+  C51-C59   BASE_GOLPE (alternate)     9 cues
+  C60-C63   CLIMA (vision)             4 cues
+  C64-C66   HAZE (vision)              3 cues
+  C67-C71   DJ (vision)                5 cues
+  C72-C79   ARTIST (vision)            8 cues
+  C80-C82   TRACKING (vision)          3 cues
+
+  Total active cue IDs: 81 (C1-C82, excluding C40)
+  C40 is not assigned to any family or module.
+
+--- Full Mapping Table (offset=169) ---
+
+  Logical    Family              Titan Playback
+  -------    ------              --------------
+  C1         BASE_GOLPE          170
+  C2         BASE_GOLPE          171
+  C3         BASE_GOLPE          172
+  C4         BASE_GOLPE          173
+  C5         BASE_GOLPE          174
+  C6         BASE_GOLPE          175
+  C7         BASE_GOLPE          176
+  C8         BASE_GOLPE          177
+  C9         BASE_GOLPE          178
+  C10        BAJADA_COLORES      179
+  C11        BAJADA_COLORES      180
+  C12        BAJADA_COLORES      181
+  C13        BAJADA_COLORES      182
+  C14        BAJADA_COLORES      183
+  C15        BAJADA_COLORES      184
+  C16        BAJADA_COLORES      185
+  C17        BAJADA_COLORES      186
+  C18        BAJADA_COLORES      187
+  C19        BAJADA_POSICIONES   188
+  C20        BAJADA_POSICIONES   189
+  C21        BAJADA_POSICIONES   190
+  C22        BAJADA_POSICIONES   191
+  C23        BAJADA_POSICIONES   192
+  C24        BAJADA_POSICIONES   193
+  C25        BAJADA_POSICIONES   194
+  C26        BAJADA_POSICIONES   195
+  C27        BAJADA_POSICIONES   196
+  C28        MOVIMIENTO          197
+  C29        MOVIMIENTO          198
+  C30        MOVIMIENTO          199
+  C31        MOVIMIENTO          200
+  C32        MOVIMIENTO          201
+  C33        MOVIMIENTO          202
+  C34        MOVIMIENTO          203
+  C35        MOVIMIENTO          204
+  C36        MOVIMIENTO          205
+  C37        ATAQUE              206
+  C38        ATAQUE              207
+  C39        ATAQUE              208
+  C40        [UNUSED]            209
+  C41        DIMMER              210
+  C42        BRAKE               211
+  C43        BRAKE               212
+  C44        BRAKE               213
+  C45        TIMED_SEQ           214
+  C46        TIMED_SEQ           215
+  C47        TIMED_SEQ           216
+  C48        TIMED_SEQ           217
+  C49        TIMED_SEQ           218
+  C50        TIMED_SEQ           219
+  C51        BASE_GOLPE_ALT      220
+  C52        BASE_GOLPE_ALT      221
+  C53        BASE_GOLPE_ALT      222
+  C54        BASE_GOLPE_ALT      223
+  C55        BASE_GOLPE_ALT      224
+  C56        BASE_GOLPE_ALT      225
+  C57        BASE_GOLPE_ALT      226
+  C58        BASE_GOLPE_ALT      227
+  C59        BASE_GOLPE_ALT      228
+  C60        CLIMA               229
+  C61        CLIMA               230
+  C62        CLIMA               231
+  C63        CLIMA               232
+  C64        HAZE                233
+  C65        HAZE                234
+  C66        HAZE                235
+  C67        DJ                  236
+  C68        DJ                  237
+  C69        DJ                  238
+  C70        DJ                  239
+  C71        DJ                  240
+  C72        ARTIST              241
+  C73        ARTIST              242
+  C74        ARTIST              243
+  C75        ARTIST              244
+  C76        ARTIST              245
+  C77        ARTIST              246
+  C78        ARTIST              247
+  C79        ARTIST              248
+  C80        TRACKING            249
+  C81        TRACKING            250
+  C82        TRACKING            251
+
+
+========================================
+2. TITAN-SIDE CONFIGURATION ASSUMPTIONS
+========================================
+
+--- What Must Exist in Titan ---
+
+  The Avolites Titan console must have playback executors configured at the
+  user numbers matching the offset mapping.
+
+  With default offset 169:
+    Titan Playback 170 = cue C1  (BASE_GOLPE)
+    Titan Playback 171 = cue C2  (BASE_GOLPE)
+    ...
+    Titan Playback 210 = cue C41 (DIMMER)
+    ...
+    Titan Playback 251 = cue C82 (TRACKING)
+
+  Each playback must be a valid executor with a programmed cue list or
+  chase assigned to it.
+
+--- Playback Behavior ---
+
+  The HTTP API uses two operations:
+
+  FIRE = FirePlaybackAtLevel at level 1.0
+    This activates the playback at full intensity.
+    Titan treats this as: "turn ON this playback".
+    The playback runs its programmed content (cue list, chase, or effect).
+
+  KILL = KillPlayback
+    This immediately deactivates the playback.
+    Titan treats this as: "force OFF this playback".
+    All fixtures controlled by this playback return to their default state
+    or to the next active playback in the LTP priority stack.
+
+--- Playback Type ---
+
+  911 Fiesta treats each playback as a LATCH:
+    - FIRE turns it ON and it stays ON
+    - KILL turns it OFF
+    - No toggle behavior (fire toggles ON, fire again toggles OFF)
+    - No flash behavior (momentary, release-to-off)
+
+  Titan playbacks should be configured as:
+    - Kill on release: NO (playback stays active after fire)
+    - Priority: Set appropriately for LTP layering
+    - Fader level: 100% (911 always fires at level=1.0)
+
+  The system implements its own exclusivity logic:
+    Within a family, only one cue is active at a time.
+    CueEngine kills siblings before firing a new cue.
+    This means Titan does NOT need to handle mutual exclusion.
+
+--- BPM/TAP (HTTP-only, never ArtNet) ---
+
+  Two additional HTTP endpoints exist for tempo sync:
+
+    send_bpm():  GET /titan/set/Playback/BPM?value={bpm}
+    send_tap():  GET /titan/script/Playback/TapTempo
+
+  These are sent DIRECTLY by AvolitesController (not queued).
+  They interact with Titan's internal tempo engine, not playbacks.
+  They must ALWAYS use HTTP regardless of the transport mode.
+
+  Constraint: BPM TAP remains HTTP-only in all transport configurations.
+
+
+========================================
+3. DMX TRIGGER STRATEGY
+========================================
+
+--- Trigger Model ---
+
+  ArtNet carries DMX512 data: 512 channels per universe, each 0-255.
+  Titan can receive ArtNet as DMX input and map channels to playback triggers.
+
+  The trigger strategy uses CHANNEL PULSE:
+
+    To FIRE a cue:
+      1. Set DMX channel to 255
+      2. Send ArtNet packet
+      3. Wait 80-120ms (pulse duration)
+      4. Set DMX channel to 0
+      5. Send ArtNet packet
+
+    To KILL a cue:
+      Option A: Send a different channel for kill (dedicated kill channel)
+      Option B: Use the same channel with a specific level (e.g., 128 = kill)
+      Option C: Rely on Titan's playback behavior (toggle mode)
+
+  RECOMMENDED: Option A — dedicated channel pairs
+
+--- Channel Mapping Strategy ---
+
+  DIRECT 1:1 MAPPING (no offset for DMX):
+
+    DMX Channel 1   -> fires cue C1
+    DMX Channel 2   -> fires cue C2
+    DMX Channel 3   -> fires cue C3
+    ...
+    DMX Channel 82  -> fires cue C82
+
+  The DMX channel number equals the logical cue ID.
+  No offset is needed because ArtNet is a separate trigger mechanism.
+  The Titan console maps DMX input channels to its internal playback numbers.
+
+  Titan-side mapping required:
+    ArtNet DMX CH 1  -> triggers Playback 170  (C1, offset 169)
+    ArtNet DMX CH 2  -> triggers Playback 171  (C2, offset 169)
+    ...
+    ArtNet DMX CH 82 -> triggers Playback 251  (C82, offset 169)
+
+  The offset translation happens inside Titan, not in the ArtNet sender.
+
+--- Trigger Behavior ---
+
+  FIRE trigger:
+    DMX channel value:  0 -> 255   (rising edge)
+    Titan interpretation: Activate playback when channel crosses threshold
+    Recommended Titan threshold: 128 (standard)
+    Pulse duration: 100ms (safe default, configurable)
+
+  KILL trigger (Option A - dedicated channels):
+    KILL channels start at offset 128:
+      DMX Channel 129 -> kills cue C1
+      DMX Channel 130 -> kills cue C2
+      ...
+      DMX Channel 210 -> kills cue C82
+
+    Total channels needed: 82 fire + 82 kill = 164 channels
+    Fits in a single universe (512 channels)
+
+  KILL trigger (Option B - level-based):
+    Same channel, different level:
+      Channel value 255 = FIRE
+      Channel value 128 = KILL
+      Channel value 0   = idle (no action)
+
+    Simpler Titan mapping but requires more complex Titan config.
+
+  RECOMMENDED: Option B (level-based) for simplicity.
+  ArtNetTransport sends:
+    FIRE: channel[cue_id] = 255, wait 100ms, channel[cue_id] = 0
+    KILL: channel[cue_id] = 128, wait 100ms, channel[cue_id] = 0
+
+  If Titan does not support level-based discrimination, fall back to
+  Option A (dedicated channels).
+
+--- Alternative: Simple ON/OFF State (no pulse) ---
+
+  If Titan supports DMX-IN with LATCH mode:
+    FIRE: Set channel to 255, hold it
+    KILL: Set channel to 0
+
+  This eliminates the pulse logic but requires Titan to continuously
+  read the DMX state. Most consoles support this via DMX-IN mapping.
+
+  RECOMMENDED as primary strategy if Titan supports DMX-IN -> Playback mapping.
+
+  ArtNetTransport sends:
+    FIRE: dmx_data[cue_id] = 255, send packet
+    KILL: dmx_data[cue_id] = 0,   send packet
+
+  Maintains full universe state array internally.
+  Sends updated universe on every change.
+
+
+========================================
+4. UNIVERSE ALLOCATION
+========================================
+
+--- Channel Requirements ---
+
+  Current cue space:
+    C1-C82  = 82 channels (81 active + C40 reserved)
+
+  Future reactive cue space:
+    C83-C99 = 17 channels (proposed for ReactiveCueEngine)
+
+  Total required: 99 channels maximum
+
+  Single universe capacity: 512 channels
+  A SINGLE UNIVERSE is sufficient.
+
+--- Proposed Channel Layout ---
+
+  DMX Channels 1-82:     Current cues (C1-C82)
+  DMX Channels 83-99:    Reactive cues (future, C83-C99)
+  DMX Channels 100-127:  Reserved for expansion
+  DMX Channels 128:      [boundary marker / unused]
+  DMX Channels 129-210:  KILL channels (if Option A dual-channel used)
+  DMX Channels 211-255:  Reserved
+  DMX Channels 256-512:  Available for future use
+
+  If using level-based triggering (Option B):
+    DMX Channels 1-99:   All cues (fire=255, kill=128, idle=0)
+    DMX Channels 100-512: Available for future use
+
+--- ArtNet Universe Configuration ---
+
+  All parameters configurable via UI:
+
+    ArtNet Net:      0-127  (default: 0)
+    ArtNet Subnet:   0-15   (default: 0)
+    ArtNet Universe: 0-15   (default: 0)
+
+  Full ArtNet address: Net:Subnet:Universe = 0:0:0 (default)
+
+  This maps to ArtNet "Port Address":
+    port_address = (net * 256) + (subnet * 16) + universe
+    Default: (0 * 256) + (0 * 16) + 0 = 0
+
+  UI already supports this configuration:
+    main.py: spin_artnet_net, spin_artnet_subnet, spin_artnet_universe
+
+--- Universe State Management ---
+
+  ArtNetTransport must maintain a persistent DMX buffer:
+    dmx_data: bytearray(512)  # All 512 channels, initialized to 0
+
+  On FIRE:
+    dmx_data[cue_id - 1] = 255   # DMX channels are 1-indexed, array is 0-indexed
+    send_artnet_packet(dmx_data)
+
+  On KILL:
+    dmx_data[cue_id - 1] = 0
+    send_artnet_packet(dmx_data)
+
+  The full universe is sent with every packet.
+  ArtNet standard: max 44 packets/sec per universe (every ~23ms).
+
+
+========================================
+5. TITAN COMPATIBILITY — ArtNet DMX-IN
+========================================
+
+--- Titan DMX-IN Support ---
+
+  Avolites Titan consoles support receiving ArtNet as DMX input.
+  This feature is called "DMX In" or "Remote Triggers".
+
+  Titan can map incoming DMX channels to internal actions:
+    - Playback activation (FIRE)
+    - Playback deactivation (KILL)
+    - Fader level control
+    - Flash triggers
+
+--- Titan Configuration Required ---
+
+  1. ENABLE ArtNet INPUT:
+     System menu -> DMX Settings -> Input tab
+     Set ArtNet universe as DMX input source
+     Assign the universe number matching 911 Fiesta's ArtNet output
+
+  2. MAP CHANNELS TO PLAYBACKS (Trigger method):
+     Two approaches in Titan:
+
+     APPROACH A — DMX In -> Playback Trigger
+       Set up a "DMX Trigger" for each playback:
+         Playback 170 triggers on DMX In channel 1 rising above threshold
+         Playback 171 triggers on DMX In channel 2 rising above threshold
+         ...
+       This requires per-playback configuration in Titan.
+
+     APPROACH B — DMX In -> Executor Fader
+       Map DMX input channels directly to executor faders:
+         DMX CH 1 -> Executor fader for Playback 170
+         DMX CH 2 -> Executor fader for Playback 171
+         ...
+       When DMX level = 255 -> fader at 100% -> playback active
+       When DMX level = 0   -> fader at 0%   -> playback inactive
+
+       This is the simplest approach and uses Titan's built-in
+       DMX-to-fader mapping. No pulse logic needed.
+
+  RECOMMENDED: APPROACH B (DMX-to-Fader mapping)
+    - Simplest to configure
+    - No pulse timing dependencies
+    - Matches the existing latch behavior
+    - ArtNetTransport just maintains ON/OFF state per channel
+
+  3. FIXTURE PROFILE:
+     No fixture profile is needed for DMX-IN trigger mapping.
+     Titan handles this at the system/executor level, not as a fixture.
+
+  4. UNIVERSE CONFIGURATION:
+     In Titan:
+       System -> DMX Settings -> Input
+       Source: ArtNet
+       Universe: Must match 911 Fiesta's ArtNet output universe
+       Net/Subnet: Must match 911 Fiesta's configuration
+
+--- Compatibility Notes ---
+
+  - Titan v10+ fully supports ArtNet input mapping
+  - Titan v12+ supports sACN input as alternative
+  - Legacy Titan consoles (pre-v10) may have limited DMX-IN support
+  - ArtNet node IP must be on same subnet as console
+  - Titan can process ArtNet input at native ArtNet rate (44Hz)
+
+
+========================================
+6. ArtNetTransport CLASS DESIGN
+========================================
+
+--- Proposed File ---
+
+  core/transport/artnet_transport.py
+
+--- Interface Contract ---
+
+  Must match TitanTransport interface:
+    send_fire(cue_id: int) -> bool
+    send_kill(cue_id: int) -> bool
+    ping() -> bool
+    update_config(...) -> None
+    get_stats() -> Dict[str, Any]
+    close() -> None
+
+--- Class Architecture ---
+
+  class ArtNetTransportConfig:
+      target_ip: str = "255.255.255.255"   # broadcast (or console IP for unicast)
+      artnet_net: int = 0                   # 0-127
+      artnet_subnet: int = 0               # 0-15
+      artnet_universe: int = 0             # 0-15
+      refresh_rate_hz: int = 40            # ArtNet packet rate (max 44)
+      pulse_duration_ms: int = 0           # 0 = latch mode (hold state)
+                                           # >0 = pulse mode (255 then 0)
+
+  class ArtNetTransport:
+      """
+      ArtNet DMX transport for cue triggering.
+
+      Strategy: Maintains a 512-channel DMX buffer.
+      FIRE sets channel to 255. KILL sets channel to 0.
+      Sends full universe packet on each state change.
+
+      Does NOT apply user_number_offset — DMX channels map directly
+      to logical cue IDs (CH 1 = C1, CH 2 = C2, etc.).
+      Offset translation is handled by Titan's DMX-IN mapping.
+      """
+
+      def __init__(self, config: ArtNetTransportConfig):
+          self._dmx_data = bytearray(512)    # Persistent universe state
+          self._node = None                   # pyartnet ArtNetNode
+          self._universe = None               # pyartnet DmxUniverse
+          self._config = config
+          self._stats = ArtNetTransportStats()
+          self._setup_node()
+
+      def _setup_node(self):
+          """Initialize ArtNet node using pyartnet library."""
+          # from pyartnet import ArtNetNode
+          # self._node = ArtNetNode(
+          #     self._config.target_ip,
+          #     port=6454,                    # ArtNet standard port
+          # )
+          # port_address = (net * 256) + (subnet * 16) + universe
+          # self._universe = self._node.add_universe(port_address)
+
+      def send_fire(self, cue_id: int) -> bool:
+          """Set DMX channel to 255, send packet."""
+          if cue_id < 1 or cue_id > 512:
+              return False
+          channel_index = cue_id - 1        # 0-indexed
+          self._dmx_data[channel_index] = 255
+          return self._send_universe()
+
+      def send_kill(self, cue_id: int) -> bool:
+          """Set DMX channel to 0, send packet."""
+          if cue_id < 1 or cue_id > 512:
+              return False
+          channel_index = cue_id - 1
+          self._dmx_data[channel_index] = 0
+          return self._send_universe()
+
+      def _send_universe(self) -> bool:
+          """Send full 512-channel DMX universe via ArtNet."""
+          # self._universe.set_channel_values(list(self._dmx_data))
+          # return True
+          pass
+
+      def ping(self) -> bool:
+          """ArtNet has no ACK — always returns True if node is configured."""
+          return self._node is not None
+
+      def get_stats(self) -> Dict:
+          return { ... }
+
+      def close(self):
+          """Shutdown ArtNet node."""
+          # self._node.stop()
+
+--- Key Design Decisions ---
+
+  1. NO OFFSET IN ARTNET:
+     ArtNetTransport maps cue_id directly to DMX channel (CH = cue_id).
+     The Titan console handles the mapping from DMX CH to playback number.
+     This keeps ArtNetTransport simple and independent of Titan configuration.
+
+  2. LATCH MODE (default):
+     FIRE sets channel to 255 and holds it.
+     KILL sets channel to 0.
+     No pulse timing needed — Titan reads the level continuously.
+     Simpler, more reliable, lower latency.
+
+  3. PULSE MODE (optional):
+     If Titan requires edge-triggering:
+       FIRE: set 255, wait pulse_duration_ms, set 0
+       KILL: handled by Titan (toggle) or via dedicated kill channels
+     This adds complexity and timing dependency.
+
+  4. FULL UNIVERSE SEND:
+     Every state change sends the complete 512-channel buffer.
+     ArtNet protocol is designed for this — packets are small (530 bytes).
+     Avoids partial state issues.
+
+  5. PYARTNET LIBRARY:
+     pyartnet (v1.0.1) provides:
+       - ArtNetNode: manages UDP socket and packet construction
+       - DmxUniverse: manages channel state and packet serialization
+       - Automatic sequence numbering
+       - Universe addressing (Net/Subnet/Universe)
+     Alternative: python_artnet (v1.2.0) for lower-level control.
+
+--- Integration with TitanQueue ---
+
+  ArtNetTransport plugs into TitanQueue at the same injection point
+  as TitanTransport:
+
+    TitanQueue.__init__(transport_config, ...)
+      self._transport = TitanTransport(transport_config)   # current
+      # or
+      self._transport = ArtNetTransport(artnet_config)     # new
+
+  The queue's fire/kill methods call self._transport.send_fire/send_kill.
+  No changes to queue logic, priority, or family locking needed.
+
+  HOWEVER: ArtNet may not need the queue at all.
+  ArtNet is UDP (fire-and-forget), so queue benefits are reduced:
+    - No retry logic needed (UDP has no ACK)
+    - No rate limiting needed (ArtNet handles 44Hz natively)
+    - Family locking still valuable for state consistency
+    - Dedup still valuable to reduce unnecessary packets
+
+  RECOMMENDED: Keep TitanQueue for now, but reduce rate_limit_ms to 0
+  when using ArtNet transport (no HTTP bottleneck).
+
+
+========================================
+7. TRANSPORT SELECTION LOGIC
+========================================
+
+--- Current Implementation (broken for ArtNet) ---
+
+  File: avolites_config.py, method set_transport() [line 763]
+
+  def set_transport(self, transport: str) -> bool:
+      if transport.lower() in ("http", "https"):
+          self.transport = transport.lower()
+          ...
+          return True
+      else:
+          return False           # <-- ArtNet/sACN silently rejected
+
+--- Proposed Update ---
+
+  def set_transport(self, transport: str, params: dict = None) -> bool:
+      transport = transport.lower()
+
+      if transport in ("http", "https"):
+          # Existing HTTP path
+          self._transport = TitanTransport(self._transport_config)
+          self._titan_queue.set_transport(self._transport)
+          return True
+
+      elif transport == "artnet":
+          # New ArtNet path
+          artnet_config = ArtNetTransportConfig(
+              target_ip=params.get("target_ip", self.console_ip),
+              artnet_net=params.get("net", 0),
+              artnet_subnet=params.get("subnet", 0),
+              artnet_universe=params.get("universe", 0),
+          )
+          self._transport = ArtNetTransport(artnet_config)
+          self._titan_queue.set_transport(self._transport)
+          self._titan_queue.update_config(rate_limit_ms=0)  # ArtNet needs no throttle
+          return True
+
+      else:
+          return False
+
+--- Rules ---
+
+  transport=http     -> TitanTransport (HTTP)       [existing]
+  transport=https    -> TitanTransport (HTTPS)      [existing]
+  transport=artnet   -> ArtNetTransport             [new]
+  transport=sacn     -> [future, not in this phase]
+
+  CONSTRAINT: Only one transport active at a time.
+  Switching transport kills the current one and initializes the new one.
+
+--- BPM TAP Exception ---
+
+  BPM TAP must ALWAYS use HTTP, regardless of active transport.
+
+  Current implementation (avolites_config.py lines 1078-1128):
+    send_bpm():  Direct HTTP GET /titan/set/Playback/BPM
+    send_tap():  Direct HTTP GET /titan/script/Playback/TapTempo
+
+  These methods create their OWN HTTP requests using self._session.
+  They do NOT go through TitanTransport or TitanQueue.
+  They are independent of the transport selection.
+
+  VERIFICATION:
+    send_bpm() and send_tap() use self._session (requests.Session)
+    which is initialized in _setup_session() and maintained independently.
+
+  CONCLUSION: BPM TAP already uses a separate HTTP path.
+  Changing the cue transport to ArtNet does NOT affect BPM TAP.
+  No changes needed for this constraint.
+
+--- UI Integration ---
+
+  Desktop UI already has radio buttons:
+    radio_http, radio_artnet, radio_sacn
+
+  Apply handler (_on_apply_transport) already calls:
+    self.avolites.set_transport(transport)
+
+  Only the backend set_transport() needs updating to accept "artnet".
+  The sub-parameters (net, subnet, universe) are already collected by the UI
+  and saved to the preset JSON.
+
+
+========================================
+8. SUMMARY
+========================================
+
+--- Full Cue Mapping Table ---
+
+  81 active cues: C1-C39, C41-C82 (C40 unused)
+  Default offset: 169
+  Titan playback range: 170-251
+
+--- Titan Playback Mapping ---
+
+  Each cue maps to one Titan playback via: playback = cue_id + offset
+  Playbacks must be configured as latch (not flash, not toggle)
+  FirePlaybackAtLevel activates at 100%, KillPlayback deactivates
+
+--- DMX Channel Mapping ---
+
+  DIRECT: DMX CH N = Cue CN (no offset in ArtNet layer)
+  Titan maps: DMX CH N -> Playback (N + offset) internally
+  Single universe sufficient for 82 current + 17 future reactive cues
+
+--- ArtNetTransport Architecture ---
+
+  File: core/transport/artnet_transport.py
+  Library: pyartnet (installed, v1.0.1)
+  Strategy: Latch mode (255=ON, 0=OFF), full universe send per change
+  Interface: send_fire(), send_kill() matching TitanTransport
+  Integration: Plugs into TitanQueue as transport backend
+  Rate limit: Set to 0ms (ArtNet is UDP, no HTTP bottleneck)
+
+--- Titan Configuration ---
+
+  Titan must enable ArtNet DMX-IN on matching universe
+  Map DMX input channels to executor faders (Approach B)
+  No fixture profile needed
+  DMX-to-fader mapping is native Titan functionality
+
+--- BPM TAP Constraint ---
+
+  Already satisfied: send_bpm() and send_tap() use independent HTTP session
+  Changing cue transport to ArtNet does not affect tempo sync
+
+--- Transport Limitations ---
+
+  ArtNet is UDP: no delivery confirmation (fire-and-forget)
+  ArtNet max refresh: 44Hz (23ms per packet per universe)
+  If multiple cues change within one ArtNet frame, a single packet
+  carries all changes (efficient batching for free)
+  No retry logic possible (but also no retry needed — next packet
+  carries the correct state)
+
+
+================================================================================
+ END OF AUDIT — No code changes made.
+================================================================================
