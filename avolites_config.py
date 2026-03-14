@@ -39,6 +39,8 @@ from core.transport import (
     TransportConfig,
     TitanQueue,
     QueueConfig,
+    ArtNetTransport,
+    ArtNetConfig,
     # TitanStateSync desactivado - consolas legacy no soportan GetActivePlaybacks
     # TitanStateSync,
     # SyncConfig,
@@ -760,17 +762,38 @@ class AvolitesController:
                 print(f"[AVOLITES] Error en set_console_ip: {e}")
             return False
 
-    def set_transport(self, transport: str) -> bool:
-        """Cambia el transporte (http/https)."""
+    def set_transport(self, transport: str, artnet_params: Optional[Dict[str, Any]] = None) -> bool:
+        """
+        Cambia el transporte de cues.
+
+        Args:
+            transport: "http", "https", o "artnet"
+            artnet_params: Parametros ArtNet opcionales:
+                target_ip, artnet_net, artnet_subnet, artnet_universe,
+                broadcast (bool)
+
+        BPM/TAP siempre usan HTTP independientemente del transporte de cues.
+        """
         try:
-            if transport.lower() in ("http", "https"):
-                self.transport = transport.lower()
-                self.config_manager.config["transport"] = transport.lower()
+            transport_lower = transport.lower()
+
+            if transport_lower in ("http", "https"):
+                self.transport = transport_lower
+                self.config_manager.config["transport"] = transport_lower
 
                 if self.verbose:
-                    print(f"[AVOLITES] Transport -> {transport.lower()}")
+                    print(f"[AVOLITES] Transport -> {transport_lower}")
 
-                self._titan_queue.update_config(transport=transport.lower())
+                # Swap to HTTP transport
+                http_transport = TitanTransport(
+                    config=self._create_transport_config(),
+                    on_success=self._titan_queue._on_transport_success,
+                    on_failure=self._titan_queue._on_transport_failure,
+                )
+                self._titan_queue.set_transport(http_transport)
+
+                # Restore HTTP rate limit
+                self._titan_queue.config.rate_limit_ms = 60.0
 
                 try:
                     self._setup_session()
@@ -779,8 +802,53 @@ class AvolitesController:
                         print(f"[AVOLITES] Error reabriendo sesion: {e}")
 
                 return True
+
+            elif transport_lower == "artnet":
+                self.transport = transport_lower
+                self.config_manager.config["transport"] = transport_lower
+
+                # Build ArtNet config from params
+                params = artnet_params or {}
+                console_ip = self.config_manager.config.get("console_ip", "192.168.1.20")
+                is_broadcast = params.get("broadcast", True)
+
+                artnet_config = ArtNetConfig(
+                    target_ip="255.255.255.255" if is_broadcast else params.get("target_ip", console_ip),
+                    artnet_net=params.get("net", params.get("artnet_net", 0)),
+                    artnet_subnet=params.get("subnet", params.get("artnet_subnet", 0)),
+                    artnet_universe=params.get("universe", params.get("artnet_universe", 0)),
+                    broadcast=is_broadcast,
+                    refresh_rate_hz=params.get("refresh_rate_hz", 40),
+                )
+
+                if self.verbose:
+                    print(
+                        f"[AVOLITES] Transport -> artnet | "
+                        f"target={artnet_config.target_ip} | "
+                        f"mode={'broadcast' if artnet_config.broadcast else 'unicast'} | "
+                        f"net={artnet_config.artnet_net} "
+                        f"sub={artnet_config.artnet_subnet} "
+                        f"univ={artnet_config.artnet_universe}"
+                    )
+
+                # Swap to ArtNet transport
+                artnet_transport = ArtNetTransport(
+                    config=artnet_config,
+                    on_success=self._titan_queue._on_transport_success,
+                    on_failure=self._titan_queue._on_transport_failure,
+                )
+                self._titan_queue.set_transport(artnet_transport)
+
+                # ArtNet has no HTTP latency - disable rate limit
+                self._titan_queue.config.rate_limit_ms = 0.0
+
+                return True
+
             else:
+                if self.verbose:
+                    print(f"[AVOLITES] Transport no soportado: {transport}")
                 return False
+
         except Exception as e:
             if self.verbose:
                 print(f"[AVOLITES] Error en set_transport: {e}")

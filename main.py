@@ -1864,6 +1864,13 @@ class Main(QMainWindow):
         self.artnet_params.setStyleSheet("border:none;")
         artnet_layout = QHBoxLayout(self.artnet_params)
         artnet_layout.setContentsMargins(0, 0, 0, 0)
+        lbl_mode = QLabel("Mode:")
+        lbl_mode.setStyleSheet("color:#ccc; border:none;")
+        artnet_layout.addWidget(lbl_mode)
+        self.cmb_artnet_mode = QComboBox()
+        self.cmb_artnet_mode.addItems(["Broadcast", "Unicast"])
+        self.cmb_artnet_mode.setToolTip("Broadcast: envia a toda la red. Unicast: envia solo a Console IP.")
+        artnet_layout.addWidget(self.cmb_artnet_mode)
         lbl_net = QLabel("Net:")
         lbl_net.setStyleSheet("color:#ccc; border:none;")
         artnet_layout.addWidget(lbl_net)
@@ -2185,7 +2192,7 @@ class Main(QMainWindow):
             }
             if hasattr(self.avolites, 'set_transport'):
                 data["net_panel"]["sacn"] = {"universe": 1, "priority": 100}
-                data["net_panel"]["artnet"] = {"net": 0, "subnet": 0, "universe": 0}
+                data["net_panel"]["artnet"] = {"net": 0, "subnet": 0, "universe": 0, "broadcast": True}
 
         # Ensure audio block exists (migration)
         if "audio" not in data.get("net_panel", {}):
@@ -2757,6 +2764,10 @@ class Main(QMainWindow):
                     self.spin_artnet_net.setValue(artnet.get("net", 0))
                     self.spin_artnet_subnet.setValue(artnet.get("subnet", 0))
                     self.spin_artnet_universe.setValue(artnet.get("universe", 0))
+                    if artnet.get("broadcast", True):
+                        self.cmb_artnet_mode.setCurrentIndex(0)  # Broadcast
+                    else:
+                        self.cmb_artnet_mode.setCurrentIndex(1)  # Unicast
 
             # Cargar cue offset desde profile (net_panel.cue_offset)
             try:
@@ -3142,50 +3153,61 @@ class Main(QMainWindow):
         try:
             if not hasattr(self.avolites, 'set_transport'):
                 return
-            
+
             transport = self._get_current_transport()
-            
+
             if transport == "sacn":
                 universe = self.spin_sacn_universe.value()
-                priority = self.spin_sacn_priority.setValue()
+                priority = self.spin_sacn_priority.value()
                 sub_params = {"universe": universe, "priority": priority}
             elif transport == "artnet":
+                is_broadcast = self.cmb_artnet_mode.currentText() == "Broadcast"
                 net = self.spin_artnet_net.value()
                 subnet = self.spin_artnet_subnet.value()
                 universe = self.spin_artnet_universe.value()
-                sub_params = {"net": net, "subnet": subnet, "universe": universe}
+                sub_params = {
+                    "net": net,
+                    "subnet": subnet,
+                    "universe": universe,
+                    "broadcast": is_broadcast,
+                }
             else:
                 sub_params = {}
-            
+
             if not os.path.exists(self.preset_path):
                 QMessageBox.warning(self, "Red", f"Preset no encontrado: {self.preset_path}")
                 return
-            
+
             # PERSISTIR en net_panel
             data = self._load_preset(self.preset_path)
             data = self._ensure_net_panel_defaults(data)
-            
+
             patch = {"transport": transport}
             if transport == "sacn":
                 patch["sacn"] = sub_params
             elif transport == "artnet":
                 patch["artnet"] = sub_params
             data = self._merge_net_panel(data, patch)
-            
+
             if not self._save_preset(self.preset_path, data):
                 QMessageBox.critical(self, "Red", "Error guardando preset")
                 return
-            
+
             print(f"[NET] transport set mode={transport}")
-            self.avolites.set_transport(transport)
-            
-            # SIEMPRE reconectar después de cambiar transporte
-            if hasattr(self.avolites, 'reconnect'):
+
+            # Aplicar transporte con parámetros específicos
+            if transport == "artnet":
+                self.avolites.set_transport(transport, artnet_params=sub_params)
+            else:
+                self.avolites.set_transport(transport)
+
+            # Reconectar solo para HTTP (ArtNet maneja su propia conexión)
+            if transport != "artnet" and hasattr(self.avolites, 'reconnect'):
                 self.avolites.reconnect()
-            
+
             self._add_net_event(f"Transporte: {transport}")
             QMessageBox.information(self, "Red", f"Transporte aplicado: {transport}")
-            
+
         except Exception as e:
             print(f"[NET][ERR] {e}")
             QMessageBox.critical(self, "Red", f"Error: {e}")

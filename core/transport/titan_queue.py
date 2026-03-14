@@ -951,9 +951,30 @@ class TitanQueue:
             "transport_stats": self._transport.get_stats(),
         }
 
-    def get_transport(self) -> TitanTransport:
+    def get_transport(self):
         """Retorna el transport subyacente."""
         return self._transport
+
+    def set_transport(self, transport):
+        """
+        Reemplaza el transport subyacente (HTTP <-> ArtNet).
+
+        El nuevo transport debe implementar:
+            send_fire(cue_id) -> bool
+            send_kill(cue_id) -> bool
+
+        Args:
+            transport: Nueva instancia de transport (TitanTransport o ArtNetTransport)
+        """
+        old = self._transport
+        self._transport = transport
+        # Cerrar el transport anterior
+        if old and hasattr(old, 'close'):
+            try:
+                old.close()
+            except Exception:
+                pass
+        logger.info(f"[TitanQueue] Transport swapped -> {type(transport).__name__}")
 
     def update_config(self, **kwargs):
         """Actualiza configuracion del transport."""
