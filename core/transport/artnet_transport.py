@@ -39,8 +39,12 @@ logger = logging.getLogger("ArtNetTransport")
 ARTNET_PORT = 6454
 ARTNET_HEADER = b"Art-Net\x00"
 ARTNET_OPCODE_DMX = 0x5000
+ARTNET_OPCODE_POLL = 0x2000
+ARTNET_OPCODE_POLL_REPLY = 0x2100
 ARTNET_PROTOCOL_VERSION = 14
 ARTNET_DMX_CHANNELS = 512
+ARTNET_POLL_REPLY_LENGTH = 239
+ARTNET_STYLE_NODE = 0x00
 
 
 @dataclass
@@ -70,6 +74,8 @@ class ArtNetStats:
     last_error_ts: float = 0.0
     packets_sent: int = 0
     sequence_number: int = 0
+    polls_received: int = 0
+    poll_replies_sent: int = 0
 
 
 class ArtNetTransport:
@@ -105,16 +111,25 @@ class ArtNetTransport:
         # ArtNet sequence counter (1-255, wraps, 0 = disable sequencing)
         self._sequence = 1
 
-        # UDP socket
+        # UDP socket (TX — outbound ArtDMX)
         self._socket: Optional[socket.socket] = None
 
-        # Continuous transmit thread
+        # UDP socket (RX — inbound ArtPoll listener)
+        self._rx_socket: Optional[socket.socket] = None
+
+        # Threads
         self._tx_thread: Optional[threading.Thread] = None
+        self._rx_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+
+        # Local IP cache for ArtPollReply
+        self._local_ip: Optional[str] = None
 
         # Initialize
         self._setup_socket()
+        self._setup_rx_socket()
         self._start_tx_thread()
+        self._start_poll_listener()
 
         logger.info(
             f"[ArtNetTransport] Initialized | "
@@ -140,6 +155,266 @@ class ArtNetTransport:
             self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         # Non-blocking not needed — sendto is fast for UDP
         logger.debug("[ArtNetTransport] UDP socket created")
+
+    # ===== RX SOCKET (ArtPoll listener) =====
+
+    def _setup_rx_socket(self):
+        """Create UDP socket for receiving ArtPoll packets on port 6454."""
+        if self._rx_socket:
+            try:
+                self._rx_socket.close()
+            except Exception:
+                pass
+
+        try:
+            self._rx_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self._rx_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self._rx_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            self._rx_socket.settimeout(1.0)  # Allow periodic stop_event checks
+            self._rx_socket.bind(("0.0.0.0", ARTNET_PORT))
+            logger.debug("[ArtNet] RX socket bound to 0.0.0.0:6454")
+        except OSError as e:
+            logger.warning(f"[ArtNet] Failed to bind RX socket on port {ARTNET_PORT}: {e}")
+            self._rx_socket = None
+
+    # ===== ArtPoll LISTENER =====
+
+    def _start_poll_listener(self):
+        """Start the ArtPoll listener thread."""
+        if self._rx_socket is None:
+            logger.warning("[ArtNet] Poll listener not started — RX socket unavailable")
+            return
+        if self._rx_thread and self._rx_thread.is_alive():
+            return
+
+        self._rx_thread = threading.Thread(
+            target=self._rx_loop,
+            name="ArtNet-RX",
+            daemon=True,
+        )
+        self._rx_thread.start()
+        logger.info("[ArtNet] Poll listener started on 0.0.0.0:6454")
+
+    def _rx_loop(self):
+        """Listen for incoming ArtNet packets and handle ArtPoll."""
+        while not self._stop_event.is_set():
+            try:
+                data, addr = self._rx_socket.recvfrom(1024)
+                self._handle_poll_packet(data, addr)
+            except socket.timeout:
+                continue
+            except OSError:
+                if self._stop_event.is_set():
+                    break
+                logger.debug("[ArtNet] RX socket error, retrying...")
+                continue
+            except Exception as e:
+                logger.error(f"[ArtNet] RX loop error: {e}")
+
+        logger.debug("[ArtNet] RX thread stopped")
+
+    def _handle_poll_packet(self, data: bytes, addr: tuple):
+        """
+        Check if incoming packet is ArtPoll and respond with ArtPollReply.
+
+        ArtPoll minimum structure (14 bytes):
+          Bytes 0-7:   "Art-Net\0"
+          Bytes 8-9:   OpCode 0x2000 (little-endian)
+          Bytes 10-11: ProtVer (big-endian, >= 14)
+          Byte  12:    TalkToMe flags
+          Byte  13:    Priority
+        """
+        # Minimum ArtPoll length
+        if len(data) < 14:
+            return
+
+        # Validate Art-Net header
+        if data[:8] != ARTNET_HEADER:
+            return
+
+        # Extract opcode (little-endian)
+        opcode = struct.unpack_from("<H", data, 8)[0]
+
+        if opcode == ARTNET_OPCODE_POLL:
+            sender_ip = addr[0]
+            self.stats.polls_received += 1
+            logger.info(f"[ArtNet] Poll received from {sender_ip}")
+            self._send_poll_reply(addr)
+
+    # ===== ArtPollReply =====
+
+    def _get_local_ip(self) -> str:
+        """Detect the local IP address used to reach the network."""
+        if self._local_ip:
+            return self._local_ip
+
+        try:
+            # Connect to a remote address to determine the outbound interface
+            # (no actual packet is sent for DGRAM)
+            probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                target = self.config.target_ip
+                if target == "255.255.255.255":
+                    target = "10.255.255.255"
+                probe.connect((target, 6454))
+                ip = probe.getsockname()[0]
+            finally:
+                probe.close()
+            self._local_ip = ip
+            return ip
+        except Exception:
+            return "0.0.0.0"
+
+    def _build_poll_reply(self) -> bytes:
+        """
+        Build an ArtPollReply packet (239 bytes).
+
+        Packet layout per Art-Net 4 specification:
+          [0-7]     ID: "Art-Net\0"
+          [8-9]     OpCode: 0x2100 LE
+          [10-13]   IP Address (4 bytes, network order)
+          [14-15]   Port: 0x1936 LE (6454)
+          [16-17]   VersInfo HiLo
+          [18]      NetSwitch
+          [19]      SubSwitch
+          [20-21]   OEM HiLo
+          [22]      Ubea Version
+          [23]      Status1
+          [24-25]   EstaMan LE
+          [26-43]   ShortName (18 bytes null-padded)
+          [44-107]  LongName (64 bytes null-padded)
+          [108-171] NodeReport (64 bytes null-padded)
+          [172-173] NumPorts HiLo
+          [174-177] PortTypes[4]
+          [178-181] GoodInput[4]
+          [182-185] GoodOutput[4]
+          [186-189] SwIn[4]
+          [190-193] SwOut[4]
+          [194]     SwVideo
+          [195]     SwMacro
+          [196]     SwRemote
+          [197-199] Spare (3 bytes)
+          [200]     Style
+          [201-206] MAC Hi-Lo (6 bytes)
+          [207-210] BindIp (4 bytes)
+          [211]     BindIndex
+          [212]     Status2
+          [213-238] Filler (26 bytes)
+        """
+        packet = bytearray(ARTNET_POLL_REPLY_LENGTH)
+
+        local_ip = self._get_local_ip()
+        ip_bytes = socket.inet_aton(local_ip)
+
+        # [0-7] ID
+        packet[0:8] = ARTNET_HEADER
+
+        # [8-9] OpCode 0x2100 LE
+        struct.pack_into("<H", packet, 8, ARTNET_OPCODE_POLL_REPLY)
+
+        # [10-13] IP address (network order)
+        packet[10:14] = ip_bytes
+
+        # [14-15] Port 6454 LE
+        struct.pack_into("<H", packet, 14, ARTNET_PORT)
+
+        # [16-17] Version Hi.Lo
+        packet[16] = 0  # Version Hi
+        packet[17] = ARTNET_PROTOCOL_VERSION  # Version Lo
+
+        # [18] NetSwitch — bits 14:8 of the 15-bit port-address
+        packet[18] = self.config.artnet_net & 0x7F
+
+        # [19] SubSwitch — bits 7:4 of the port-address
+        packet[19] = self.config.artnet_subnet & 0x0F
+
+        # [20-21] OEM (0x0000)
+        # [22] Ubea (0)
+
+        # [23] Status1: bit 1 = RDM capable (0), bits 5:4 = indicator normal
+        packet[23] = 0x00
+
+        # [24-25] ESTA Manufacturer LE (0x0000 = unknown)
+        # leave zero
+
+        # [26-43] ShortName (18 bytes, null-padded)
+        short_name = b"911Fiesta"
+        packet[26:26 + len(short_name)] = short_name
+
+        # [44-107] LongName (64 bytes, null-padded)
+        long_name = b"911 Fiesta Lighting Controller"
+        packet[44:44 + len(long_name)] = long_name
+
+        # [108-171] NodeReport (64 bytes, null-padded)
+        node_report = b"911Fiesta ArtNet Node"
+        packet[108:108 + len(node_report)] = node_report
+
+        # [172-173] NumPorts (Hi, Lo) — 1 output port
+        packet[172] = 0
+        packet[173] = 1
+
+        # [174-177] PortTypes[4] — port 0 = DMX512 output (0x80)
+        packet[174] = 0x80  # Can output DMX512
+
+        # [178-181] GoodInput[4] — all zero (no input)
+
+        # [182-185] GoodOutput[4] — port 0: data transmitting (bit 7)
+        packet[182] = 0x80
+
+        # [186-189] SwIn[4] — all zero (no input mapping)
+
+        # [190-193] SwOut[4] — port 0: universe
+        packet[190] = self.config.artnet_universe & 0x0F
+
+        # [194] SwVideo, [195] SwMacro, [196] SwRemote — all zero
+
+        # [197-199] Spare
+
+        # [200] Style = StNode
+        packet[200] = ARTNET_STYLE_NODE
+
+        # [201-206] MAC address
+        try:
+            import uuid
+            mac_int = uuid.getnode()
+            for i in range(6):
+                packet[201 + i] = (mac_int >> (8 * (5 - i))) & 0xFF
+        except Exception:
+            pass  # leave as zeros
+
+        # [207-210] BindIp = same as node IP
+        packet[207:211] = ip_bytes
+
+        # [211] BindIndex = 1
+        packet[211] = 1
+
+        # [212] Status2: bit 3 = supports 15-bit port-address (Art-Net 3+)
+        packet[212] = 0x08
+
+        # [213-238] Filler — already zero
+
+        return bytes(packet)
+
+    def _send_poll_reply(self, addr: tuple):
+        """Send ArtPollReply to the address that sent the ArtPoll."""
+        try:
+            reply = self._build_poll_reply()
+            # Reply to the sender's IP on ArtNet port
+            target = (addr[0], ARTNET_PORT)
+
+            if self._rx_socket:
+                self._rx_socket.sendto(reply, target)
+            elif self._socket:
+                self._socket.sendto(reply, target)
+            else:
+                logger.warning("[ArtNet] No socket available to send PollReply")
+                return
+
+            self.stats.poll_replies_sent += 1
+            logger.info(f"[ArtNet] PollReply sent to {addr[0]}")
+
+        except Exception as e:
+            logger.error(f"[ArtNet] Failed to send PollReply: {e}")
 
     # ===== CONTINUOUS TRANSMIT THREAD =====
 
@@ -384,6 +659,7 @@ class ArtNetTransport:
             changed = True
 
         if changed:
+            self._local_ip = None  # Invalidate cached IP
             self._setup_socket()
             logger.info(
                 f"[ArtNetTransport] Config updated | "
@@ -416,6 +692,8 @@ class ArtNetTransport:
             "artnet_subnet": self.config.artnet_subnet,
             "artnet_universe": self.config.artnet_universe,
             "refresh_rate_hz": self.config.refresh_rate_hz,
+            "polls_received": self.stats.polls_received,
+            "poll_replies_sent": self.stats.poll_replies_sent,
             "success_rate_fire": (
                 self.stats.fires_ok / self.stats.fires_sent * 100
                 if self.stats.fires_sent > 0 else 100.0
@@ -431,22 +709,37 @@ class ArtNetTransport:
         self.stats = ArtNetStats()
 
     def close(self):
-        """Shutdown ArtNet transport: stop TX thread and close socket."""
+        """Shutdown ArtNet transport: stop TX/RX threads and close sockets."""
         logger.info("[ArtNetTransport] Closing...")
 
-        # Stop TX thread
+        # Signal all threads to stop
         self._stop_event.set()
+
+        # Stop TX thread
         if self._tx_thread and self._tx_thread.is_alive():
             self._tx_thread.join(timeout=2.0)
         self._tx_thread = None
 
-        # Close socket
+        # Stop RX thread
+        if self._rx_thread and self._rx_thread.is_alive():
+            self._rx_thread.join(timeout=2.0)
+        self._rx_thread = None
+
+        # Close TX socket
         if self._socket:
             try:
                 self._socket.close()
             except Exception:
                 pass
             self._socket = None
+
+        # Close RX socket
+        if self._rx_socket:
+            try:
+                self._rx_socket.close()
+            except Exception:
+                pass
+            self._rx_socket = None
 
         logger.info("[ArtNetTransport] Closed")
 
