@@ -806,10 +806,12 @@ class TitanQueue:
         transport = self._transport
         transport_name = type(transport).__name__
         print(f"[TitanQueue] FIRE cue={cue_id} transport={transport_name} id={id(transport)}")
+        print(f"[DMX-TRACE] stage=TitanQueue._process_fire cue={cue_id} transport={transport_name} id={id(transport)} -> transport.send_fire()")
 
         # Verificar timeout de cola ANTES de adquirir lock
         age_ms = (time.time() - task.timestamp) * 1000
         if age_ms > self.config.fire_timeout_ms:
+            print(f"[DMX-TRACE] stage=TitanQueue DROPPED cue={cue_id} age_ms={age_ms:.0f} > timeout={self.config.fire_timeout_ms}")
             logger.warning(f"[TitanQueue] FIRE C{cue_id} dropped: timeout ({age_ms:.0f}ms)")
             return
 

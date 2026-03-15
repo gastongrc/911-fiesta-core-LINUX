@@ -259,6 +259,10 @@ class CueEngine:
             meta_str = f" meta={meta}"
         print(f"[CueEngine] *** FIRE C{cue_id} *** source={source}{meta_str}")
 
+        # DMX pipeline trace — stage 1
+        channel_index = cue_id - 1
+        print(f"[DMX-TRACE] stage=CueEngine cue={cue_id} ch_index={channel_index} family={family} -> av.fire_cue()")
+
         # Disparar via avolites
         try:
             result = self.av.fire_cue(cue_id)
