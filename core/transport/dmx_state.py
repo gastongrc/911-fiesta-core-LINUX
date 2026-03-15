@@ -94,7 +94,7 @@ class DmxState:
         """
         channels = self._cue_map.get(cue_id)
         if not channels:
-            logger.debug(f"[DmxState] fire(C{cue_id}): no DMX mapping")
+            print(f"[DmxState] fire(C{cue_id}): NO DMX MAPPING — cue not in cue_map")
             return False
 
         with self._lock:
@@ -103,8 +103,9 @@ class DmxState:
                 if 0 <= idx < DMX_CHANNELS:
                     self._channels[idx] = self._on_value
             self._active_cues.add(cue_id)
+            non_zero = sum(1 for v in self._channels if v > 0)
 
-        logger.debug(f"[DmxState] FIRE C{cue_id} → ch{channels} = {self._on_value}")
+        print(f"[DmxState] FIRE C{cue_id} → ch{channels} = {self._on_value} | active_cues={len(self._active_cues)} nonzero_ch={non_zero}")
         return True
 
     def kill(self, cue_id: int) -> bool:
@@ -120,7 +121,7 @@ class DmxState:
         """
         channels = self._cue_map.get(cue_id)
         if not channels:
-            logger.debug(f"[DmxState] kill(C{cue_id}): no DMX mapping")
+            print(f"[DmxState] kill(C{cue_id}): NO DMX MAPPING — cue not in cue_map")
             return False
 
         with self._lock:
@@ -129,8 +130,9 @@ class DmxState:
                 if 0 <= idx < DMX_CHANNELS:
                     self._channels[idx] = self._off_value
             self._active_cues.discard(cue_id)
+            non_zero = sum(1 for v in self._channels if v > 0)
 
-        logger.debug(f"[DmxState] KILL C{cue_id} → ch{channels} = {self._off_value}")
+        print(f"[DmxState] KILL C{cue_id} → ch{channels} = {self._off_value} | active_cues={len(self._active_cues)} nonzero_ch={non_zero}")
         return True
 
     def kill_all(self) -> None:
@@ -140,7 +142,7 @@ class DmxState:
                 self._channels[i] = self._off_value
             self._active_cues.clear()
 
-        logger.info("[DmxState] KILL ALL (blackout)")
+        print("[DmxState] KILL ALL (blackout) — all 512 channels → 0")
 
     def set_channel(self, channel: int, value: int) -> None:
         """

@@ -311,6 +311,7 @@ class ArtNetEngine:
         self._replies_sent = 0
         self._last_send_ts = 0.0
         self._start_ts = 0.0
+        self._last_diag_ts = 0.0  # Diagnostic logging throttle
 
         # Local IP (resolved on start)
         self._local_ip = "0.0.0.0"
@@ -475,6 +476,17 @@ class ArtNetEngine:
 
         # Rolling sequence (1-255, 0 está reservado en spec)
         self._sequence = (self._sequence % 255) + 1
+
+        # Diagnostic: log non-zero channels every ~1 second
+        now = time.time()
+        if now - self._last_diag_ts >= 1.0:
+            self._last_diag_ts = now
+            nonzero = [(i + 1, dmx_data[i]) for i in range(DMX_CHANNELS) if dmx_data[i] > 0]
+            if nonzero:
+                ch_list = ", ".join(f"ch{ch}={val}" for ch, val in nonzero[:20])
+                print(f"[ArtNet DIAG] frame#{self._frames_sent} → {len(nonzero)} nonzero channels: [{ch_list}]")
+            else:
+                print(f"[ArtNet DIAG] frame#{self._frames_sent} → ALL ZEROS (no active cues)")
 
     # ===== RECEIVER LOOP (ArtPoll listener) =====
 
