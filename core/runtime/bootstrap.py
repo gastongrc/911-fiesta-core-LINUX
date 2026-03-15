@@ -153,15 +153,33 @@ def _create_controller():
 
 
 def _apply_transport(controller):
-    """Apply the configured transport (artnet or http) from config file."""
+    """
+    Apply the configured transport (artnet or http).
+
+    Priority:
+      1. Environment variable FIESTA_TRANSPORT (artnet|http)
+      2. Config file avolites_config.json -> "transport"
+      3. Default: http
+    """
     try:
-        transport = controller.config_manager.config.get("transport", "http")
+        # Environment override takes priority
+        env_transport = os.environ.get("FIESTA_TRANSPORT", "").lower().strip()
+        config_transport = controller.config_manager.config.get("transport", "http")
+        transport = env_transport if env_transport in ("artnet", "http", "https") else config_transport
+
+        if env_transport and env_transport != config_transport:
+            logger.info("[BOOTSTRAP] FIESTA_TRANSPORT=%s overrides config=%s", env_transport, config_transport)
+
         if transport == "artnet":
             artnet_cfg = controller.config_manager.config.get("artnet", {})
             result = controller.set_transport("artnet", artnet_params=artnet_cfg)
             logger.info("[BOOTSTRAP] transport -> artnet (result=%s)", result)
         else:
             logger.info("[BOOTSTRAP] transport -> %s (default)", transport)
+
+        # Log the active transport for verification
+        active = type(controller._titan_queue.get_transport()).__name__
+        logger.info("[BOOTSTRAP] active transport verified: %s", active)
     except Exception as e:
         logger.error("[BOOTSTRAP] transport apply failed: %s", e)
 

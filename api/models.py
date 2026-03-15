@@ -394,6 +394,29 @@ class CalendarForceManualRequest(BaseModel):
     actions: List[str] = Field(default_factory=list)
 
 
+# ==================== TRANSPORT MODELS ====================
+
+class TransportStatusResponse(BaseModel):
+    """Estado del transporte activo"""
+    active_transport: str
+    transport_stats: Dict[str, Any] = {}
+    queue_stats: Dict[str, Any] = {}
+    config_transport: str = ""
+
+
+class TransportSwitchRequest(BaseModel):
+    """Request para cambiar transporte"""
+    transport: str = Field(..., pattern="^(http|https|artnet)$", description="Transport type: http, https, or artnet")
+    artnet_params: Optional[Dict[str, Any]] = Field(default=None, description="ArtNet parameters (net, subnet, universe, broadcast)")
+
+
+class TransportSwitchResponse(BaseModel):
+    """Respuesta de cambio de transporte"""
+    success: bool
+    active_transport: str
+    message: str
+
+
 # ==================== ERROR MODELS ====================
 
 class ErrorResponse(BaseModel):

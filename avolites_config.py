@@ -22,12 +22,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 import ipaddress
 import threading
 from typing import Dict, Any, Optional, Callable, List, Set, Tuple, Union
 from enum import Enum
+
+logger = logging.getLogger("AvolitesController")
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -929,6 +932,9 @@ class AvolitesController:
         Dispara un cue (encola via TitanQueue).
         LEGACY MODE: SIEMPRE encola, sin bloqueo por NOT_READY.
         """
+        transport_name = type(self._titan_queue.get_transport()).__name__
+        logger.info("[TRANSPORT] %s fire_cue %d", transport_name, cue_id)
+
         with self._active_lock:
             self._active_cues.add(cue_id)
 
@@ -941,6 +947,9 @@ class AvolitesController:
         Mata un cue (encola via TitanQueue con prioridad maxima).
         LEGACY MODE: SIEMPRE encola, sin bloqueo por NOT_READY.
         """
+        transport_name = type(self._titan_queue.get_transport()).__name__
+        logger.info("[TRANSPORT] %s kill_cue %d", transport_name, cue_id)
+
         with self._active_lock:
             self._active_cues.discard(cue_id)
 
