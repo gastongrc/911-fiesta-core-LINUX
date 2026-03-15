@@ -1840,23 +1840,50 @@ class Main(QMainWindow):
         # Subparámetros sACN
         self.sacn_params = QFrame()
         self.sacn_params.setStyleSheet("border:none;")
-        sacn_layout = QHBoxLayout(self.sacn_params)
-        sacn_layout.setContentsMargins(0, 0, 0, 0)
+        sacn_outer = QVBoxLayout(self.sacn_params)
+        sacn_outer.setContentsMargins(0, 0, 0, 0)
+        sacn_outer.setSpacing(4)
+        sacn_row1 = QHBoxLayout()
         lbl_univ = QLabel("Universe:")
         lbl_univ.setStyleSheet("color:#ccc; border:none;")
-        sacn_layout.addWidget(lbl_univ)
+        sacn_row1.addWidget(lbl_univ)
         self.spin_sacn_universe = QSpinBox()
         self.spin_sacn_universe.setRange(1, 63999)
         self.spin_sacn_universe.setValue(1)
-        sacn_layout.addWidget(self.spin_sacn_universe)
+        sacn_row1.addWidget(self.spin_sacn_universe)
+        lbl_fps = QLabel("FPS:")
+        lbl_fps.setStyleSheet("color:#ccc; border:none;")
+        sacn_row1.addWidget(lbl_fps)
+        self.spin_sacn_fps = QSpinBox()
+        self.spin_sacn_fps.setRange(1, 44)
+        self.spin_sacn_fps.setValue(40)
+        sacn_row1.addWidget(self.spin_sacn_fps)
         lbl_prio = QLabel("Priority:")
         lbl_prio.setStyleSheet("color:#ccc; border:none;")
-        sacn_layout.addWidget(lbl_prio)
+        sacn_row1.addWidget(lbl_prio)
         self.spin_sacn_priority = QSpinBox()
         self.spin_sacn_priority.setRange(0, 200)
         self.spin_sacn_priority.setValue(100)
-        sacn_layout.addWidget(self.spin_sacn_priority)
-        sacn_layout.addStretch()
+        sacn_row1.addWidget(self.spin_sacn_priority)
+        sacn_row1.addStretch()
+        sacn_outer.addLayout(sacn_row1)
+        sacn_row2 = QHBoxLayout()
+        lbl_mcast = QLabel("Multicast IP:")
+        lbl_mcast.setStyleSheet("color:#ccc; border:none;")
+        sacn_row2.addWidget(lbl_mcast)
+        self.ed_sacn_multicast = QLineEdit()
+        self.ed_sacn_multicast.setPlaceholderText("239.255.0.1")
+        self.ed_sacn_multicast.setMaximumWidth(140)
+        sacn_row2.addWidget(self.ed_sacn_multicast)
+        lbl_sacn_port = QLabel("Port:")
+        lbl_sacn_port.setStyleSheet("color:#ccc; border:none;")
+        sacn_row2.addWidget(lbl_sacn_port)
+        self.spin_sacn_port = QSpinBox()
+        self.spin_sacn_port.setRange(1, 65535)
+        self.spin_sacn_port.setValue(5568)
+        sacn_row2.addWidget(self.spin_sacn_port)
+        sacn_row2.addStretch()
+        sacn_outer.addLayout(sacn_row2)
         transport_layout.addWidget(self.sacn_params)
 
         # Subparámetros Art-Net
@@ -2756,7 +2783,12 @@ class Main(QMainWindow):
                 if transport == "sacn":
                     sacn = net.get("sacn", {})
                     self.spin_sacn_universe.setValue(sacn.get("universe", 1))
+                    self.spin_sacn_fps.setValue(sacn.get("fps", 40))
                     self.spin_sacn_priority.setValue(sacn.get("priority", 100))
+                    self.ed_sacn_multicast.setText(sacn.get("multicast_ip", "239.255.0.1"))
+                    self.spin_sacn_port.setValue(sacn.get("port", 5568))
+                    # Also sync to controller config for _start_sacn()
+                    self.avolites.config_manager.config["sacn"] = sacn
                 elif transport == "artnet":
                     artnet = net.get("artnet", {})
                     self.spin_artnet_net.setValue(artnet.get("net", 0))
@@ -3152,8 +3184,17 @@ class Main(QMainWindow):
             
             if transport == "sacn":
                 universe = self.spin_sacn_universe.value()
-                priority = self.spin_sacn_priority.setValue()
-                sub_params = {"universe": universe, "priority": priority}
+                fps = self.spin_sacn_fps.value()
+                priority = self.spin_sacn_priority.value()
+                multicast_ip = self.ed_sacn_multicast.text().strip() or "239.255.0.1"
+                port = self.spin_sacn_port.value()
+                sub_params = {
+                    "universe": universe,
+                    "fps": fps,
+                    "priority": priority,
+                    "multicast_ip": multicast_ip,
+                    "port": port,
+                }
             elif transport == "artnet":
                 net = self.spin_artnet_net.value()
                 subnet = self.spin_artnet_subnet.value()
@@ -3181,6 +3222,14 @@ class Main(QMainWindow):
                 QMessageBox.critical(self, "Red", "Error guardando preset")
                 return
             
+            # Persist transport sub-config to controller's config_manager
+            if transport == "sacn":
+                self.avolites.config_manager.config["sacn"] = sub_params
+            elif transport == "artnet":
+                self.avolites.config_manager.config["artnet"] = sub_params
+            self.avolites.config_manager.config["transport"] = transport
+            self.avolites.config_manager.save_config()
+
             print(f"[NET] transport set mode={transport}")
             self.avolites.set_transport(transport)
             

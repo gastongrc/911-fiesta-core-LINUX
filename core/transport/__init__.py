@@ -1,5 +1,5 @@
 # ============================================================================
-# core/transport - TRANSPORT SYSTEM (HTTP + ART-NET DMX)
+# core/transport - TRANSPORT SYSTEM (HTTP + ART-NET + sACN DMX)
 # ============================================================================
 # Sistema profesional de transporte para Avolites Titan
 #
@@ -12,6 +12,9 @@
 # - DmxState: Consola DMX virtual (512 canales, estado persistente)
 # - ArtNetEngine: Motor Art-Net (emisor continuo UDP, 40fps)
 # - CueOutputAdapter: Adaptador CueEngine → DMX
+#
+# Componentes sACN (E1.31):
+# - SacnEngine: Motor sACN (emisor continuo UDP multicast, 40fps)
 # ============================================================================
 
 from .titan_transport import (
@@ -54,6 +57,13 @@ from .cue_output_adapter import (
     CueOutputAdapter,
 )
 
+from .sacn_engine import (
+    SacnEngine,
+    build_sacn_packet,
+    multicast_ip_for_universe,
+    SACN_PORT,
+)
+
 
 __all__ = [
     # Transport HTTP
@@ -84,4 +94,9 @@ __all__ = [
     "ARTNET_PORT",
     # Adapter
     "CueOutputAdapter",
+    # sACN
+    "SacnEngine",
+    "build_sacn_packet",
+    "multicast_ip_for_universe",
+    "SACN_PORT",
 ]

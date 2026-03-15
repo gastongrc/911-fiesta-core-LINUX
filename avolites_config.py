@@ -49,6 +49,9 @@ from core.transport.dmx_state import DmxState
 from core.transport.artnet_engine import ArtNetEngine
 from core.transport.cue_output_adapter import CueOutputAdapter
 
+# sACN (E1.31) DMX transport
+from core.transport.sacn_engine import SacnEngine
+
 # ===== CONFIGURACION =====
 CONFIG_FILE = "avolites_config.json"
 
@@ -279,9 +282,15 @@ class AvolitesController:
         self._cue_adapter: Optional[CueOutputAdapter] = None
         self._artnet_active = False
 
+        # ===== sACN (E1.31) DMX TRANSPORT =====
+        self._sacn_engine: Optional[SacnEngine] = None
+        self._sacn_active = False
+
         # Iniciar servicios según transporte configurado
         if self.transport == "artnet":
             self._start_artnet()
+        elif self.transport == "sacn":
+            self._start_sacn()
         else:
             self._titan_queue.start()
 
@@ -298,6 +307,8 @@ class AvolitesController:
 
         if self._artnet_active:
             print("[AVOLITES] v5.2 ART-NET MODE - ArtNetEngine activo, TitanQueue inactivo")
+        elif self._sacn_active:
+            print("[AVOLITES] v5.3 sACN MODE - SacnEngine activo, TitanQueue inactivo")
         else:
             print("[AVOLITES] v5.1 LEGACY MODE - TitanQueue activo, TitanSync desactivado")
 
@@ -778,15 +789,20 @@ class AvolitesController:
 
     def set_transport(self, transport: str) -> bool:
         """
-        Cambia el transporte (http/https/artnet).
+        Cambia el transporte (http/https/artnet/sacn).
 
         Cuando transport='artnet':
-          - Detiene TitanQueue (HTTP)
+          - Detiene TitanQueue (HTTP) y SacnEngine si activo
           - Inicia DmxState + ArtNetEngine + CueOutputAdapter
           - fire_cue/kill_cue se redirigen a DMX
 
+        Cuando transport='sacn':
+          - Detiene TitanQueue (HTTP) y ArtNetEngine si activo
+          - Inicia DmxState + SacnEngine + CueOutputAdapter
+          - fire_cue/kill_cue se redirigen a DMX
+
         Cuando transport='http' o 'https':
-          - Detiene ArtNetEngine si estaba activo
+          - Detiene ArtNetEngine/SacnEngine si estaban activos
           - Reactiva TitanQueue (HTTP)
         """
         try:
@@ -796,15 +812,28 @@ class AvolitesController:
                 # Cambiar a Art-Net
                 self.transport = "artnet"
                 self.config_manager.config["transport"] = "artnet"
+                self._stop_sacn()
                 self._stop_artnet()  # Limpiar si ya estaba
                 self._titan_queue.stop()
                 self._start_artnet()
                 print(f"[AVOLITES] Transport -> ARTNET")
                 return True
 
+            elif mode == "sacn":
+                # Cambiar a sACN
+                self.transport = "sacn"
+                self.config_manager.config["transport"] = "sacn"
+                self._stop_artnet()
+                self._stop_sacn()  # Limpiar si ya estaba
+                self._titan_queue.stop()
+                self._start_sacn()
+                print(f"[AVOLITES] Transport -> sACN")
+                return True
+
             elif mode in ("http", "https"):
                 # Cambiar a HTTP
                 self._stop_artnet()
+                self._stop_sacn()
                 self.transport = mode
                 self.config_manager.config["transport"] = mode
                 self._titan_queue.update_config(transport=mode)
@@ -896,9 +925,72 @@ class AvolitesController:
             except Exception:
                 pass
             self._artnet_engine = None
-        self._dmx_state = None
-        self._cue_adapter = None
+        if self._artnet_active:
+            self._dmx_state = None
+            self._cue_adapter = None
         self._artnet_active = False
+
+    # ===== sACN LIFECYCLE =====
+
+    def _start_sacn(self) -> bool:
+        """
+        Inicia el subsistema sACN: DmxState + SacnEngine + CueOutputAdapter.
+        Lee config de sacn section en avolites_config.json.
+        """
+        try:
+            base = os.path.dirname(os.path.abspath(__file__))
+            cue_map_path = os.path.join(base, "cue_map.json")
+
+            # Cargar cue map
+            if os.path.exists(cue_map_path):
+                self._dmx_state = DmxState.from_json(cue_map_path)
+                print(f"[BOOTSTRAP] DmxState loaded: {len(self._dmx_state.get_cue_map())} cues mapped")
+            else:
+                self._dmx_state = DmxState()
+                print("[BOOTSTRAP] DmxState loaded: empty (no cue_map.json)")
+
+            # Cargar sACN config desde avolites_config.json
+            sacn_config = self.config_manager.config.get("sacn", {})
+            self._sacn_engine = SacnEngine.from_config(sacn_config, self._dmx_state)
+
+            # Crear adapter
+            self._cue_adapter = CueOutputAdapter(self._dmx_state)
+
+            # Iniciar engine
+            self._sacn_engine.start()
+            self._sacn_active = True
+
+            stats = self._sacn_engine.get_stats()
+            print(f"[BOOTSTRAP] ========================================")
+            print(f"[BOOTSTRAP] TRANSPORT SELECTED: sACN")
+            print(f"[BOOTSTRAP] SacnEngine STARTED")
+            print(f"[BOOTSTRAP]   sACN universe: {stats['universe']}")
+            print(f"[BOOTSTRAP]   multicast: {stats['multicast_ip']}:{stats['port']}")
+            print(f"[BOOTSTRAP]   priority: {stats['priority']}")
+            print(f"[BOOTSTRAP]   fps: {stats['configured_fps']}")
+            print(f"[BOOTSTRAP]   source: {stats.get('source_name', 'N/A')}")
+            print(f"[BOOTSTRAP] ========================================")
+            return True
+
+        except Exception as e:
+            print(f"[BOOTSTRAP] sACN start FAILED: {e}")
+            import traceback
+            traceback.print_exc()
+            self._sacn_active = False
+            return False
+
+    def _stop_sacn(self) -> None:
+        """Detiene el subsistema sACN si está activo."""
+        if self._sacn_engine:
+            try:
+                self._sacn_engine.stop()
+            except Exception:
+                pass
+            self._sacn_engine = None
+        if self._sacn_active:
+            self._dmx_state = None
+            self._cue_adapter = None
+        self._sacn_active = False
 
     def set_console_port(self, port: int) -> bool:
         """Cambia el puerto de la consola."""
@@ -964,7 +1056,7 @@ class AvolitesController:
 
         self._last_fire_ts = time.time()
 
-        if self._artnet_active and self._cue_adapter:
+        if (self._artnet_active or self._sacn_active) and self._cue_adapter:
             return self._cue_adapter.fire(cue_id)
 
         return self._titan_queue.fire(cue_id)
@@ -980,7 +1072,7 @@ class AvolitesController:
         with self._active_lock:
             self._active_cues.discard(cue_id)
 
-        if self._artnet_active and self._cue_adapter:
+        if (self._artnet_active or self._sacn_active) and self._cue_adapter:
             return self._cue_adapter.kill(cue_id)
 
         return self._titan_queue.kill(cue_id)
@@ -996,7 +1088,7 @@ class AvolitesController:
             for cue_id in cue_ids:
                 self._active_cues.discard(cue_id)
 
-        if self._artnet_active and self._cue_adapter:
+        if (self._artnet_active or self._sacn_active) and self._cue_adapter:
             return self._cue_adapter.kill_pool(cue_ids) == len(cue_ids)
 
         return self._titan_queue.kill_pool(cue_ids, priority_boost=priority_boost) == len(cue_ids)
@@ -1020,7 +1112,7 @@ class AvolitesController:
 
         self._last_fire_ts = time.time()
 
-        if self._artnet_active and self._cue_adapter:
+        if (self._artnet_active or self._sacn_active) and self._cue_adapter:
             return self._cue_adapter.fire(cue_id)
 
         # Usar fire_immediate que bypasea cola y rate limit
@@ -1040,7 +1132,7 @@ class AvolitesController:
 
         self._last_fire_ts = time.time()
 
-        if self._artnet_active and self._cue_adapter:
+        if (self._artnet_active or self._sacn_active) and self._cue_adapter:
             return self._cue_adapter.fire(cue_id)
 
         return self._titan_queue.fire(cue_id)
@@ -1052,7 +1144,7 @@ class AvolitesController:
         with self._active_lock:
             self._active_cues.discard(cue_id)
 
-        if self._artnet_active and self._cue_adapter:
+        if (self._artnet_active or self._sacn_active) and self._cue_adapter:
             return self._cue_adapter.kill(cue_id)
 
         return self._titan_queue.kill(cue_id, priority_boost=True)
@@ -1068,7 +1160,7 @@ class AvolitesController:
             for cue_id in cue_ids:
                 self._active_cues.discard(cue_id)
 
-        if self._artnet_active and self._cue_adapter:
+        if (self._artnet_active or self._sacn_active) and self._cue_adapter:
             return self._cue_adapter.kill_pool(cue_ids) == len(cue_ids)
 
         return self._titan_queue.kill_pool(cue_ids, priority_boost=True) == len(cue_ids)
@@ -1091,7 +1183,7 @@ class AvolitesController:
             active_cues = list(self._active_cues.copy())
             self._active_cues.clear()
 
-        if self._artnet_active and self._cue_adapter:
+        if (self._artnet_active or self._sacn_active) and self._cue_adapter:
             self._cue_adapter.kill_all()
             return True
 
@@ -1153,6 +1245,13 @@ class AvolitesController:
             if self._cue_adapter:
                 artnet_stats["adapter"] = self._cue_adapter.get_stats()
 
+        # sACN stats si aplica
+        sacn_stats = None
+        if self._sacn_active and self._sacn_engine:
+            sacn_stats = self._sacn_engine.get_stats()
+            if self._cue_adapter:
+                sacn_stats["adapter"] = self._cue_adapter.get_stats()
+
         status.update({
             "connected": self.is_connected,
             "connection_state": self.connection_state.value,
@@ -1169,6 +1268,8 @@ class AvolitesController:
             "sync_stats": sync_stats,
             "artnet_stats": artnet_stats,
             "artnet_active": self._artnet_active,
+            "sacn_stats": sacn_stats,
+            "sacn_active": self._sacn_active,
             "dropped_not_ready": self._dropped_not_ready,
             "dropped_queue_full": self._dropped_queue_full,
             "console_ip": self.config_manager.config.get("console_ip"),
