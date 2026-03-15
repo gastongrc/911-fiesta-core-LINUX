@@ -122,6 +122,9 @@ class ArtNetTransport:
         # Local IP cache for ArtPollReply
         self._local_ip: Optional[str] = None
 
+        # TX diagnostic: track last non-zero count for state-change logging
+        self._last_tx_nonzero: int = 0
+
         # Initialize
         self._setup_socket()
         self._start_tx_thread()
@@ -470,15 +473,21 @@ class ArtNetTransport:
 
         packet = self._build_artnet_dmx_packet()
 
-        # ---- Pre-send diagnostic: log DMX payload on EVERY packet ----
-        dmx_payload = packet[18:]  # DMX data starts at byte 18
-        nonzero_count = sum(1 for v in dmx_payload if v > 0)
-        first20 = list(dmx_payload[:20])
-        universe = self.config.artnet_universe
-        print(
-            f"[ArtNet-TX] universe={universe} nonzero={nonzero_count} "
-            f"channels={first20} id={id(self)}"
-        )
+        # ---- Pre-sendto diagnostic: log raw DMX buffer ----
+        # Read directly from the buffer (same object send_fire writes to)
+        with self._dmx_lock:
+            buf_first20 = list(self._dmx_data[:20])
+            buf_nonzero = sum(1 for v in self._dmx_data if v > 0)
+
+        # Log on EVERY state change (zero↔non-zero) + periodic heartbeat
+        changed = (buf_nonzero != self._last_tx_nonzero)
+        periodic = (self.stats.packets_sent % (self.config.refresh_rate_hz * 2) == 0)
+        if changed or periodic:
+            print(
+                f"TX DMX: {buf_first20} "
+                f"(nonzero={buf_nonzero} pkt={self.stats.packets_sent} id={id(self)})"
+            )
+        self._last_tx_nonzero = buf_nonzero
 
         try:
             self._socket.sendto(packet, (self.config.target_ip, ARTNET_PORT))
