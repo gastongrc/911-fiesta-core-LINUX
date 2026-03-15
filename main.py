@@ -2662,6 +2662,11 @@ class Main(QMainWindow):
             self.avolites.config_manager.config["console_ip"] = console_ip
             self.avolites.config_manager.config["console_port"] = console_port
 
+            # Apply transport BEFORE connect (fixes artnet never starting)
+            if hasattr(self.avolites, 'set_transport') and transport:
+                print(f"[BOOTSTRAP] transport selected: {transport}")
+                self.avolites.set_transport(transport)
+
             if hasattr(self.avolites, 'set_cue_offset'):
                 self.avolites.set_cue_offset(cue_offset)
 

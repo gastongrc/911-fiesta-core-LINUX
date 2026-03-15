@@ -44,6 +44,11 @@ from core.transport import (
     # SyncConfig,
 )
 
+# Art-Net DMX transport
+from core.transport.dmx_state import DmxState
+from core.transport.artnet_engine import ArtNetEngine
+from core.transport.cue_output_adapter import CueOutputAdapter
+
 # ===== CONFIGURACION =====
 CONFIG_FILE = "avolites_config.json"
 
@@ -268,9 +273,17 @@ class AvolitesController:
         # self._titan_sync = TitanStateSync(...)
         self._titan_sync = None  # Placeholder para compatibilidad
 
-        # Iniciar servicios (solo TitanQueue, no TitanSync)
-        self._titan_queue.start()
-        # self._titan_sync.start()  # DESACTIVADO en legacy
+        # ===== ART-NET DMX TRANSPORT =====
+        self._dmx_state: Optional[DmxState] = None
+        self._artnet_engine: Optional[ArtNetEngine] = None
+        self._cue_adapter: Optional[CueOutputAdapter] = None
+        self._artnet_active = False
+
+        # Iniciar servicios según transporte configurado
+        if self.transport == "artnet":
+            self._start_artnet()
+        else:
+            self._titan_queue.start()
 
         # Session para ping y BPM (operaciones directas)
         self.session: Optional[requests.Session] = None
@@ -283,7 +296,10 @@ class AvolitesController:
         except Exception:
             pass
 
-        print("[AVOLITES] v5.1 LEGACY MODE - TitanQueue activo, TitanSync desactivado")
+        if self._artnet_active:
+            print("[AVOLITES] v5.2 ART-NET MODE - ArtNetEngine activo, TitanQueue inactivo")
+        else:
+            print("[AVOLITES] v5.1 LEGACY MODE - TitanQueue activo, TitanSync desactivado")
 
         if auto_connect:
             self.connect()
@@ -761,16 +777,38 @@ class AvolitesController:
             return False
 
     def set_transport(self, transport: str) -> bool:
-        """Cambia el transporte (http/https)."""
+        """
+        Cambia el transporte (http/https/artnet).
+
+        Cuando transport='artnet':
+          - Detiene TitanQueue (HTTP)
+          - Inicia DmxState + ArtNetEngine + CueOutputAdapter
+          - fire_cue/kill_cue se redirigen a DMX
+
+        Cuando transport='http' o 'https':
+          - Detiene ArtNetEngine si estaba activo
+          - Reactiva TitanQueue (HTTP)
+        """
         try:
-            if transport.lower() in ("http", "https"):
-                self.transport = transport.lower()
-                self.config_manager.config["transport"] = transport.lower()
+            mode = transport.lower().strip()
 
-                if self.verbose:
-                    print(f"[AVOLITES] Transport -> {transport.lower()}")
+            if mode == "artnet":
+                # Cambiar a Art-Net
+                self.transport = "artnet"
+                self.config_manager.config["transport"] = "artnet"
+                self._stop_artnet()  # Limpiar si ya estaba
+                self._titan_queue.stop()
+                self._start_artnet()
+                print(f"[AVOLITES] Transport -> ARTNET")
+                return True
 
-                self._titan_queue.update_config(transport=transport.lower())
+            elif mode in ("http", "https"):
+                # Cambiar a HTTP
+                self._stop_artnet()
+                self.transport = mode
+                self.config_manager.config["transport"] = mode
+                self._titan_queue.update_config(transport=mode)
+                self._titan_queue.start()
 
                 try:
                     self._setup_session()
@@ -778,13 +816,89 @@ class AvolitesController:
                     if self.verbose:
                         print(f"[AVOLITES] Error reabriendo sesion: {e}")
 
+                print(f"[AVOLITES] Transport -> {mode.upper()}")
                 return True
+
             else:
+                if self.verbose:
+                    print(f"[AVOLITES] Transport desconocido: {mode}")
                 return False
+
         except Exception as e:
             if self.verbose:
                 print(f"[AVOLITES] Error en set_transport: {e}")
             return False
+
+    # ===== ART-NET LIFECYCLE =====
+
+    def _start_artnet(self) -> bool:
+        """
+        Inicia el subsistema Art-Net: DmxState + ArtNetEngine + CueOutputAdapter.
+        Lee config de artnet_config.json y cue_map.json.
+        """
+        try:
+            # Paths de config
+            base = os.path.dirname(os.path.abspath(__file__))
+            cue_map_path = os.path.join(base, "cue_map.json")
+            artnet_config_path = os.path.join(base, "artnet_config.json")
+
+            # Cargar cue map
+            if os.path.exists(cue_map_path):
+                self._dmx_state = DmxState.from_json(cue_map_path)
+                print(f"[BOOTSTRAP] DmxState loaded: {len(self._dmx_state.get_cue_map())} cues mapped")
+            else:
+                self._dmx_state = DmxState()
+                print("[BOOTSTRAP] DmxState loaded: empty (no cue_map.json)")
+
+            # Cargar artnet config
+            if os.path.exists(artnet_config_path):
+                self._artnet_engine = ArtNetEngine.from_json(artnet_config_path, self._dmx_state)
+            else:
+                self._artnet_engine = ArtNetEngine(
+                    self._dmx_state,
+                    target_ip="2.255.255.255",
+                    universe=0,
+                    fps=40,
+                )
+                print("[BOOTSTRAP] ArtNetEngine using defaults (no artnet_config.json)")
+
+            # Crear adapter
+            self._cue_adapter = CueOutputAdapter(self._dmx_state)
+
+            # Iniciar engine
+            self._artnet_engine.start()
+            self._artnet_active = True
+
+            stats = self._artnet_engine.get_stats()
+            print(f"[BOOTSTRAP] ========================================")
+            print(f"[BOOTSTRAP] TRANSPORT SELECTED: ARTNET")
+            print(f"[BOOTSTRAP] ArtNetEngine STARTED")
+            print(f"[BOOTSTRAP]   target: {stats['target_ip']}:{stats['port']}")
+            print(f"[BOOTSTRAP]   universe: {stats['universe']}")
+            print(f"[BOOTSTRAP]   fps: {stats['configured_fps']}")
+            print(f"[BOOTSTRAP]   node: {stats.get('node_name', 'N/A')}")
+            print(f"[BOOTSTRAP]   local_ip: {stats.get('local_ip', 'N/A')}")
+            print(f"[BOOTSTRAP] ========================================")
+            return True
+
+        except Exception as e:
+            print(f"[BOOTSTRAP] ArtNet start FAILED: {e}")
+            import traceback
+            traceback.print_exc()
+            self._artnet_active = False
+            return False
+
+    def _stop_artnet(self) -> None:
+        """Detiene el subsistema Art-Net si está activo."""
+        if self._artnet_engine:
+            try:
+                self._artnet_engine.stop()
+            except Exception:
+                pass
+            self._artnet_engine = None
+        self._dmx_state = None
+        self._cue_adapter = None
+        self._artnet_active = False
 
     def set_console_port(self, port: int) -> bool:
         """Cambia el puerto de la consola."""
@@ -839,40 +953,40 @@ class AvolitesController:
     # ===== API PUBLICA =====
     def fire_cue(self, cue_id: int) -> bool:
         """
-        Dispara un cue (encola via TitanQueue).
-        LEGACY MODE: SIEMPRE encola, sin bloqueo por NOT_READY.
+        Dispara un cue.
+        Rutas: ARTNET → CueOutputAdapter → DmxState
+               HTTP   → TitanQueue → TitanTransport
         """
         print(f"[AvolitesBridge] FIRE cue={cue_id}")
-        # LEGACY MODE: Sin bloqueo por NOT_READY
-        # if self.connection_state != ConnectionState.READY:
-        #     self._dropped_not_ready += 1
-        #     if self.verbose:
-        #         print(f"[AvoTX] drop FIRE C{cue_id} (not ready)")
-        #     return False
 
         with self._active_lock:
             self._active_cues.add(cue_id)
 
         self._last_fire_ts = time.time()
 
+        if self._artnet_active and self._cue_adapter:
+            return self._cue_adapter.fire(cue_id)
+
         return self._titan_queue.fire(cue_id)
 
     def kill_cue(self, cue_id: int) -> bool:
         """
-        Mata un cue (encola via TitanQueue con prioridad maxima).
-        LEGACY MODE: SIEMPRE encola, sin bloqueo por NOT_READY.
+        Mata un cue.
+        Rutas: ARTNET → CueOutputAdapter → DmxState
+               HTTP   → TitanQueue → TitanTransport
         """
         print(f"[AvolitesBridge] KILL cue={cue_id}")
 
         with self._active_lock:
             self._active_cues.discard(cue_id)
 
+        if self._artnet_active and self._cue_adapter:
+            return self._cue_adapter.kill(cue_id)
+
         return self._titan_queue.kill(cue_id)
 
     def kill_pool(self, cue_ids: List[int], priority_boost: bool = False) -> bool:
-        """Mata multiples cues. LEGACY MODE: Sin bloqueo.
-        priority_boost=True bypasses dedup in TitanQueue (for state transitions).
-        """
+        """Mata multiples cues."""
         if not cue_ids:
             return False
 
@@ -881,6 +995,9 @@ class AvolitesController:
         with self._active_lock:
             for cue_id in cue_ids:
                 self._active_cues.discard(cue_id)
+
+        if self._artnet_active and self._cue_adapter:
+            return self._cue_adapter.kill_pool(cue_ids) == len(cue_ids)
 
         return self._titan_queue.kill_pool(cue_ids, priority_boost=priority_boost) == len(cue_ids)
 
@@ -895,29 +1012,16 @@ class AvolitesController:
     def fire_cue_critical(self, cue_id: int) -> bool:
         """
         CRITICAL FAST-PATH: Dispara un cue con latencia mínima.
-
-        BYPASEA:
-        - Rate limit (60ms)
-        - Queue serial
-        - Dedup window
-
-        NO BYPASEA:
-        - Timeout de conexión
-        - Circuit breaker
-
-        Usar para:
-        - C41 (Dimmer)
-        - C37-39 (Ataque)
-        - Primer fire al entrar a estado
-        - Restore crítico
-
-        Returns:
-            bool: True si el envío fue exitoso
+        En modo ARTNET: fire directo a DmxState (ya es instant).
+        En modo HTTP: bypasea cola y rate limit.
         """
         with self._active_lock:
             self._active_cues.add(cue_id)
 
         self._last_fire_ts = time.time()
+
+        if self._artnet_active and self._cue_adapter:
+            return self._cue_adapter.fire(cue_id)
 
         # Usar fire_immediate que bypasea cola y rate limit
         return self._titan_queue.fire_immediate(cue_id)
@@ -930,29 +1034,32 @@ class AvolitesController:
     def fire_cue_manual(self, cue_id: int) -> bool:
         """
         Dispara un cue ignorando READY (para acciones manuales).
-        MANUAL BYPASS: Bypasea el chequeo de READY.
         """
         with self._active_lock:
             self._active_cues.add(cue_id)
 
         self._last_fire_ts = time.time()
 
+        if self._artnet_active and self._cue_adapter:
+            return self._cue_adapter.fire(cue_id)
+
         return self._titan_queue.fire(cue_id)
 
     def kill_cue_manual(self, cue_id: int) -> bool:
         """
         Mata un cue ignorando READY (para acciones manuales).
-        MANUAL BYPASS: Bypasea el chequeo de READY.
         """
         with self._active_lock:
             self._active_cues.discard(cue_id)
+
+        if self._artnet_active and self._cue_adapter:
+            return self._cue_adapter.kill(cue_id)
 
         return self._titan_queue.kill(cue_id, priority_boost=True)
 
     def kill_pool_manual(self, cue_ids: List[int]) -> bool:
         """
         Mata multiples cues ignorando READY.
-        MANUAL BYPASS: Bypasea el chequeo de READY.
         """
         if not cue_ids:
             return False
@@ -960,6 +1067,9 @@ class AvolitesController:
         with self._active_lock:
             for cue_id in cue_ids:
                 self._active_cues.discard(cue_id)
+
+        if self._artnet_active and self._cue_adapter:
+            return self._cue_adapter.kill_pool(cue_ids) == len(cue_ids)
 
         return self._titan_queue.kill_pool(cue_ids, priority_boost=True) == len(cue_ids)
 
@@ -980,6 +1090,10 @@ class AvolitesController:
         with self._active_lock:
             active_cues = list(self._active_cues.copy())
             self._active_cues.clear()
+
+        if self._artnet_active and self._cue_adapter:
+            self._cue_adapter.kill_all()
+            return True
 
         if active_cues:
             return self._titan_queue.kill_pool(active_cues, priority_boost=True) == len(active_cues)
@@ -1032,6 +1146,13 @@ class AvolitesController:
         sync_stats = self._titan_sync.get_stats() if self._titan_sync else {"state": "DISABLED"}
 
         status = self._status_cache.copy()
+        # Art-Net stats si aplica
+        artnet_stats = None
+        if self._artnet_active and self._artnet_engine:
+            artnet_stats = self._artnet_engine.get_stats()
+            if self._cue_adapter:
+                artnet_stats["adapter"] = self._cue_adapter.get_stats()
+
         status.update({
             "connected": self.is_connected,
             "connection_state": self.connection_state.value,
@@ -1046,6 +1167,8 @@ class AvolitesController:
             "last_fire_ts": self._last_fire_ts,
             "queue_stats": queue_stats,
             "sync_stats": sync_stats,
+            "artnet_stats": artnet_stats,
+            "artnet_active": self._artnet_active,
             "dropped_not_ready": self._dropped_not_ready,
             "dropped_queue_full": self._dropped_queue_full,
             "console_ip": self.config_manager.config.get("console_ip"),
