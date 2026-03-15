@@ -63,7 +63,7 @@ def build_sacn_packet(
         Root Layer:
             Preamble Size (2 bytes): 0x0010
             Postamble Size (2 bytes): 0x0000
-            ACN Packet Identifier (12 bytes)
+            ACN Packet Identifier (16 bytes)
             Flags + Length (2 bytes)
             Vector (4 bytes): 0x00000004
             CID (16 bytes)
