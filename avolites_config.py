@@ -782,12 +782,20 @@ class AvolitesController:
         try:
             transport_lower = transport.lower()
 
+            # Skip if already using the requested transport type
+            current_transport = type(self._titan_queue.get_transport()).__name__
+            if transport_lower in ("http", "https") and current_transport == "TitanTransport":
+                print(f"[AVOLITES] Transport already {transport_lower} ({current_transport}), skipping")
+                return True
+            if transport_lower == "artnet" and current_transport == "ArtNetTransport":
+                print(f"[AVOLITES] Transport already artnet ({current_transport}), skipping")
+                return True
+
             if transport_lower in ("http", "https"):
                 self.transport = transport_lower
                 self.config_manager.config["transport"] = transport_lower
 
-                if self.verbose:
-                    print(f"[AVOLITES] Transport -> {transport_lower}")
+                print(f"[AVOLITES] Transport -> {transport_lower}")
 
                 # Swap to HTTP transport
                 http_transport = TitanTransport(
@@ -826,15 +834,14 @@ class AvolitesController:
                     refresh_rate_hz=params.get("refresh_rate_hz", 40),
                 )
 
-                if self.verbose:
-                    print(
-                        f"[AVOLITES] Transport -> artnet | "
-                        f"target={artnet_config.target_ip} | "
-                        f"mode={'broadcast' if artnet_config.broadcast else 'unicast'} | "
-                        f"net={artnet_config.artnet_net} "
-                        f"sub={artnet_config.artnet_subnet} "
-                        f"univ={artnet_config.artnet_universe}"
-                    )
+                print(
+                    f"[AVOLITES] Transport -> artnet | "
+                    f"target={artnet_config.target_ip} | "
+                    f"mode={'broadcast' if artnet_config.broadcast else 'unicast'} | "
+                    f"net={artnet_config.artnet_net} "
+                    f"sub={artnet_config.artnet_subnet} "
+                    f"univ={artnet_config.artnet_universe}"
+                )
 
                 # Swap to ArtNet transport
                 artnet_transport = ArtNetTransport(
@@ -848,6 +855,11 @@ class AvolitesController:
                 # ArtNet has no HTTP latency - disable rate limit
                 self._titan_queue.config.rate_limit_ms = 0.0
 
+                # Verify transport is active
+                active = self._titan_queue.get_transport()
+                active_name = type(active).__name__
+                print(f"[AVOLITES] Active transport verified: {active_name} (id={id(active)})")
+
                 return True
 
             else:
@@ -856,8 +868,9 @@ class AvolitesController:
                 return False
 
         except Exception as e:
-            if self.verbose:
-                print(f"[AVOLITES] Error en set_transport: {e}")
+            print(f"[AVOLITES] Error en set_transport: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def set_console_port(self, port: int) -> bool:
@@ -916,13 +929,8 @@ class AvolitesController:
         Dispara un cue (encola via TitanQueue).
         LEGACY MODE: SIEMPRE encola, sin bloqueo por NOT_READY.
         """
-        print(f"[AvolitesBridge] FIRE cue={cue_id}")
-        # LEGACY MODE: Sin bloqueo por NOT_READY
-        # if self.connection_state != ConnectionState.READY:
-        #     self._dropped_not_ready += 1
-        #     if self.verbose:
-        #         print(f"[AvoTX] drop FIRE C{cue_id} (not ready)")
-        #     return False
+        transport_name = type(self._titan_queue.get_transport()).__name__
+        print(f"[AvolitesBridge] FIRE cue={cue_id} transport={transport_name}")
 
         with self._active_lock:
             self._active_cues.add(cue_id)
@@ -936,7 +944,8 @@ class AvolitesController:
         Mata un cue (encola via TitanQueue con prioridad maxima).
         LEGACY MODE: SIEMPRE encola, sin bloqueo por NOT_READY.
         """
-        print(f"[AvolitesBridge] KILL cue={cue_id}")
+        transport_name = type(self._titan_queue.get_transport()).__name__
+        print(f"[AvolitesBridge] KILL cue={cue_id} transport={transport_name}")
 
         with self._active_lock:
             self._active_cues.discard(cue_id)

@@ -740,6 +740,11 @@ class TitanQueue:
         cue_id = task.cue_id
         family = self._get_family(cue_id)
 
+        # Diagnostic: confirm which transport processes this kill
+        transport = self._transport
+        transport_name = type(transport).__name__
+        print(f"[TitanQueue] KILL cue={cue_id} transport={transport_name} id={id(transport)}")
+
         # Adquirir lock de familia si aplica
         if family:
             lock = self._family_locks[family]
@@ -747,7 +752,7 @@ class TitanQueue:
             lock.acquire()
 
         try:
-            success = self._transport.send_kill(cue_id)
+            success = transport.send_kill(cue_id)
 
             if success:
                 self.stats.kills_processed += 1
@@ -798,8 +803,9 @@ class TitanQueue:
         family = self._get_family(cue_id)
 
         # Diagnostic: confirm which transport processes this fire
-        transport_name = type(self._transport).__name__
-        print(f"[TitanQueue] PROCESS_FIRE C{cue_id} via {transport_name} (id={id(self._transport)})")
+        transport = self._transport
+        transport_name = type(transport).__name__
+        print(f"[TitanQueue] FIRE cue={cue_id} transport={transport_name} id={id(transport)}")
 
         # Verificar timeout de cola ANTES de adquirir lock
         age_ms = (time.time() - task.timestamp) * 1000
@@ -814,10 +820,11 @@ class TitanQueue:
             lock.acquire()
 
         try:
-            success = self._transport.send_fire(cue_id)
+            success = transport.send_fire(cue_id)
 
             if success:
                 self.stats.fires_processed += 1
+                print(f"[TitanQueue] FIRE cue={cue_id} OK via {transport_name}")
 
                 if self._on_fire_success:
                     try:
@@ -826,6 +833,7 @@ class TitanQueue:
                         pass
             else:
                 self.stats.fires_failed += 1
+                print(f"[TitanQueue] FIRE cue={cue_id} FAILED via {transport_name}")
 
                 # Reintentar FIRE es opcional (menos critico que KILL)
                 if task.retries < self.config.max_retries:
@@ -973,15 +981,30 @@ class TitanQueue:
         old = self._transport
         old_name = type(old).__name__
         new_name = type(transport).__name__
+
+        # Validate interface
+        for method in ("send_fire", "send_kill"):
+            if not callable(getattr(transport, method, None)):
+                raise ValueError(f"Transport {new_name} missing required method: {method}")
+
         self._transport = transport
+
         # Cerrar el transport anterior
         if old and hasattr(old, 'close'):
             try:
                 old.close()
             except Exception:
                 pass
-        print(f"[TitanQueue] Transport: {old_name} -> {new_name} (id={id(transport)})")
+
+        print(f"[TitanQueue] TRANSPORT SWAP {old_name}(id={id(old)}) -> {new_name}(id={id(transport)})")
         logger.info(f"[TitanQueue] Transport swapped -> {new_name}")
+
+        # Verify swap took effect
+        verify_name = type(self._transport).__name__
+        if verify_name != new_name:
+            logger.error(f"[TitanQueue] TRANSPORT SWAP FAILED: expected {new_name}, got {verify_name}")
+        else:
+            logger.info(f"[TitanQueue] TRANSPORT VERIFIED: {verify_name} (id={id(self._transport)})")
 
     def update_config(self, **kwargs):
         """Actualiza configuracion del transport."""

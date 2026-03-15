@@ -691,6 +691,22 @@ class CuesMonitorTab(QWidget):
 
         return active_cues
 
+    def _get_active_cues_from_queue(self) -> Set[int]:
+        """
+        Get active cues from TitanQueue internal tracking.
+        This is transport-independent and works for both HTTP and ArtNet.
+        """
+        active_cues = set()
+        if not self.avolites:
+            return active_cues
+        try:
+            queue = getattr(self.avolites, '_titan_queue', None)
+            if queue and hasattr(queue, 'get_active_cues'):
+                active_cues = queue.get_active_cues()
+        except Exception:
+            pass
+        return active_cues
+
     def _get_active_cues_direct_check(self) -> Set[int]:
         """Verifica directamente con Avolites qué cues están activos."""
         active_cues = set()
@@ -749,14 +765,17 @@ class CuesMonitorTab(QWidget):
                 except Exception:
                     pass
             
-            # Usar ambos métodos para obtener cues activos
+            # Usar todos los métodos para obtener cues activos (transport-independent)
             active_cues_specialists = self._get_active_cues_from_specialists()
             active_cues_direct = self._get_active_cues_direct_check()
 
             # V9.1 FIX: Obtener cues activos de FamilyManager (Vision modules)
             active_cues_family = self._get_active_cues_from_family_manager()
 
-            active_cues = active_cues_specialists.union(active_cues_direct).union(active_cues_family)
+            # TitanQueue-level active cues (transport-independent tracking)
+            active_cues_queue = self._get_active_cues_from_queue()
+
+            active_cues = active_cues_specialists.union(active_cues_direct).union(active_cues_family).union(active_cues_queue)
             
             # Actualizar contadores de analizadores
             active, disabled, placeholders = self._count_analyzer_stats()
@@ -806,11 +825,25 @@ class CuesMonitorTab(QWidget):
                 self._last_aux_time_text = aux_time_text
                 self.aux_time_info.setText(aux_time_text)
             
-            # DEBUG INFO MEJORADO
-            debug_text = f"Estado: {state_name} | Energía: {energy_level}\n"
+            # DEBUG INFO MEJORADO (transport-aware)
+            transport_info = "N/A"
+            if self.avolites:
+                try:
+                    transport_type = getattr(self.avolites, 'transport', 'unknown')
+                    queue = getattr(self.avolites, '_titan_queue', None)
+                    if queue:
+                        t = queue.get_transport()
+                        transport_info = f"{transport_type} ({type(t).__name__} id={id(t)})"
+                    else:
+                        transport_info = transport_type
+                except Exception:
+                    pass
+
+            debug_text = f"Estado: {state_name} | Energía: {energy_level} | Transport: {transport_info}\n"
             debug_text += f"Cues activos (Especialistas): {sorted(list(active_cues_specialists))}\n"
             debug_text += f"Cues activos (Directo): {sorted(list(active_cues_direct))}\n"
             debug_text += f"Cues activos (FamilyMgr): {sorted(list(active_cues_family))}\n"
+            debug_text += f"Cues activos (Queue): {sorted(list(active_cues_queue))}\n"
             debug_text += f"Cues activos (Final): {sorted(list(active_cues))}\n"
             debug_text += f"Analyzers: Active={active} Disabled={disabled} Placeholders={placeholders}\n"
             
@@ -835,19 +868,40 @@ class CuesMonitorTab(QWidget):
                 self._last_header_text = header_text
                 self.header_info.setText(header_text)
             
-            # Actualizar estado de conexión
+            # Actualizar estado de conexión (transport-aware)
             if self.avolites:
                 try:
                     status = self.avolites.get_status()
                     connected = status.get("connected", False)
-                    if connected:
-                        self.btn_connection.setText("Avolites: ✓")
+                    transport_type = getattr(self.avolites, 'transport', 'http')
+
+                    if transport_type == "artnet":
+                        # ArtNet is connectionless - show as active if transport exists
+                        queue = getattr(self.avolites, '_titan_queue', None)
+                        artnet_ok = False
+                        if queue:
+                            t = queue.get_transport()
+                            artnet_ok = hasattr(t, 'ping') and t.ping()
+                        if artnet_ok:
+                            self.btn_connection.setText("ArtNet: ACTIVE")
+                            self.btn_connection.setStyleSheet(
+                                "QPushButton { background: #9b59b6; color: white; "
+                                "border: 1px solid #8e44ad; border-radius: 4px; padding: 8px 16px; }"
+                            )
+                        else:
+                            self.btn_connection.setText("ArtNet: DOWN")
+                            self.btn_connection.setStyleSheet(
+                                "QPushButton { background: #f44336; color: white; "
+                                "border: 1px solid #d32f2f; border-radius: 4px; padding: 8px 16px; }"
+                            )
+                    elif connected:
+                        self.btn_connection.setText("Avolites: OK")
                         self.btn_connection.setStyleSheet(
                             "QPushButton { background: #4caf50; color: white; "
                             "border: 1px solid #388e3c; border-radius: 4px; padding: 8px 16px; }"
                         )
                     else:
-                        self.btn_connection.setText("Avolites: ✗")
+                        self.btn_connection.setText("Avolites: OFF")
                         self.btn_connection.setStyleSheet(
                             "QPushButton { background: #f44336; color: white; "
                             "border: 1px solid #d32f2f; border-radius: 4px; padding: 8px 16px; }"

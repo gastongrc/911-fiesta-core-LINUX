@@ -521,6 +521,9 @@ class ArtNetTransport:
 
         with self._dmx_lock:
             self._dmx_data[channel_index] = 255
+            # Snapshot non-zero count for diagnostic
+            nonzero_count = sum(1 for v in self._dmx_data if v > 0)
+            sample = [(i + 1, v) for i, v in enumerate(self._dmx_data) if v > 0][:8]
 
         elapsed_ms = (time.time() - start_ts) * 1000
         self.stats.fires_sent += 1
@@ -528,8 +531,9 @@ class ArtNetTransport:
         self.stats.last_latency_ms = elapsed_ms
         self.stats.last_success_ts = time.time()
 
-        # Diagnostic: confirm buffer write
-        print(f"[ArtNet][FIRE] C{cue_id} -> DMX CH{cue_id}=255 | buffer[{channel_index}]={self._dmx_data[channel_index]}")
+        # Diagnostic: confirm buffer write with non-zero summary
+        print(f"[ArtNet] FIRE cue={cue_id} channel={channel_index}")
+        print(f"[ArtNet-TX] non-zero={nonzero_count} sample={sample}")
 
         logger.debug(f"[ArtNetTransport] FIRE C{cue_id} -> DMX CH{cue_id}=255 ({elapsed_ms:.1f}ms)")
 
@@ -567,6 +571,7 @@ class ArtNetTransport:
 
         with self._dmx_lock:
             self._dmx_data[channel_index] = 0
+            nonzero_count = sum(1 for v in self._dmx_data if v > 0)
 
         elapsed_ms = (time.time() - start_ts) * 1000
         self.stats.kills_sent += 1
@@ -575,7 +580,7 @@ class ArtNetTransport:
         self.stats.last_success_ts = time.time()
 
         # Diagnostic: confirm buffer write
-        print(f"[ArtNet][KILL] C{cue_id} -> DMX CH{cue_id}=0 | buffer[{channel_index}]={self._dmx_data[channel_index]}")
+        print(f"[ArtNet] KILL cue={cue_id} channel={channel_index} non-zero={nonzero_count}")
 
         logger.debug(f"[ArtNetTransport] KILL C{cue_id} -> DMX CH{cue_id}=0 ({elapsed_ms:.1f}ms)")
 
