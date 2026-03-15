@@ -1,15 +1,14 @@
 # cues_monitor_tab.py - Tab de Cues Monitor CON SOPORTE BRAKE ANALYZER REAL
-# v4.11 - MANUAL BYPASS (Cue Monitor) + FAMILIAS EXTENDIDAS C60-C82
+# v4.12 - CANONICAL PIPELINE (Cue Monitor fires via CueEngine)
+#
+# CAMBIOS v4.12:
+# Manual fire uses CueEngine.fire() — same pipeline as calendar/audio/vision.
+# Guarantees family exclusivity, fire history, and transport parity (HTTP/ArtNet).
 #
 # CAMBIOS v4.11:
-# ✅ Nuevas familias: CLIMA, HAZE, DJ, ARTIST, TRACKING (C60-C82)
-# ✅ Lectura desde core/cues/cue_map.py (single source of truth)
-# ✅ Sección visual para familias extendidas
-#
-# CAMBIOS v4.10:
-# ✅ fire_cue() → fire_cue_manual() en _fire_cue_manual()
-# ✅ Todos los handlers de botones usan métodos *_manual() para bypass READY
-# ✅ MANUAL BYPASS (Cue Monitor) comentado en los métodos críticos
+# Nuevas familias: CLIMA, HAZE, DJ, ARTIST, TRACKING (C60-C82)
+# Lectura desde core/cues/cue_map.py (single source of truth)
+# Seccion visual para familias extendidas
 
 from __future__ import annotations
 
@@ -473,7 +472,7 @@ class CuesMonitorTab(QWidget):
         btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         btn.setToolTip(f"Cue {cue_id}: {state_label}")
 
-        # MANUAL BYPASS: Usar _fire_cue_manual
+        # Canonical fire: CueEngine → Avolites → TitanQueue → Transport
         btn.clicked.connect(lambda checked, cid=cue_id: self._fire_cue_manual(cid))
 
         self._style_button(btn, active=False, dimmed=False)
@@ -513,7 +512,7 @@ class CuesMonitorTab(QWidget):
             if full_label:
                 btn.setToolTip(f"Cue {cue_id}: {full_label}")
         
-        # MANUAL BYPASS (Cue Monitor): Usar _fire_cue_manual que llama a fire_cue_manual()
+        # Canonical fire: CueEngine → Avolites → TitanQueue → Transport
         btn.clicked.connect(lambda checked, cid=cue_id: self._fire_cue_manual(cid))
         
         self._style_button(btn, active=False, dimmed=False)
@@ -600,24 +599,39 @@ class CuesMonitorTab(QWidget):
 
     def _fire_cue_manual(self, cue_id: int):
         """
-        Dispara un cue manualmente usando Avolites directo.
-        
-        MANUAL BYPASS (Cue Monitor): Usa fire_cue_manual() en lugar de fire_cue()
-        para bypasear el chequeo de READY. Esto permite que las acciones manuales
-        del usuario lleguen al worker aunque Avolites esté en NOT_READY.
+        Dispara un cue manualmente desde el Cue Monitor.
+
+        Uses the canonical pipeline: CueEngine.fire() → AvolitesController →
+        TitanQueue → Transport (HTTP or ArtNet).  This guarantees family
+        exclusivity, fire-history tracking, and transport parity.
+
+        Falls back to AvolitesController.fire_cue_manual() only when
+        CueEngine is not available.
         """
         try:
-            if self.avolites and hasattr(self.avolites, 'fire_cue_manual'):
-                # MANUAL BYPASS: Usar fire_cue_manual() que bypasea READY
-                success = self.avolites.fire_cue_manual(cue_id)
+            print(f"[CueMonitor] FIRE cue={cue_id}")
+
+            # Canonical path: through CueEngine (same as calendar / audio)
+            if self.cue_engine and hasattr(self.cue_engine, 'fire'):
+                success = self.cue_engine.fire(cue_id, source="cue_monitor_manual")
                 if success:
-                    print(f"[CuesMonitorTab] Disparado manual C{cue_id} (BYPASS READY)")
+                    print(f"[CueMonitor] FIRE cue={cue_id} OK (via CueEngine)")
                 else:
-                    print(f"[CuesMonitorTab] Error disparando C{cue_id}")
-            else:
-                print(f"[CuesMonitorTab] MOCK Fire C{cue_id}")
+                    print(f"[CueMonitor] FIRE cue={cue_id} FAILED (via CueEngine)")
+                return
+
+            # Fallback: direct to AvolitesController (no CueEngine available)
+            if self.avolites and hasattr(self.avolites, 'fire_cue'):
+                success = self.avolites.fire_cue(cue_id)
+                if success:
+                    print(f"[CueMonitor] FIRE cue={cue_id} OK (via Avolites fallback)")
+                else:
+                    print(f"[CueMonitor] FIRE cue={cue_id} FAILED (via Avolites fallback)")
+                return
+
+            print(f"[CueMonitor] FIRE cue={cue_id} MOCK (no controller)")
         except Exception as e:
-            print(f"[CuesMonitorTab] Error disparando cue C{cue_id}: {e}")
+            print(f"[CueMonitor] FIRE cue={cue_id} ERROR: {e}")
 
     def _kill_all_cues(self):
         """
