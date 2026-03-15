@@ -1,15 +1,18 @@
 # ============================================================================
-# artnet_engine.py v1.0 - MOTOR ART-NET (EMISOR CONTINUO)
+# artnet_engine.py v2.0 - MOTOR ART-NET (EMISOR CONTINUO + ARTPOLL)
 # ============================================================================
 # Emite frames Art-Net OpDmx continuamente via UDP.
+# Responde ArtPoll con ArtPollReply para ser visible como nodo.
 #
 # Protocolo:
 #   Art-Net 4 (port 6454), paquete OpDmx (0x5000)
 #   512 canales DMX por frame
 #   Frecuencia configurable (default 40 fps)
 #
-# El motor lee de DmxState.snapshot() cada tick y envía el frame UDP.
-# El estado DMX se mantiene estable — no hay pulsos.
+# v2.0:
+#   - Fix timing loop: time.sleep() en lugar de Event.wait()
+#   - ArtPoll listener en thread separado
+#   - ArtPollReply con datos del nodo
 #
 # Thread independiente, daemon.
 # ============================================================================
@@ -22,7 +25,7 @@ import socket
 import struct
 import threading
 import time
-from typing import Optional
+from typing import Optional, Tuple
 
 from .dmx_state import DmxState, DMX_CHANNELS
 
@@ -31,8 +34,16 @@ logger = logging.getLogger("ArtNetEngine")
 # Art-Net constants
 ARTNET_HEADER = b"Art-Net\x00"
 ARTNET_OPCODE_DMX = 0x5000
+ARTNET_OPCODE_POLL = 0x2000
+ARTNET_OPCODE_POLL_REPLY = 0x2100
 ARTNET_PROTOCOL_VERSION = 14
 ARTNET_PORT = 6454
+
+# Node identity
+NODE_SHORT_NAME = "911Fiesta"
+NODE_LONG_NAME = "911 Fiesta DMX Engine"
+NODE_OEM = 0x0000        # Generic OEM
+NODE_ESTA = 0x0000       # No ESTA manufacturer code
 
 
 def build_artnet_dmx_packet(
@@ -81,12 +92,179 @@ def build_artnet_dmx_packet(
     return bytes(packet)
 
 
+def build_artpoll_reply(
+    ip_address: str,
+    port: int,
+    universe: int,
+    short_name: str = NODE_SHORT_NAME,
+    long_name: str = NODE_LONG_NAME,
+) -> bytes:
+    """
+    Construye un paquete ArtPollReply (239 bytes).
+
+    Spec Art-Net 4, Table 3 — ArtPollReply.
+
+    Args:
+        ip_address: IP del nodo (ej: "192.168.1.100")
+        port: Puerto Art-Net (6454)
+        universe: Universo activo
+        short_name: Nombre corto (max 18 chars)
+        long_name: Nombre largo (max 64 chars)
+
+    Returns:
+        bytes: Paquete ArtPollReply
+    """
+    packet = bytearray()
+
+    # Header (8 bytes)
+    packet.extend(ARTNET_HEADER)
+
+    # OpCode ArtPollReply (2 bytes, little-endian)
+    packet.extend(struct.pack("<H", ARTNET_OPCODE_POLL_REPLY))
+
+    # IP Address (4 bytes) — nodo IP
+    ip_parts = ip_address.split(".")
+    for part in ip_parts:
+        packet.append(int(part) & 0xFF)
+
+    # Port (2 bytes, little-endian)
+    packet.extend(struct.pack("<H", port))
+
+    # Version Info Hi/Lo (2 bytes)
+    packet.extend(struct.pack(">H", 0x0200))  # v2.0
+
+    # NetSwitch (1 byte) — bits 14-8 of universe
+    packet.append((universe >> 8) & 0x7F)
+
+    # SubSwitch (1 byte) — bits 7-4 of universe
+    packet.append((universe >> 4) & 0x0F)
+
+    # OEM Hi/Lo (2 bytes)
+    packet.extend(struct.pack(">H", NODE_OEM))
+
+    # Ubea Version (1 byte)
+    packet.append(0)
+
+    # Status1 (1 byte) — indicator state normal, port-address programming authority
+    packet.append(0xD0)  # RDM capable, indicator normal, port addr set by front panel
+
+    # ESTA Manufacturer Lo/Hi (2 bytes, little-endian)
+    packet.extend(struct.pack("<H", NODE_ESTA))
+
+    # Short Name (18 bytes, null-terminated)
+    short_bytes = short_name.encode("ascii", errors="replace")[:17]
+    packet.extend(short_bytes.ljust(18, b"\x00"))
+
+    # Long Name (64 bytes, null-terminated)
+    long_bytes = long_name.encode("ascii", errors="replace")[:63]
+    packet.extend(long_bytes.ljust(64, b"\x00"))
+
+    # Node Report (64 bytes, null-terminated)
+    report = "#0001 [0001] 911Fiesta OK"
+    report_bytes = report.encode("ascii", errors="replace")[:63]
+    packet.extend(report_bytes.ljust(64, b"\x00"))
+
+    # NumPorts Hi/Lo (2 bytes) — 1 output port
+    packet.extend(struct.pack(">H", 1))
+
+    # Port Types (4 bytes) — port 0 = DMX512 output
+    packet.append(0x80)  # Port 0: output, DMX512
+    packet.append(0x00)  # Port 1: unused
+    packet.append(0x00)  # Port 2: unused
+    packet.append(0x00)  # Port 3: unused
+
+    # GoodInput (4 bytes)
+    packet.extend(b"\x00" * 4)
+
+    # GoodOutputA (4 bytes) — port 0 transmitting
+    packet.append(0x80)  # Port 0: data is being transmitted
+    packet.append(0x00)
+    packet.append(0x00)
+    packet.append(0x00)
+
+    # SwIn (4 bytes) — input universe per port (not used)
+    packet.extend(b"\x00" * 4)
+
+    # SwOut (4 bytes) — output universe per port
+    packet.append(universe & 0x0F)  # Port 0: low nibble of universe
+    packet.append(0x00)
+    packet.append(0x00)
+    packet.append(0x00)
+
+    # AcnPriority (1 byte) — sACN priority, not used
+    packet.append(0x00)
+
+    # SwMacro (1 byte)
+    packet.append(0x00)
+
+    # SwRemote (1 byte)
+    packet.append(0x00)
+
+    # Spare (3 bytes)
+    packet.extend(b"\x00" * 3)
+
+    # Style (1 byte) — StNode (0x00)
+    packet.append(0x00)
+
+    # MAC Address (6 bytes) — use zeros (optional)
+    packet.extend(b"\x00" * 6)
+
+    # BindIp (4 bytes) — same as node IP
+    for part in ip_parts:
+        packet.append(int(part) & 0xFF)
+
+    # BindIndex (1 byte)
+    packet.append(1)
+
+    # Status2 (1 byte) — supports 15-bit port-address, Art-Net 3/4
+    packet.append(0x08)
+
+    # GoodOutputB (4 bytes)
+    packet.extend(b"\x00" * 4)
+
+    # Status3 (1 byte)
+    packet.append(0x00)
+
+    # DefaultRespUID (6 bytes)
+    packet.extend(b"\x00" * 6)
+
+    # Pad to 239 bytes minimum
+    if len(packet) < 239:
+        packet.extend(b"\x00" * (239 - len(packet)))
+
+    return bytes(packet)
+
+
+def _get_local_ip() -> str:
+    """Obtiene IP local del nodo (best effort)."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.1)
+        s.connect(("10.255.255.255", 1))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "0.0.0.0"
+
+
+def _is_artpoll(data: bytes) -> bool:
+    """Verifica si un paquete es ArtPoll (OpCode 0x2000)."""
+    if len(data) < 12:
+        return False
+    if data[0:8] != ARTNET_HEADER:
+        return False
+    opcode = struct.unpack_from("<H", data, 8)[0]
+    return opcode == ARTNET_OPCODE_POLL
+
+
 class ArtNetEngine:
     """
-    Motor Art-Net — emite frames DMX continuamente via UDP.
+    Motor Art-Net v2.0 — emite frames DMX + responde ArtPoll.
 
-    Lee de DmxState.snapshot() y envía paquetes OpDmx a la IP configurada.
-    Corre en thread daemon independiente.
+    Dos threads daemon:
+    1. Sender: emite OpDmx a la frecuencia configurada (40fps default)
+    2. Listener: recibe ArtPoll y responde ArtPollReply
 
     Uso:
         engine = ArtNetEngine(dmx_state, target_ip="192.168.1.80")
@@ -102,6 +280,8 @@ class ArtNetEngine:
         port: int = ARTNET_PORT,
         universe: int = 0,
         fps: int = 40,
+        node_name: str = NODE_SHORT_NAME,
+        node_long_name: str = NODE_LONG_NAME,
     ):
         self._dmx_state = dmx_state
         self._target_ip = target_ip
@@ -109,38 +289,57 @@ class ArtNetEngine:
         self._universe = universe
         self._fps = max(1, min(44, fps))
         self._interval = 1.0 / self._fps
+        self._node_name = node_name
+        self._node_long_name = node_long_name
 
-        # Socket UDP
-        self._sock: Optional[socket.socket] = None
+        # Sockets
+        self._send_sock: Optional[socket.socket] = None
+        self._recv_sock: Optional[socket.socket] = None
 
         # Thread control
-        self._thread: Optional[threading.Thread] = None
-        self._stop_event = threading.Event()
+        self._send_thread: Optional[threading.Thread] = None
+        self._recv_thread: Optional[threading.Thread] = None
         self._running = False
 
-        # Sequence counter (0-255 rolling, 0=disabled en spec)
+        # Sequence counter (1-255 rolling, 0 = disabled in spec)
         self._sequence = 1
 
         # Stats
         self._frames_sent = 0
         self._errors = 0
+        self._polls_received = 0
+        self._replies_sent = 0
         self._last_send_ts = 0.0
         self._start_ts = 0.0
 
+        # Local IP (resolved on start)
+        self._local_ip = "0.0.0.0"
+
         logger.info(
-            f"[ArtNetEngine] Inicializado: target={target_ip}:{port} "
+            f"[ArtNetEngine] v2.0 Inicializado: target={target_ip}:{port} "
             f"universe={universe} fps={fps}"
         )
 
-    def _setup_socket(self) -> None:
-        """Crea socket UDP con soporte broadcast."""
-        self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    def _setup_send_socket(self) -> None:
+        """Crea socket UDP para envío con soporte broadcast."""
+        self._send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._send_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        self._send_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+    def _setup_recv_socket(self) -> None:
+        """Crea socket UDP para recepción de ArtPoll en puerto 6454."""
+        self._recv_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._recv_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            self._recv_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        except (AttributeError, OSError):
+            pass  # SO_REUSEPORT not available on all platforms
+        self._recv_sock.bind(("0.0.0.0", self._port))
+        self._recv_sock.settimeout(1.0)  # 1s timeout for clean shutdown
 
     def start(self) -> bool:
         """
-        Inicia el motor Art-Net (thread daemon).
+        Inicia el motor Art-Net (sender + listener threads).
 
         Returns:
             True si inició correctamente
@@ -148,25 +347,47 @@ class ArtNetEngine:
         if self._running:
             return True
 
-        self._setup_socket()
-        self._stop_event.clear()
+        # Resolve local IP
+        self._local_ip = _get_local_ip()
+
+        # Setup sockets
+        self._setup_send_socket()
+        try:
+            self._setup_recv_socket()
+        except OSError as e:
+            logger.warning(f"[ArtNetEngine] Could not bind listener on :{self._port}: {e}")
+            self._recv_sock = None
+
         self._running = True
         self._start_ts = time.time()
 
-        self._thread = threading.Thread(
-            target=self._run_loop,
-            name="ArtNetEngine",
+        # Sender thread — emite OpDmx a fps configurados
+        self._send_thread = threading.Thread(
+            target=self._send_loop,
+            name="ArtNet-Sender",
             daemon=True,
         )
-        self._thread.start()
+        self._send_thread.start()
+
+        # Listener thread — responde ArtPoll
+        if self._recv_sock:
+            self._recv_thread = threading.Thread(
+                target=self._recv_loop,
+                name="ArtNet-Listener",
+                daemon=True,
+            )
+            self._recv_thread.start()
 
         logger.info(
             f"[ArtNetEngine] Started: {self._target_ip}:{self._port} "
-            f"universe={self._universe} @ {self._fps}fps"
+            f"universe={self._universe} @ {self._fps}fps "
+            f"local_ip={self._local_ip} "
+            f"listener={'ON' if self._recv_sock else 'OFF'}"
         )
         print(
             f"[ArtNetEngine] RUNNING → {self._target_ip}:{self._port} "
-            f"universe={self._universe} @ {self._fps}fps"
+            f"universe={self._universe} @ {self._fps}fps "
+            f"node={self._node_name} ip={self._local_ip}"
         )
         return True
 
@@ -176,30 +397,44 @@ class ArtNetEngine:
             return
 
         self._running = False
-        self._stop_event.set()
 
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=2.0)
+        # Wait for threads
+        if self._send_thread and self._send_thread.is_alive():
+            self._send_thread.join(timeout=2.0)
+        if self._recv_thread and self._recv_thread.is_alive():
+            self._recv_thread.join(timeout=2.0)
 
-        if self._sock:
-            try:
-                self._sock.close()
-            except Exception:
-                pass
-            self._sock = None
+        # Close sockets
+        for sock in (self._send_sock, self._recv_sock):
+            if sock:
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+        self._send_sock = None
+        self._recv_sock = None
 
         logger.info(
-            f"[ArtNetEngine] Stopped after {self._frames_sent} frames, "
-            f"{self._errors} errors"
+            f"[ArtNetEngine] Stopped: {self._frames_sent} frames, "
+            f"{self._polls_received} polls, {self._errors} errors"
         )
-        print(f"[ArtNetEngine] STOPPED ({self._frames_sent} frames sent)")
+        print(
+            f"[ArtNetEngine] STOPPED ({self._frames_sent} frames, "
+            f"{self._polls_received} polls answered)"
+        )
 
-    def _run_loop(self) -> None:
-        """Loop principal: envía frames Art-Net a la frecuencia configurada."""
-        logger.info("[ArtNetEngine] Worker started")
+    # ===== SENDER LOOP (OpDmx @ configured fps) =====
 
-        while not self._stop_event.is_set():
-            frame_start = time.monotonic()
+    def _send_loop(self) -> None:
+        """
+        Loop de emisión: envía frames Art-Net a la frecuencia configurada.
+
+        Usa time.sleep() para timing preciso.
+        """
+        logger.info(f"[ArtNetEngine] Sender started: interval={self._interval*1000:.1f}ms")
+
+        while self._running:
+            frame_start = time.time()
 
             try:
                 self._send_frame()
@@ -208,17 +443,17 @@ class ArtNetEngine:
                 if self._errors <= 5 or self._errors % 100 == 0:
                     logger.error(f"[ArtNetEngine] Send error #{self._errors}: {e}")
 
-            # Dormir el tiempo restante del tick
-            elapsed = time.monotonic() - frame_start
+            # Timing: sleep el tiempo restante del tick
+            elapsed = time.time() - frame_start
             sleep_time = self._interval - elapsed
             if sleep_time > 0:
-                self._stop_event.wait(sleep_time)
+                time.sleep(sleep_time)
 
-        logger.info("[ArtNetEngine] Worker stopped")
+        logger.info("[ArtNetEngine] Sender stopped")
 
     def _send_frame(self) -> None:
-        """Construye y envía un frame Art-Net."""
-        if not self._sock:
+        """Construye y envía un frame Art-Net OpDmx."""
+        if not self._send_sock:
             return
 
         # Snapshot atómico del estado DMX
@@ -232,14 +467,72 @@ class ArtNetEngine:
         )
 
         # Enviar UDP
-        self._sock.sendto(packet, (self._target_ip, self._port))
+        self._send_sock.sendto(packet, (self._target_ip, self._port))
 
         # Actualizar stats
         self._frames_sent += 1
         self._last_send_ts = time.time()
 
-        # Rolling sequence (1-255, 0 está reservado)
+        # Rolling sequence (1-255, 0 está reservado en spec)
         self._sequence = (self._sequence % 255) + 1
+
+    # ===== RECEIVER LOOP (ArtPoll listener) =====
+
+    def _recv_loop(self) -> None:
+        """
+        Loop de recepción: escucha ArtPoll y responde ArtPollReply.
+
+        Socket con timeout 1s para permitir shutdown limpio.
+        """
+        logger.info("[ArtNetEngine] Listener started on port 6454")
+
+        while self._running:
+            try:
+                data, addr = self._recv_sock.recvfrom(1024)
+            except socket.timeout:
+                continue
+            except OSError:
+                if self._running:
+                    self._errors += 1
+                break
+
+            if _is_artpoll(data):
+                self._handle_artpoll(addr)
+
+        logger.info("[ArtNetEngine] Listener stopped")
+
+    def _handle_artpoll(self, sender_addr: Tuple[str, int]) -> None:
+        """
+        Responde a un ArtPoll con ArtPollReply.
+
+        Args:
+            sender_addr: (ip, port) del solicitante
+        """
+        self._polls_received += 1
+
+        # Construir reply
+        reply = build_artpoll_reply(
+            ip_address=self._local_ip,
+            port=self._port,
+            universe=self._universe,
+            short_name=self._node_name,
+            long_name=self._node_long_name,
+        )
+
+        # Responder al sender (unicast)
+        try:
+            if self._send_sock:
+                self._send_sock.sendto(reply, sender_addr)
+                self._replies_sent += 1
+                logger.info(
+                    f"[ArtNetEngine] ArtPollReply → {sender_addr[0]}:{sender_addr[1]} "
+                    f"(node={self._node_name} universe={self._universe})"
+                )
+        except Exception as e:
+            self._errors += 1
+            logger.error(f"[ArtNetEngine] ArtPollReply error: {e}")
+
+    # ===== FACTORY =====
 
     @classmethod
     def from_json(cls, config_path: str, dmx_state: DmxState) -> "ArtNetEngine":
@@ -262,6 +555,8 @@ class ArtNetEngine:
             port=config.get("port", ARTNET_PORT),
             universe=config.get("universe", 0),
             fps=config.get("fps", 40),
+            node_name=config.get("node_name", NODE_SHORT_NAME),
+            node_long_name=config.get("node_long_name", NODE_LONG_NAME),
         )
 
     # ===== CONFIG EN CALIENTE =====
@@ -305,6 +600,10 @@ class ArtNetEngine:
             "actual_fps": round(actual_fps, 1),
             "frames_sent": self._frames_sent,
             "errors": self._errors,
+            "polls_received": self._polls_received,
+            "replies_sent": self._replies_sent,
+            "local_ip": self._local_ip,
+            "node_name": self._node_name,
             "uptime_s": round(uptime, 1),
             "last_send_ts": self._last_send_ts,
         }
@@ -320,4 +619,9 @@ class ArtNetEngine:
             pass
 
 
-__all__ = ["ArtNetEngine", "build_artnet_dmx_packet", "ARTNET_PORT"]
+__all__ = [
+    "ArtNetEngine",
+    "build_artnet_dmx_packet",
+    "build_artpoll_reply",
+    "ARTNET_PORT",
+]

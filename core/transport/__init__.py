@@ -46,6 +46,7 @@ from .dmx_state import (
 from .artnet_engine import (
     ArtNetEngine,
     build_artnet_dmx_packet,
+    build_artpoll_reply,
     ARTNET_PORT,
 )
 
@@ -79,6 +80,7 @@ __all__ = [
     # Art-Net
     "ArtNetEngine",
     "build_artnet_dmx_packet",
+    "build_artpoll_reply",
     "ARTNET_PORT",
     # Adapter
     "CueOutputAdapter",

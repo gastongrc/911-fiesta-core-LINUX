@@ -2,6 +2,7 @@
 Tests para el sistema Art-Net DMX: DmxState, ArtNetEngine, CueOutputAdapter.
 """
 import json
+import socket
 import struct
 import sys
 import os
@@ -29,7 +30,10 @@ transport_pkg.__path__ = [os.path.join(ROOT, "core", "transport")]
 sys.modules["core.transport"] = transport_pkg
 
 from core.transport.dmx_state import DmxState, DMX_CHANNELS
-from core.transport.artnet_engine import ArtNetEngine, build_artnet_dmx_packet, ARTNET_PORT
+from core.transport.artnet_engine import (
+    ArtNetEngine, build_artnet_dmx_packet, build_artpoll_reply,
+    ARTNET_PORT, ARTNET_HEADER, ARTNET_OPCODE_POLL, _is_artpoll,
+)
 from core.transport.cue_output_adapter import CueOutputAdapter
 
 
@@ -427,6 +431,170 @@ def test_full_pipeline():
 
 
 # ============================================================================
+# TEST: ArtPoll / ArtPollReply
+# ============================================================================
+
+def test_artpoll_reply_structure():
+    """Verifica estructura del paquete ArtPollReply."""
+    reply = build_artpoll_reply(
+        ip_address="192.168.1.100",
+        port=6454,
+        universe=10,
+        short_name="911Fiesta",
+        long_name="911 Fiesta DMX Engine",
+    )
+
+    # Minimum 239 bytes
+    assert len(reply) >= 239
+
+    # Header "Art-Net\0"
+    assert reply[0:8] == b"Art-Net\x00"
+
+    # OpCode ArtPollReply 0x2100 (little-endian)
+    opcode = struct.unpack_from("<H", reply, 8)[0]
+    assert opcode == 0x2100
+
+    # IP Address: 192.168.1.100
+    assert reply[10] == 192
+    assert reply[11] == 168
+    assert reply[12] == 1
+    assert reply[13] == 100
+
+    # Port 6454 (little-endian)
+    port = struct.unpack_from("<H", reply, 14)[0]
+    assert port == 6454
+
+    # Short name starts at byte 26 (after header + opcode + ip + port + version + net + sub + oem + ubea + status1 + esta)
+    # Find "911Fiesta" in the packet
+    assert b"911Fiesta" in reply
+    assert b"911 Fiesta DMX Engine" in reply
+
+    print("[OK] test_artpoll_reply_structure")
+
+
+def test_artpoll_reply_different_universes():
+    """ArtPollReply codifica universo correctamente."""
+    reply_u0 = build_artpoll_reply("10.0.0.1", 6454, universe=0)
+    reply_u10 = build_artpoll_reply("10.0.0.1", 6454, universe=10)
+    reply_u256 = build_artpoll_reply("10.0.0.1", 6454, universe=256)
+
+    # All must be valid packets
+    assert len(reply_u0) >= 239
+    assert len(reply_u10) >= 239
+    assert len(reply_u256) >= 239
+
+    # All have correct header
+    for r in [reply_u0, reply_u10, reply_u256]:
+        assert r[0:8] == ARTNET_HEADER
+
+    print("[OK] test_artpoll_reply_different_universes")
+
+
+def test_is_artpoll():
+    """_is_artpoll detecta paquetes ArtPoll correctamente."""
+    # Valid ArtPoll
+    artpoll = bytearray()
+    artpoll.extend(ARTNET_HEADER)
+    artpoll.extend(struct.pack("<H", ARTNET_OPCODE_POLL))  # 0x2000
+    artpoll.extend(struct.pack(">H", 14))  # protocol version
+    assert _is_artpoll(bytes(artpoll)) is True
+
+    # Not ArtPoll (OpDmx)
+    opdmx = bytearray()
+    opdmx.extend(ARTNET_HEADER)
+    opdmx.extend(struct.pack("<H", 0x5000))
+    opdmx.extend(b"\x00\x0e")
+    assert _is_artpoll(bytes(opdmx)) is False
+
+    # Too short
+    assert _is_artpoll(b"Art-Net") is False
+
+    # Wrong header
+    assert _is_artpoll(b"NotArtNt\x00\x20\x00\x0e") is False
+
+    print("[OK] test_is_artpoll")
+
+
+def test_artnet_engine_fps_timing():
+    """Engine debe enviar a ~40fps (no 1fps)."""
+    state = DmxState(cue_channel_map={1: [1]})
+    engine = ArtNetEngine(state, target_ip="127.0.0.1", fps=40)
+
+    engine.start()
+    time.sleep(0.5)  # 500ms = should get ~20 frames at 40fps
+
+    stats = engine.get_stats()
+    engine.stop()
+
+    frames = stats["frames_sent"]
+    # At 40fps, 500ms should give ~20 frames. Allow 14-26 range for timing variance.
+    assert frames >= 14, f"Expected ~20 frames in 500ms at 40fps, got {frames} (too slow!)"
+    assert frames <= 26, f"Expected ~20 frames in 500ms at 40fps, got {frames} (too fast!)"
+
+    actual_fps = stats["actual_fps"]
+    assert actual_fps >= 25, f"Actual FPS {actual_fps} is way below configured 40fps"
+
+    print(f"[OK] test_artnet_engine_fps_timing ({frames} frames in 500ms, ~{actual_fps}fps)")
+
+
+def test_artnet_engine_artpoll_response():
+    """Engine responde ArtPoll con ArtPollReply."""
+    state = DmxState(cue_channel_map={41: [41]})
+    # Use a non-standard port to avoid conflicts
+    engine = ArtNetEngine(state, target_ip="127.0.0.1", port=16454, universe=5)
+    engine.start()
+    time.sleep(0.1)  # let it bind
+
+    # Send ArtPoll to the engine's listener
+    poll_packet = bytearray()
+    poll_packet.extend(ARTNET_HEADER)
+    poll_packet.extend(struct.pack("<H", ARTNET_OPCODE_POLL))
+    poll_packet.extend(struct.pack(">H", 14))  # protocol version
+    poll_packet.extend(b"\x00\x00")  # TalkToMe + Priority
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(2.0)
+    sock.sendto(bytes(poll_packet), ("127.0.0.1", 16454))
+
+    # Wait for reply
+    try:
+        reply_data, reply_addr = sock.recvfrom(1024)
+        # Verify it's an ArtPollReply
+        assert reply_data[0:8] == ARTNET_HEADER
+        opcode = struct.unpack_from("<H", reply_data, 8)[0]
+        assert opcode == 0x2100, f"Expected ArtPollReply (0x2100), got 0x{opcode:04X}"
+        assert b"911Fiesta" in reply_data
+        got_reply = True
+    except socket.timeout:
+        got_reply = False
+    finally:
+        sock.close()
+
+    engine.stop()
+
+    stats = engine.get_stats()
+    assert got_reply, "Did not receive ArtPollReply"
+    assert stats["polls_received"] >= 1
+    assert stats["replies_sent"] >= 1
+    print(f"[OK] test_artnet_engine_artpoll_response (polls={stats['polls_received']})")
+
+
+def test_artnet_engine_stats_v2():
+    """Stats v2 incluyen polls y node info."""
+    state = DmxState()
+    engine = ArtNetEngine(state, target_ip="127.0.0.1", universe=7, node_name="TestNode")
+
+    stats = engine.get_stats()
+    assert "polls_received" in stats
+    assert "replies_sent" in stats
+    assert "local_ip" in stats
+    assert "node_name" in stats
+    assert stats["node_name"] == "TestNode"
+    assert stats["universe"] == 7
+    print("[OK] test_artnet_engine_stats_v2")
+
+
+# ============================================================================
 # RUN ALL
 # ============================================================================
 
@@ -443,9 +611,15 @@ if __name__ == "__main__":
         test_dmx_state_persistence,
         test_artnet_packet_structure,
         test_artnet_packet_universe_encoding,
+        test_artpoll_reply_structure,
+        test_artpoll_reply_different_universes,
+        test_is_artpoll,
         test_artnet_engine_start_stop,
         test_artnet_engine_sends_persistent_state,
         test_artnet_engine_from_json,
+        test_artnet_engine_fps_timing,
+        test_artnet_engine_artpoll_response,
+        test_artnet_engine_stats_v2,
         test_adapter_fire_kill,
         test_adapter_kill_pool,
         test_adapter_stats,
