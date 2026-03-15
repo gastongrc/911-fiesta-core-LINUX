@@ -2935,16 +2935,25 @@ class Main(QMainWindow):
             
             # APLICAR configuración al controlador
             if hasattr(self.avolites, 'set_transport'):
-                self.avolites.set_transport(transport)
-            
-            self.avolites.set_console_ip(ip)
-            self.avolites.set_console_port(port)
-            
-            # SIEMPRE reconectar
-            if hasattr(self.avolites, 'reconnect'):
-                self.avolites.reconnect()
-            elif hasattr(self.avolites, 'connect'):
-                self.avolites.connect()
+                if transport == "artnet":
+                    # Pass artnet_params to avoid creating a fresh ArtNetTransport
+                    # with default settings (which would lose DMX buffer state)
+                    artnet = data.get("net_panel", {}).get("artnet", {})
+                    self.avolites.set_transport(transport, artnet_params=artnet)
+                else:
+                    self.avolites.set_transport(transport)
+
+            # set_console_ip/port only relevant for HTTP transport
+            if transport != "artnet":
+                self.avolites.set_console_ip(ip)
+                self.avolites.set_console_port(port)
+
+            # Reconectar solo para HTTP (ArtNet maneja su propia conexión)
+            if transport != "artnet":
+                if hasattr(self.avolites, 'reconnect'):
+                    self.avolites.reconnect()
+                elif hasattr(self.avolites, 'connect'):
+                    self.avolites.connect()
             
             self._add_net_event(f"Destino guardado: {ip}:{port} [{transport}]")
             QMessageBox.information(self, "Red", f"Destino guardado y aplicado:\n{ip}:{port}\nTransporte: {transport}")

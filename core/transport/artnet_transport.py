@@ -474,6 +474,18 @@ class ArtNetTransport:
             self._socket.sendto(packet, (self.config.target_ip, ARTNET_PORT))
             self.stats.packets_sent += 1
             self.stats.sequence_number = self._sequence
+
+            # Periodic diagnostic: log non-zero DMX channels every ~2 seconds
+            if self.stats.packets_sent % (self.config.refresh_rate_hz * 2) == 1:
+                dmx_slice = packet[18:]  # DMX data starts at byte 18
+                nonzero = [(i + 1, v) for i, v in enumerate(dmx_slice) if v > 0]
+                if nonzero:
+                    sample = nonzero[:8]  # Show first 8 non-zero channels
+                    print(f"[ArtNet-TX] pkt#{self.stats.packets_sent} non-zero={len(nonzero)} sample={sample}")
+                # Only log "all zero" once every ~10 seconds to avoid spam
+                elif self.stats.packets_sent % (self.config.refresh_rate_hz * 10) == 1:
+                    print(f"[ArtNet-TX] pkt#{self.stats.packets_sent} ALL ZERO (id={id(self)})")
+
         except socket.timeout:
             pass  # sendto should not block, but ignore if it does
         except Exception as e:
@@ -515,6 +527,9 @@ class ArtNetTransport:
         self.stats.fires_ok += 1
         self.stats.last_latency_ms = elapsed_ms
         self.stats.last_success_ts = time.time()
+
+        # Diagnostic: confirm buffer write
+        print(f"[ArtNet][FIRE] C{cue_id} -> DMX CH{cue_id}=255 | buffer[{channel_index}]={self._dmx_data[channel_index]}")
 
         logger.debug(f"[ArtNetTransport] FIRE C{cue_id} -> DMX CH{cue_id}=255 ({elapsed_ms:.1f}ms)")
 
@@ -558,6 +573,9 @@ class ArtNetTransport:
         self.stats.kills_ok += 1
         self.stats.last_latency_ms = elapsed_ms
         self.stats.last_success_ts = time.time()
+
+        # Diagnostic: confirm buffer write
+        print(f"[ArtNet][KILL] C{cue_id} -> DMX CH{cue_id}=0 | buffer[{channel_index}]={self._dmx_data[channel_index]}")
 
         logger.debug(f"[ArtNetTransport] KILL C{cue_id} -> DMX CH{cue_id}=0 ({elapsed_ms:.1f}ms)")
 
@@ -627,8 +645,8 @@ class ArtNetTransport:
             changed = True
 
         # TitanTransport-compatible params (partial mapping)
-        if console_ip and not kwargs.get("target_ip"):
-            # Use console_ip as unicast target if no explicit target_ip
+        if console_ip and not kwargs.get("target_ip") and not self.config.broadcast:
+            # Use console_ip as unicast target only if NOT in broadcast mode
             self.config.target_ip = console_ip
             changed = True
 

@@ -797,6 +797,10 @@ class TitanQueue:
         cue_id = task.cue_id
         family = self._get_family(cue_id)
 
+        # Diagnostic: confirm which transport processes this fire
+        transport_name = type(self._transport).__name__
+        print(f"[TitanQueue] PROCESS_FIRE C{cue_id} via {transport_name} (id={id(self._transport)})")
+
         # Verificar timeout de cola ANTES de adquirir lock
         age_ms = (time.time() - task.timestamp) * 1000
         if age_ms > self.config.fire_timeout_ms:
@@ -967,6 +971,8 @@ class TitanQueue:
             transport: Nueva instancia de transport (TitanTransport o ArtNetTransport)
         """
         old = self._transport
+        old_name = type(old).__name__
+        new_name = type(transport).__name__
         self._transport = transport
         # Cerrar el transport anterior
         if old and hasattr(old, 'close'):
@@ -974,7 +980,8 @@ class TitanQueue:
                 old.close()
             except Exception:
                 pass
-        logger.info(f"[TitanQueue] Transport swapped -> {type(transport).__name__}")
+        print(f"[TitanQueue] Transport: {old_name} -> {new_name} (id={id(transport)})")
+        logger.info(f"[TitanQueue] Transport swapped -> {new_name}")
 
     def update_config(self, **kwargs):
         """Actualiza configuracion del transport."""

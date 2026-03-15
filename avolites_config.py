@@ -842,6 +842,7 @@ class AvolitesController:
                     on_success=self._titan_queue._on_transport_success,
                     on_failure=self._titan_queue._on_transport_failure,
                 )
+                print(f"[AVOLITES] ArtNet transport created (id={id(artnet_transport)})")
                 self._titan_queue.set_transport(artnet_transport)
 
                 # ArtNet has no HTTP latency - disable rate limit
