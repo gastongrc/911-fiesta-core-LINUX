@@ -64,13 +64,15 @@ async def startup_event():
     Creates AvolitesController, CueEngine, ArtNetTransport, and registers
     them in AppState so API endpoints can fire/kill cues.
 
-    Safe to skip if main.py (GUI) already initialized the runtime.
+    Safe to skip if main.py (GUI) already initialized the runtime via
+    start_runtime(gui=True) — the bootstrap is idempotent.
     """
+    import os
     from core.runtime.bootstrap import start_runtime, is_runtime_started
     if is_runtime_started():
-        print("[API] Runtime already initialized by GUI, skipping bootstrap")
+        print(f"[API] Runtime already initialized (pid={os.getpid()}), skipping bootstrap")
         return
-    print("[API] Headless mode detected — bootstrapping DMX runtime")
+    print(f"[API] Headless mode detected (pid={os.getpid()}) — bootstrapping DMX runtime")
     start_runtime(gui=False)
 
 

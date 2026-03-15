@@ -360,8 +360,6 @@ class TitanQueue:
             with self._active_lock:
                 self._active_cues.add(cue_id)
 
-            # Deterministic log (always visible)
-            print(f"[TitanQueue] ENQUEUE FIRE cue={cue_id} qlen={self._queue.qsize()}")
             if src:
                 logger.info(f"[TITAN] FIRE C{cue_id} ENQUEUE | ts={ts:.3f} qlen={self._queue.qsize()} | src={src}")
             else:
@@ -428,7 +426,6 @@ class TitanQueue:
             with self._active_lock:
                 self._active_cues.discard(cue_id)
 
-            print(f"[TitanQueue] ENQUEUE KILL cue={cue_id} qlen={self._queue.qsize()} boost={priority_boost}")
             if src:
                 logger.info(f"[TITAN] KILL C{cue_id} ENQUEUE | ts={ts:.3f} qlen={self._queue.qsize()} boost={priority_boost} | src={src}")
             else:
@@ -740,10 +737,9 @@ class TitanQueue:
         cue_id = task.cue_id
         family = self._get_family(cue_id)
 
-        # Diagnostic: confirm which transport processes this kill
         transport = self._transport
         transport_name = type(transport).__name__
-        print(f"[TitanQueue] KILL cue={cue_id} transport={transport_name} id={id(transport)}")
+        logger.info("[QUEUE] kill task %d via %s", cue_id, transport_name)
 
         # Adquirir lock de familia si aplica
         if family:
@@ -802,17 +798,14 @@ class TitanQueue:
         cue_id = task.cue_id
         family = self._get_family(cue_id)
 
-        # Diagnostic: confirm which transport processes this fire
         transport = self._transport
         transport_name = type(transport).__name__
-        print(f"[TitanQueue] FIRE cue={cue_id} transport={transport_name} id={id(transport)}")
-        print(f"[DMX-TRACE] stage=TitanQueue._process_fire cue={cue_id} transport={transport_name} id={id(transport)} -> transport.send_fire()")
+        logger.info("[QUEUE] fire task %d via %s", cue_id, transport_name)
 
         # Verificar timeout de cola ANTES de adquirir lock
         age_ms = (time.time() - task.timestamp) * 1000
         if age_ms > self.config.fire_timeout_ms:
-            print(f"[DMX-TRACE] stage=TitanQueue DROPPED cue={cue_id} age_ms={age_ms:.0f} > timeout={self.config.fire_timeout_ms}")
-            logger.warning(f"[TitanQueue] FIRE C{cue_id} dropped: timeout ({age_ms:.0f}ms)")
+            logger.warning("[QUEUE] FIRE C%d dropped: timeout (%.0fms)", cue_id, age_ms)
             return
 
         # Adquirir lock de familia si aplica
@@ -826,7 +819,6 @@ class TitanQueue:
 
             if success:
                 self.stats.fires_processed += 1
-                print(f"[TitanQueue] FIRE cue={cue_id} OK via {transport_name}")
 
                 if self._on_fire_success:
                     try:
@@ -835,7 +827,7 @@ class TitanQueue:
                         pass
             else:
                 self.stats.fires_failed += 1
-                print(f"[TitanQueue] FIRE cue={cue_id} FAILED via {transport_name}")
+                logger.warning("[QUEUE] FIRE C%d FAILED via %s", cue_id, transport_name)
 
                 # Reintentar FIRE es opcional (menos critico que KILL)
                 if task.retries < self.config.max_retries:
@@ -998,8 +990,8 @@ class TitanQueue:
             except Exception:
                 pass
 
-        print(f"[TitanQueue] TRANSPORT SWAP {old_name}(id={id(old)}) -> {new_name}(id={id(transport)})")
-        logger.info(f"[TitanQueue] Transport swapped -> {new_name}")
+        logger.info("[TitanQueue] TRANSPORT SWAP %s(id=%d) -> %s(id=%d)",
+                    old_name, id(old), new_name, id(transport))
 
         # Verify swap took effect
         verify_name = type(self._transport).__name__

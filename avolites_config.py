@@ -929,12 +929,6 @@ class AvolitesController:
         Dispara un cue (encola via TitanQueue).
         LEGACY MODE: SIEMPRE encola, sin bloqueo por NOT_READY.
         """
-        transport = self._titan_queue.get_transport()
-        transport_name = type(transport).__name__
-        transport_id = id(transport)
-        print(f"[AvolitesBridge] FIRE cue={cue_id} transport={transport_name}")
-        print(f"[DMX-TRACE] stage=AvolitesController cue={cue_id} transport={transport_name} id={transport_id} -> queue.fire()")
-
         with self._active_lock:
             self._active_cues.add(cue_id)
 
@@ -947,9 +941,6 @@ class AvolitesController:
         Mata un cue (encola via TitanQueue con prioridad maxima).
         LEGACY MODE: SIEMPRE encola, sin bloqueo por NOT_READY.
         """
-        transport_name = type(self._titan_queue.get_transport()).__name__
-        print(f"[AvolitesBridge] KILL cue={cue_id} transport={transport_name}")
-
         with self._active_lock:
             self._active_cues.discard(cue_id)
 

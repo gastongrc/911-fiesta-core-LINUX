@@ -257,18 +257,14 @@ class CueEngine:
         meta_str = ""
         if meta:
             meta_str = f" meta={meta}"
-        print(f"[CueEngine] *** FIRE C{cue_id} *** source={source}{meta_str}")
-
-        # DMX pipeline trace — stage 1
-        channel_index = cue_id - 1
-        print(f"[DMX-TRACE] stage=CueEngine cue={cue_id} ch_index={channel_index} family={family} -> av.fire_cue()")
+        print(f"[CUE] fire {cue_id} source={source} family={family}{meta_str}")
 
         # Disparar via avolites
         try:
             result = self.av.fire_cue(cue_id)
             return result
         except Exception as e:
-            print(f"[CueEngine] FIRE ERROR C{cue_id}: {e}")
+            print(f"[CUE] fire {cue_id} ERROR: {e}")
             return False
 
     def kill(self, cue_id: int, source: str = "") -> bool:
@@ -285,11 +281,11 @@ class CueEngine:
         if not self.av:
             return False
 
-        print(f"[CueEngine] KILL C{cue_id} source={source}")
+        print(f"[CUE] kill {cue_id} source={source}")
         try:
             return self.av.kill_cue(cue_id)
         except Exception as e:
-            print(f"[CueEngine] KILL ERROR C{cue_id}: {e}")
+            print(f"[CUE] kill {cue_id} ERROR: {e}")
             return False
 
     def kill_pool_centralized(self, cue_ids: List[int], source: str = "") -> bool:

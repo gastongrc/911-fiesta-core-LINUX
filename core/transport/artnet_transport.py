@@ -449,12 +449,11 @@ class ArtNetTransport:
         with self._dmx_lock:
             dmx_snapshot = bytes(self._dmx_data)
             snapshot_nonzero = sum(1 for v in self._dmx_data if v > 0)
-            snapshot_buf_id = id(self._dmx_data)
 
         # Trace: snapshot taken from buffer
         if snapshot_nonzero > 0:
             nz = [(i + 1, v) for i, v in enumerate(dmx_snapshot) if v > 0][:8]
-            print(f"[DMX-TRACE] stage=_build_packet snapshot_nonzero={snapshot_nonzero} channels={nz} buf_id={snapshot_buf_id}")
+            logger.debug("[DMX] build_packet nonzero=%d channels=%s", snapshot_nonzero, nz)
 
         packet = bytearray()
         # Header
@@ -480,34 +479,14 @@ class ArtNetTransport:
 
         packet = self._build_artnet_dmx_packet()
 
-        # ---- Pre-sendto diagnostic: inspect the ACTUAL PACKET being sent ----
-        # IMPORTANT: read from the packet payload, NOT re-read the buffer.
-        # Re-reading the buffer is a TOCTOU bug: a kill could zero the buffer
-        # between _build (which snapshots) and this log, producing misleading output.
-        dmx_payload = packet[18:]  # DMX data starts at byte 18 in ArtDMX
+        # Diagnostic: log on state change + periodic heartbeat (~every 2s)
+        dmx_payload = packet[18:]
         pkt_nonzero = sum(1 for v in dmx_payload if v > 0)
-        pkt_nonzero_list = [(i + 1, v) for i, v in enumerate(dmx_payload) if v > 0]
-
-        # Also snapshot the live buffer for comparison (under lock)
-        with self._dmx_lock:
-            live_nonzero = sum(1 for v in self._dmx_data if v > 0)
-            live_buf_id = id(self._dmx_data)
-
-        # Log on EVERY state change + periodic heartbeat (~every 2s)
         changed = (pkt_nonzero != self._last_tx_nonzero)
         periodic = (self.stats.packets_sent % (self.config.refresh_rate_hz * 2) == 0)
         if changed or periodic:
-            sample = pkt_nonzero_list[:8]
-            print(
-                f"[DMX-TRACE] stage=_send_universe pkt_len={len(packet)} "
-                f"pkt_nonzero={pkt_nonzero} live_buf_nonzero={live_nonzero} "
-                f"channels={sample} self_id={id(self)} buf_id={live_buf_id}"
-            )
-            # If packet and buffer disagree, flag it
-            if pkt_nonzero != live_nonzero:
-                print(
-                    f"[DMX-TRACE] WARNING: packet({pkt_nonzero}) != buffer({live_nonzero}) — TOCTOU race detected"
-                )
+            sample = [(i + 1, v) for i, v in enumerate(dmx_payload) if v > 0][:8]
+            logger.info("[ARTNET] TX frame pkt_nonzero=%d channels=%s", pkt_nonzero, sample)
         self._last_tx_nonzero = pkt_nonzero
 
         try:
@@ -550,11 +529,6 @@ class ArtNetTransport:
 
         with self._dmx_lock:
             self._dmx_data[channel_index] = 255
-            # Verify the write and snapshot state
-            readback = self._dmx_data[channel_index]
-            nonzero_count = sum(1 for v in self._dmx_data if v > 0)
-            nonzero_channels = [(i + 1, v) for i, v in enumerate(self._dmx_data) if v > 0][:8]
-            buf_id = id(self._dmx_data)
 
         elapsed_ms = (time.time() - start_ts) * 1000
         self.stats.fires_sent += 1
@@ -562,11 +536,7 @@ class ArtNetTransport:
         self.stats.last_latency_ms = elapsed_ms
         self.stats.last_success_ts = time.time()
 
-        # Deterministic trace — verify buffer write
-        print(f"[DMX-TRACE] stage=ArtNet.send_fire cue={cue_id} ch={channel_index} wrote=255 readback={readback} buf_id={buf_id} self_id={id(self)}")
-        print(f"[DMX-TRACE]   buffer_nonzero={nonzero_count} channels={nonzero_channels}")
-
-        logger.debug(f"[ArtNetTransport] FIRE C{cue_id} -> DMX CH{cue_id}=255 ({elapsed_ms:.1f}ms)")
+        logger.info("[DMX] channel %d = 255 (fire cue %d, %.1fms)", cue_id, cue_id, elapsed_ms)
 
         if self._on_success:
             try:
@@ -601,9 +571,7 @@ class ArtNetTransport:
         channel_index = cue_id - 1
 
         with self._dmx_lock:
-            prev_val = self._dmx_data[channel_index]
             self._dmx_data[channel_index] = 0
-            nonzero_count = sum(1 for v in self._dmx_data if v > 0)
 
         elapsed_ms = (time.time() - start_ts) * 1000
         self.stats.kills_sent += 1
@@ -611,10 +579,7 @@ class ArtNetTransport:
         self.stats.last_latency_ms = elapsed_ms
         self.stats.last_success_ts = time.time()
 
-        # Deterministic trace
-        print(f"[DMX-TRACE] stage=ArtNet.send_kill cue={cue_id} ch={channel_index} was={prev_val} now=0 remaining_nonzero={nonzero_count} self_id={id(self)}")
-
-        logger.debug(f"[ArtNetTransport] KILL C{cue_id} -> DMX CH{cue_id}=0 ({elapsed_ms:.1f}ms)")
+        logger.info("[DMX] channel %d = 0 (kill cue %d, %.1fms)", cue_id, cue_id, elapsed_ms)
 
         if self._on_success:
             try:

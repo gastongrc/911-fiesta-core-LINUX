@@ -631,15 +631,37 @@ class Main(QMainWindow):
         # NIC configuration
         self.local_ip_effective = None  # Currently bound local IP
 
-        self.energy_detector = EnergyDetector()
-        self.avolites = AvolitesController(auto_connect=False)
-        # ✅ SPRINT 1: Pasar energy_detector al StateManager
-        self.state_manager = StateManager(
-            energy_detector=self.energy_detector,
-            min_hold_seconds=2.0,
-            hysteresis_margin=0.6,
-            cooldown_seconds=0.5
+        # === SINGLE RUNTIME: use bootstrap to create all instances ===
+        # This guarantees one AvolitesController, one TitanQueue, one ArtNetTransport,
+        # and one CueEngine across the entire process (GUI + API threads).
+        from core.runtime.bootstrap import (
+            start_runtime, get_controller, get_cue_engine,
+            get_state_manager, get_energy_detector,
         )
+        start_runtime(gui=True)
+
+        self.avolites = get_controller()
+        self.cue_engine = get_cue_engine()
+        self.state_manager = get_state_manager()
+        self.energy_detector = get_energy_detector()
+
+        # Fallback if bootstrap failed (should not happen in normal operation)
+        if self.avolites is None:
+            print("[MAIN] WARNING: bootstrap failed, creating standalone AvolitesController")
+            self.avolites = AvolitesController(auto_connect=False)
+        if self.energy_detector is None:
+            self.energy_detector = EnergyDetector()
+        if self.state_manager is None:
+            self.state_manager = StateManager(
+                energy_detector=self.energy_detector,
+                min_hold_seconds=2.0,
+                hysteresis_margin=0.6,
+                cooldown_seconds=0.5,
+            )
+
+        print(f"[MAIN] Runtime initialized via bootstrap (single runtime)")
+        print(f"[MAIN]   AvolitesController id={id(self.avolites)}")
+        print(f"[MAIN]   CueEngine id={id(self.cue_engine) if self.cue_engine else 'None'}")
 
         # Music Structure Engine (MSE)
         self.music_structure_engine = None
@@ -649,29 +671,6 @@ class Main(QMainWindow):
             except Exception as e:
                 print(f"[MSE] init failed: {e}")
                 self.music_structure_engine = None
-
-        if CUE_ENGINE_MODULAR_AVAILABLE:
-            try:
-                self.cue_engine = create_cue_engine(
-                    avolites_controller=self.avolites,
-                    state_manager=self.state_manager,
-                    energy_detector=self.energy_detector
-                )
-                self.cue_engine.start_auto_update()
-            except:
-                self.cue_engine = None
-        else:
-            self.cue_engine = None
-
-        # Mark runtime as started so headless bootstrap (api/main.py) skips
-        try:
-            from core.runtime.bootstrap import _runtime_lock, _runtime_started
-            import core.runtime.bootstrap as _bootstrap_mod
-            with _runtime_lock:
-                _bootstrap_mod._runtime_started = True
-            print("[MAIN] Runtime marked as started (GUI mode)")
-        except Exception as _e:
-            print(f"[MAIN] Could not mark runtime started: {_e}")
 
         # Vision System (Phase 6) - PRO con integración CueEngine
         if VISION_AVAILABLE:
