@@ -470,21 +470,20 @@ class ArtNetTransport:
 
         packet = self._build_artnet_dmx_packet()
 
+        # ---- Pre-send diagnostic: log DMX payload on EVERY packet ----
+        dmx_payload = packet[18:]  # DMX data starts at byte 18
+        nonzero_count = sum(1 for v in dmx_payload if v > 0)
+        first20 = list(dmx_payload[:20])
+        universe = self.config.artnet_universe
+        print(
+            f"[ArtNet-TX] universe={universe} nonzero={nonzero_count} "
+            f"channels={first20} id={id(self)}"
+        )
+
         try:
             self._socket.sendto(packet, (self.config.target_ip, ARTNET_PORT))
             self.stats.packets_sent += 1
             self.stats.sequence_number = self._sequence
-
-            # Periodic diagnostic: log non-zero DMX channels every ~2 seconds
-            if self.stats.packets_sent % (self.config.refresh_rate_hz * 2) == 1:
-                dmx_slice = packet[18:]  # DMX data starts at byte 18
-                nonzero = [(i + 1, v) for i, v in enumerate(dmx_slice) if v > 0]
-                if nonzero:
-                    sample = nonzero[:8]  # Show first 8 non-zero channels
-                    print(f"[ArtNet-TX] pkt#{self.stats.packets_sent} non-zero={len(nonzero)} sample={sample}")
-                # Only log "all zero" once every ~10 seconds to avoid spam
-                elif self.stats.packets_sent % (self.config.refresh_rate_hz * 10) == 1:
-                    print(f"[ArtNet-TX] pkt#{self.stats.packets_sent} ALL ZERO (id={id(self)})")
 
         except socket.timeout:
             pass  # sendto should not block, but ignore if it does
@@ -531,8 +530,8 @@ class ArtNetTransport:
         self.stats.last_latency_ms = elapsed_ms
         self.stats.last_success_ts = time.time()
 
-        # Diagnostic: confirm buffer write with non-zero summary
-        print(f"[ArtNet] FIRE cue={cue_id} channel={channel_index}")
+        # Diagnostic: confirm buffer write with non-zero summary and instance id
+        print(f"[ArtNet] FIRE cue={cue_id} channel={channel_index} id={id(self)}")
         print(f"[ArtNet-TX] non-zero={nonzero_count} sample={sample}")
 
         logger.debug(f"[ArtNetTransport] FIRE C{cue_id} -> DMX CH{cue_id}=255 ({elapsed_ms:.1f}ms)")
