@@ -663,6 +663,16 @@ class Main(QMainWindow):
         else:
             self.cue_engine = None
 
+        # Mark runtime as started so headless bootstrap (api/main.py) skips
+        try:
+            from core.runtime.bootstrap import _runtime_lock, _runtime_started
+            import core.runtime.bootstrap as _bootstrap_mod
+            with _runtime_lock:
+                _bootstrap_mod._runtime_started = True
+            print("[MAIN] Runtime marked as started (GUI mode)")
+        except Exception as _e:
+            print(f"[MAIN] Could not mark runtime started: {_e}")
+
         # Vision System (Phase 6) - PRO con integración CueEngine
         if VISION_AVAILABLE:
             try:

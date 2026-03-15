@@ -6,6 +6,7 @@ ARQUITECTURA:
 - FORWARDEA /api/v1/status/* a CORE HTTP (127.0.0.1:8010)
 - FORWARDEA /api/v1/vision/* a Vision Flask (127.0.0.1:5000)
 - Sirve frontend estático (webapp/dist) en / (producción, sin Node)
+- Bootstraps DMX runtime on startup (headless mode)
 """
 from pathlib import Path
 
@@ -52,6 +53,25 @@ app.include_router(system_health.router, prefix="/api/v1", tags=["system-health"
 # Mount static assets from Vite build (JS/CSS/images)
 if (WEBAPP_DIST / "assets").is_dir():
     app.mount("/assets", StaticFiles(directory=WEBAPP_DIST / "assets"), name="static-assets")
+
+
+# ==================== RUNTIME BOOTSTRAP (headless DMX) ====================
+
+@app.on_event("startup")
+async def startup_event():
+    """
+    Initialize the DMX runtime when running headless (uvicorn only).
+    Creates AvolitesController, CueEngine, ArtNetTransport, and registers
+    them in AppState so API endpoints can fire/kill cues.
+
+    Safe to skip if main.py (GUI) already initialized the runtime.
+    """
+    from core.runtime.bootstrap import start_runtime, is_runtime_started
+    if is_runtime_started():
+        print("[API] Runtime already initialized by GUI, skipping bootstrap")
+        return
+    print("[API] Headless mode detected — bootstrapping DMX runtime")
+    start_runtime(gui=False)
 
 
 # ==================== VISION PROXY (forward to Flask 5000) ====================
