@@ -1,0 +1,8 @@
+{
+    "target_ip": "2.255.255.255",
+    "port": 6454,
+    "universe": 0,
+    "fps": 40,
+    "dmx_on_value": 255,
+    "dmx_off_value": 0
+}
