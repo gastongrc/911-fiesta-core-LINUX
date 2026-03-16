@@ -1,15 +1,16 @@
 # ============================================================================
-# dmx_state.py v1.0 - CONSOLA DMX VIRTUAL
+# dmx_state.py v2.0 - CONSOLA DMX VIRTUAL (PULSE MODE)
 # ============================================================================
-# Mantiene el estado persistente de 512 canales DMX.
+# Mantiene el estado de 512 canales DMX con semántica de PULSO.
 #
 # Semántica:
-#   fire(cue_id) → canal(es) mapeado(s) = on_value (255)
-#   kill(cue_id) → canal(es) mapeado(s) = off_value (0)
-#   snapshot()   → copia atómica de los 512 canales
+#   fire(cue_id) → canal(es) mapeado(s) = 255, auto-reset after next snapshot
+#   kill(cue_id) → no-op (pulse resets automatically)
+#   snapshot()   → copia atómica + reset automático de canales pulsados
 #
-# El estado se mantiene hasta que se cambie explícitamente.
-# No hay pulsos ni timeouts — DMX es estado sostenido.
+# Titan interpreta DMX como botones momentáneos:
+#   frame N:   channel = 255  (pulse)
+#   frame N+1: channel = 0    (auto-reset)
 #
 # Thread-safe: todas las operaciones usan lock.
 # ============================================================================
@@ -19,7 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 logger = logging.getLogger("DmxState")
 
@@ -30,13 +31,16 @@ DMX_OFF_VALUE = 0
 
 class DmxState:
     """
-    Consola DMX virtual — mantiene estado persistente de 512 canales.
+    Consola DMX virtual — pulse mode para Titan.
+
+    fire(cue_id) sets channel to 255 for exactly 1 frame.
+    snapshot() returns current state and atomically resets pulsed channels.
 
     Uso:
         state = DmxState(cue_channel_map={1: [1], 41: [41]})
-        state.fire(41)      # ch41 = 255
-        state.kill(41)      # ch41 = 0
-        frame = state.snapshot()  # bytearray(512)
+        state.fire(41)           # ch41 = 255, queued for auto-reset
+        frame = state.snapshot() # frame has ch41=255, state resets ch41=0
+        frame = state.snapshot() # frame has ch41=0
     """
 
     def __init__(
@@ -50,16 +54,19 @@ class DmxState:
         self._on_value = max(0, min(255, on_value))
         self._off_value = max(0, min(255, off_value))
 
-        # cue_id (int) → lista de canales DMX (0-indexed internamente, 1-indexed en config)
+        # Pulse queue: set of 0-indexed channel indices pending auto-reset
+        self._pending_resets: Set[int] = set()
+
+        # cue_id (int) → lista de canales DMX (1-indexed in config)
         self._cue_map: Dict[int, List[int]] = {}
         if cue_channel_map:
             self._load_map(cue_channel_map)
 
-        # Tracking de cues activos
-        self._active_cues: set = set()
+        # Stats
+        self._total_pulses = 0
 
         logger.info(
-            f"[DmxState] Inicializado: {len(self._cue_map)} cues mapeados, "
+            f"[DmxState] v2.0 PULSE MODE: {len(self._cue_map)} cues mapeados, "
             f"on={self._on_value} off={self._off_value}"
         )
 
@@ -83,11 +90,11 @@ class DmxState:
 
     def fire(self, cue_id: int) -> bool:
         """
-        Activa un cue: pone canal(es) mapeado(s) a on_value (255).
-        El valor se mantiene hasta kill().
+        Pulse trigger: sets channel(s) to 255 for exactly 1 frame.
+        Channel resets to 0 automatically on next snapshot().
 
         Args:
-            cue_id: ID del cue a activar
+            cue_id: ID del cue a disparar
 
         Returns:
             True si el cue tiene mapeo DMX, False si no está mapeado
@@ -102,51 +109,40 @@ class DmxState:
                 idx = ch - 1  # DMX channels 1-512 → array index 0-511
                 if 0 <= idx < DMX_CHANNELS:
                     self._channels[idx] = self._on_value
-            self._active_cues.add(cue_id)
-            non_zero = sum(1 for v in self._channels if v > 0)
+                    self._pending_resets.add(idx)
+            self._total_pulses += 1
+            pending = len(self._pending_resets)
 
-        print(f"[DmxState] FIRE C{cue_id} → ch{channels} = {self._on_value} | active_cues={len(self._active_cues)} nonzero_ch={non_zero}")
+        print(f"[DmxState] PULSE C{cue_id} → ch{channels} = {self._on_value} (1 frame) | pending_resets={pending}")
         return True
 
     def kill(self, cue_id: int) -> bool:
         """
-        Desactiva un cue: pone canal(es) mapeado(s) a off_value (0).
-        El valor se mantiene hasta fire().
-
-        Args:
-            cue_id: ID del cue a desactivar
+        No-op in pulse mode. Channels auto-reset after snapshot().
+        Kept for API compatibility.
 
         Returns:
-            True si el cue tiene mapeo DMX, False si no está mapeado
+            True si el cue tiene mapeo DMX
         """
         channels = self._cue_map.get(cue_id)
         if not channels:
-            print(f"[DmxState] kill(C{cue_id}): NO DMX MAPPING — cue not in cue_map")
             return False
-
-        with self._lock:
-            for ch in channels:
-                idx = ch - 1
-                if 0 <= idx < DMX_CHANNELS:
-                    self._channels[idx] = self._off_value
-            self._active_cues.discard(cue_id)
-            non_zero = sum(1 for v in self._channels if v > 0)
-
-        print(f"[DmxState] KILL C{cue_id} → ch{channels} = {self._off_value} | active_cues={len(self._active_cues)} nonzero_ch={non_zero}")
+        print(f"[DmxState] kill(C{cue_id}): no-op in pulse mode (auto-reset)")
         return True
 
     def kill_all(self) -> None:
-        """Apaga todos los canales (blackout)."""
+        """Blackout inmediato: fuerza todos los canales a 0."""
         with self._lock:
             for i in range(DMX_CHANNELS):
                 self._channels[i] = self._off_value
-            self._active_cues.clear()
+            self._pending_resets.clear()
 
         print("[DmxState] KILL ALL (blackout) — all 512 channels → 0")
 
     def set_channel(self, channel: int, value: int) -> None:
         """
         Setea un canal DMX directamente (bypass cue map).
+        NOT a pulse — stays until changed. Use for diagnostic/test modes.
 
         Args:
             channel: Canal DMX (1-512)
@@ -167,16 +163,28 @@ class DmxState:
 
     def snapshot(self) -> bytearray:
         """
-        Devuelve copia atómica de los 512 canales.
-        Usada por ArtNetEngine para construir cada frame.
+        Atomic snapshot + pulse reset.
+
+        Returns the current 512-channel state, then resets all pulsed
+        channels to 0. This guarantees exactly 1 frame of 255 per pulse.
+
+        Called by SacnEngine/ArtNetEngine every frame (~25ms at 40fps).
         """
         with self._lock:
-            return bytearray(self._channels)
+            data = bytearray(self._channels)
+            # Reset pulsed channels after capturing
+            if self._pending_resets:
+                for idx in self._pending_resets:
+                    self._channels[idx] = self._off_value
+                self._pending_resets.clear()
+            return data
 
     def get_active_cues(self) -> set:
-        """Retorna set de cue IDs activos."""
-        with self._lock:
-            return self._active_cues.copy()
+        """
+        Returns empty set — pulse mode has no sustained active cues.
+        Kept for API compatibility.
+        """
+        return set()
 
     def get_cue_map(self) -> Dict[int, List[int]]:
         """Retorna copia del mapeo cue→canales."""
@@ -201,10 +209,12 @@ class DmxState:
         with self._lock:
             non_zero = sum(1 for v in self._channels if v > 0)
             return {
-                "active_cues": len(self._active_cues),
+                "mode": "pulse",
+                "pending_resets": len(self._pending_resets),
                 "active_channels": non_zero,
                 "total_channels": DMX_CHANNELS,
                 "mapped_cues": len(self._cue_map),
+                "total_pulses": self._total_pulses,
             }
 
 

@@ -51,24 +51,26 @@ def test_dmx_state_init():
 
 
 def test_dmx_state_fire_kill():
-    """fire() pone canal en 255, kill() lo pone en 0."""
+    """fire() pulses channel to 255 for 1 frame, auto-resets on snapshot."""
     state = DmxState(cue_channel_map={41: [41], 42: [42]})
 
-    # FIRE C41
+    # FIRE C41 — pulse
     result = state.fire(41)
     assert result is True
+    assert state.get_channel(41) == 255  # pending
+
+    # First snapshot captures the pulse
     frame = state.snapshot()
     assert frame[40] == 255  # canal 41 → index 40
 
-    # Estado persistente: sigue en 255
+    # Auto-reset: second snapshot sees 0
     frame2 = state.snapshot()
-    assert frame2[40] == 255
+    assert frame2[40] == 0
 
-    # KILL C41
-    result = state.kill(41)
+    # kill() is no-op in pulse mode
+    state.fire(42)
+    result = state.kill(42)
     assert result is True
-    frame3 = state.snapshot()
-    assert frame3[40] == 0
 
     print("[OK] test_dmx_state_fire_kill")
 
@@ -82,7 +84,7 @@ def test_dmx_state_unmapped_cue():
 
 
 def test_dmx_state_multi_channel():
-    """Un cue puede controlar múltiples canales."""
+    """Un cue puede controlar múltiples canales — all pulse in 1 frame."""
     state = DmxState(cue_channel_map={1: [1, 2, 3]})
     state.fire(1)
     frame = state.snapshot()
@@ -91,7 +93,7 @@ def test_dmx_state_multi_channel():
     assert frame[2] == 255
     assert frame[3] == 0  # canal 4 no afectado
 
-    state.kill(1)
+    # Auto-reset after snapshot
     frame2 = state.snapshot()
     assert frame2[0] == 0
     assert frame2[1] == 0
@@ -100,40 +102,41 @@ def test_dmx_state_multi_channel():
 
 
 def test_dmx_state_kill_all():
-    """kill_all() pone todo a 0."""
+    """kill_all() forces all channels to 0 immediately."""
     state = DmxState(cue_channel_map={1: [1], 2: [2], 3: [3]})
     state.fire(1)
     state.fire(2)
     state.fire(3)
 
-    frame = state.snapshot()
-    assert frame[0] == 255
-    assert frame[1] == 255
-    assert frame[2] == 255
-
+    # kill_all before snapshot — clears pending pulses too
     state.kill_all()
-    frame2 = state.snapshot()
-    assert all(v == 0 for v in frame2)
-    assert len(state.get_active_cues()) == 0
+    frame = state.snapshot()
+    assert all(v == 0 for v in frame)
     print("[OK] test_dmx_state_kill_all")
 
 
-def test_dmx_state_active_cues():
-    """Tracking de cues activos."""
+def test_dmx_state_pulse_mode():
+    """Pulse mode: no sustained active cues, auto-reset after snapshot."""
     state = DmxState(cue_channel_map={41: [41], 42: [42]})
+
+    # Pulse mode: get_active_cues() always empty
     assert len(state.get_active_cues()) == 0
 
     state.fire(41)
-    assert 41 in state.get_active_cues()
+    assert len(state.get_active_cues()) == 0  # no sustained tracking
 
+    # Multiple fires before snapshot — both captured
+    state.fire(41)
     state.fire(42)
-    assert 41 in state.get_active_cues()
-    assert 42 in state.get_active_cues()
+    frame = state.snapshot()
+    assert frame[40] == 255
+    assert frame[41] == 255
 
-    state.kill(41)
-    assert 41 not in state.get_active_cues()
-    assert 42 in state.get_active_cues()
-    print("[OK] test_dmx_state_active_cues")
+    # Both auto-reset
+    frame2 = state.snapshot()
+    assert frame2[40] == 0
+    assert frame2[41] == 0
+    print("[OK] test_dmx_state_pulse_mode")
 
 
 def test_dmx_state_thread_safety():
@@ -187,25 +190,30 @@ def test_dmx_state_from_json():
     assert 1 in cue_map
     assert 82 in cue_map
 
-    # Fire y verificar
+    # Fire y verificar pulse
     state.fire(41)
-    assert state.get_channel(41) == 255
-    state.kill(41)
-    assert state.get_channel(41) == 0
+    assert state.get_channel(41) == 255  # pending
+    frame = state.snapshot()
+    assert frame[40] == 255              # captured
+    assert state.get_channel(41) == 0    # auto-reset
     print("[OK] test_dmx_state_from_json")
 
 
-def test_dmx_state_persistence():
-    """El estado DMX es persistente — no se resetea entre snapshots."""
+def test_dmx_state_pulse_single_frame():
+    """Pulse lasts exactly 1 frame — value present in first snapshot only."""
     state = DmxState(cue_channel_map={41: [41]})
     state.fire(41)
 
-    # Tomar 100 snapshots — el valor debe mantenerse
-    for _ in range(100):
-        frame = state.snapshot()
-        assert frame[40] == 255, "DMX state must be persistent, not pulsed"
+    # First snapshot captures the pulse
+    frame1 = state.snapshot()
+    assert frame1[40] == 255, "First frame must have pulse value"
 
-    print("[OK] test_dmx_state_persistence")
+    # All subsequent snapshots must be 0
+    for i in range(10):
+        frame = state.snapshot()
+        assert frame[40] == 0, f"Frame {i+2} must be 0 after pulse"
+
+    print("[OK] test_dmx_state_pulse_single_frame")
 
 
 # ============================================================================
@@ -302,25 +310,24 @@ def test_artnet_engine_start_stop():
     print(f"[OK] test_artnet_engine_start_stop (sent {stats['frames_sent']} frames)")
 
 
-def test_artnet_engine_sends_persistent_state():
-    """Engine envía estado DMX persistente (no pulsos)."""
+def test_artnet_engine_sends_pulse():
+    """Engine sends pulse and auto-resets — channel is 0 after first frame."""
     state = DmxState(cue_channel_map={41: [41]})
-    state.fire(41)  # ch41 = 255
-
     engine = ArtNetEngine(state, target_ip="127.0.0.1", fps=40)
     engine.start()
-    time.sleep(0.2)
 
-    # Verificar que el estado sigue en 255 después de muchos frames
-    frame = state.snapshot()
-    assert frame[40] == 255, "State must persist across frames"
+    state.fire(41)  # ch41 = 255 for 1 frame
+    time.sleep(0.2)  # Engine consumes pulse via snapshot
+
+    # After engine consumed the pulse, channel must be 0
+    assert state.get_channel(41) == 0, "Pulse must auto-reset after engine snapshot"
 
     stats = engine.get_stats()
     assert stats["frames_sent"] > 5
     assert stats["errors"] == 0
 
     engine.stop()
-    print(f"[OK] test_artnet_engine_sends_persistent_state ({stats['frames_sent']} frames)")
+    print(f"[OK] test_artnet_engine_sends_pulse ({stats['frames_sent']} frames)")
 
 
 def test_artnet_engine_from_json():
@@ -342,33 +349,46 @@ def test_artnet_engine_from_json():
 # ============================================================================
 
 def test_adapter_fire_kill():
-    """Adapter traduce fire/kill a DMX."""
+    """Adapter fires pulse, kill is no-op."""
     state = DmxState(cue_channel_map={41: [41], 42: [42]})
     adapter = CueOutputAdapter(state)
 
     adapter.fire(41)
-    assert state.get_channel(41) == 255
-    assert adapter.is_active(41) is True
+    assert state.get_channel(41) == 255  # pulse pending
 
-    adapter.kill(41)
-    assert state.get_channel(41) == 0
+    frame = state.snapshot()
+    assert frame[40] == 255              # captured
+    assert state.get_channel(41) == 0    # auto-reset
+
+    # is_active always False in pulse mode
     assert adapter.is_active(41) is False
+
+    # kill is no-op
+    adapter.kill(41)
     print("[OK] test_adapter_fire_kill")
 
 
 def test_adapter_kill_pool():
-    """Adapter puede matar múltiples cues."""
+    """Adapter kill_pool is no-op in pulse mode."""
     state = DmxState(cue_channel_map={1: [1], 2: [2], 3: [3]})
     adapter = CueOutputAdapter(state)
 
     adapter.fire(1)
     adapter.fire(2)
     adapter.fire(3)
-    assert len(adapter.get_active_cues()) == 3
 
+    # Pulse mode: no active cues tracked
+    assert len(adapter.get_active_cues()) == 0
+
+    # Pulses captured in snapshot
+    frame = state.snapshot()
+    assert frame[0] == 255
+    assert frame[1] == 255
+    assert frame[2] == 255
+
+    # kill_pool is no-op but returns count
     count = adapter.kill_pool([1, 2, 3])
     assert count == 3
-    assert len(adapter.get_active_cues()) == 0
     print("[OK] test_adapter_kill_pool")
 
 
@@ -394,34 +414,39 @@ def test_adapter_stats():
 
 def test_full_pipeline():
     """
-    Test end-to-end: Adapter → DmxState → ArtNetEngine.
+    Test end-to-end: Adapter → DmxState → ArtNetEngine (pulse mode).
     Simula el flujo completo como lo haría CueEngine.
     """
-    # Setup
+    # Setup without engine to test pulse logic cleanly
     state = DmxState(cue_channel_map={41: [41], 42: [42], 37: [37]})
     adapter = CueOutputAdapter(state)
+
+    # Pulse C41
+    adapter.fire(41)
+    frame1 = state.snapshot()
+    assert frame1[40] == 255, "C41 pulse must be 255"
+    assert frame1[41] == 0,   "C42 must be 0"
+
+    # Auto-reset
+    frame2 = state.snapshot()
+    assert frame2[40] == 0, "C41 must auto-reset to 0"
+
+    # Pulse C42
+    adapter.fire(42)
+    frame3 = state.snapshot()
+    assert frame3[40] == 0,   "C41 must stay 0"
+    assert frame3[41] == 255, "C42 pulse must be 255"
+
+    # Now test with engine
     engine = ArtNetEngine(state, target_ip="127.0.0.1", fps=40)
     engine.start()
 
-    # Simular: CueEngine hace fire(41)
-    adapter.fire(41)
-    time.sleep(0.1)
+    adapter.fire(37)
+    time.sleep(0.15)
 
-    # Verificar estado persistente
-    frame = state.snapshot()
-    assert frame[40] == 255, "C41 must be ON (255)"
-    assert frame[41] == 0,   "C42 must be OFF (0)"
+    # Pulse already consumed by engine
+    assert state.get_channel(37) == 0, "Pulse consumed by engine"
 
-    # Simular: CueEngine hace fire(42) y kill(41)
-    adapter.fire(42)
-    adapter.kill(41)
-    time.sleep(0.1)
-
-    frame2 = state.snapshot()
-    assert frame2[40] == 0,   "C41 must be OFF after kill"
-    assert frame2[41] == 255, "C42 must be ON (255)"
-
-    # Verificar stats
     engine_stats = engine.get_stats()
     assert engine_stats["frames_sent"] > 0
     assert engine_stats["errors"] == 0
@@ -605,17 +630,17 @@ if __name__ == "__main__":
         test_dmx_state_unmapped_cue,
         test_dmx_state_multi_channel,
         test_dmx_state_kill_all,
-        test_dmx_state_active_cues,
+        test_dmx_state_pulse_mode,
         test_dmx_state_thread_safety,
         test_dmx_state_from_json,
-        test_dmx_state_persistence,
+        test_dmx_state_pulse_single_frame,
         test_artnet_packet_structure,
         test_artnet_packet_universe_encoding,
         test_artpoll_reply_structure,
         test_artpoll_reply_different_universes,
         test_is_artpoll,
         test_artnet_engine_start_stop,
-        test_artnet_engine_sends_persistent_state,
+        test_artnet_engine_sends_pulse,
         test_artnet_engine_from_json,
         test_artnet_engine_fps_timing,
         test_artnet_engine_artpoll_response,
