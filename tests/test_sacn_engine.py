@@ -167,7 +167,7 @@ def test_sacn_engine_start_stop():
 def test_sacn_engine_dmx_state_integration():
     """Dual pulse: fire and kill both generate pulses, consumed by engine."""
     dmx = DmxState(cue_channel_map={41: [41]})
-    offset = 256  # DEFAULT_KILL_CHANNEL_OFFSET
+    offset = dmx.get_kill_channel_offset()
 
     # Fire pulse without engine
     dmx.fire(41)
@@ -244,7 +244,7 @@ def test_sacn_with_cue_output_adapter():
     """CueOutputAdapter dual pulse mode with SacnEngine pipeline."""
     dmx = DmxState(cue_channel_map={41: [41], 1: [1]})
     adapter = CueOutputAdapter(dmx)
-    offset = 256
+    offset = dmx.get_kill_channel_offset()
 
     # Fire pulse
     assert adapter.fire(41) is True
@@ -314,10 +314,10 @@ def test_controller_fire_kill_sacn_mode():
     from avolites_config import AvolitesController
     ctrl = AvolitesController(verbose=False, auto_connect=False)
     ctrl.set_transport("sacn")
-    offset = 256
 
     # Stop engine briefly to test pulse without race condition
     ctrl._sacn_engine.stop()
+    offset = ctrl._dmx_state.get_kill_channel_offset()
 
     # Fire pulse
     ctrl.fire_cue(41)

@@ -29,7 +29,7 @@ transport_pkg = types.ModuleType("core.transport")
 transport_pkg.__path__ = [os.path.join(ROOT, "core", "transport")]
 sys.modules["core.transport"] = transport_pkg
 
-from core.transport.dmx_state import DmxState, DMX_CHANNELS, DEFAULT_KILL_CHANNEL_OFFSET
+from core.transport.dmx_state import DmxState, DMX_CHANNELS
 from core.transport.artnet_engine import (
     ArtNetEngine, build_artnet_dmx_packet, build_artpoll_reply,
     ARTNET_PORT, ARTNET_HEADER, ARTNET_OPCODE_POLL, _is_artpoll,
@@ -53,7 +53,7 @@ def test_dmx_state_init():
 def test_dmx_state_fire_kill():
     """fire() pulses fire channel, kill() pulses kill channel (fire + offset)."""
     state = DmxState(cue_channel_map={41: [41], 42: [42]})
-    offset = DEFAULT_KILL_CHANNEL_OFFSET  # 256
+    offset = state.get_kill_channel_offset()
 
     # FIRE C41 — pulse on ch 41
     result = state.fire(41)
@@ -131,7 +131,7 @@ def test_dmx_state_kill_all():
 def test_dmx_state_dual_pulse():
     """Dual pulse: fire and kill generate separate pulses on different channels."""
     state = DmxState(cue_channel_map={41: [41], 42: [42]})
-    offset = DEFAULT_KILL_CHANNEL_OFFSET  # 256
+    offset = state.get_kill_channel_offset()
 
     # No sustained active cues
     assert len(state.get_active_cues()) == 0
@@ -374,7 +374,7 @@ def test_adapter_fire_kill():
     """Adapter fire pulses fire channel, kill pulses kill channel."""
     state = DmxState(cue_channel_map={41: [41], 42: [42]})
     adapter = CueOutputAdapter(state)
-    offset = DEFAULT_KILL_CHANNEL_OFFSET  # 256
+    offset = state.get_kill_channel_offset()
 
     # Fire pulse
     adapter.fire(41)
@@ -401,7 +401,7 @@ def test_adapter_kill_pool():
     """Adapter kill_pool generates kill pulses for all cues."""
     state = DmxState(cue_channel_map={1: [1], 2: [2], 3: [3]})
     adapter = CueOutputAdapter(state)
-    offset = DEFAULT_KILL_CHANNEL_OFFSET  # 256
+    offset = state.get_kill_channel_offset()
 
     # Fire 3 cues
     adapter.fire(1)
@@ -452,7 +452,7 @@ def test_full_pipeline():
     """
     state = DmxState(cue_channel_map={41: [41], 42: [42], 37: [37]})
     adapter = CueOutputAdapter(state)
-    offset = DEFAULT_KILL_CHANNEL_OFFSET
+    offset = state.get_kill_channel_offset()
 
     # Fire C41 — pulse on fire channel
     adapter.fire(41)

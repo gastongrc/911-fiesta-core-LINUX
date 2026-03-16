@@ -9,15 +9,17 @@
 #   kill(cue_id) → pulse on kill channel(s)      [channels 257-512]
 #   snapshot()   → atomic copy + auto-reset all pulsed channels
 #
-# Channel layout (default kill_channel_offset=256):
-#   fire cue 41 → pulse ch 41  (fire channel)
-#   kill cue 41 → pulse ch 297 (kill channel = 41 + 256)
+# Channel layout (kill_channel_offset = max fire channel):
+#   With 82 cues on channels 1-82:
+#     fire cue 41 → pulse ch 41  (fire channel)
+#     kill cue 41 → pulse ch 123 (kill channel = 41 + 82)
+#     Layout: 1-82 fire, 83-164 kill
 #
 # Mirrors HTTP transport semantics exactly:
 #   HTTP fire_cue(41) → POST /fire  → cue ON
 #   HTTP kill_cue(41) → POST /kill  → cue OFF
 #   DMX  fire_cue(41) → pulse ch 41  → Titan sees fire trigger
-#   DMX  kill_cue(41) → pulse ch 297 → Titan sees kill trigger
+#   DMX  kill_cue(41) → pulse ch 123 → Titan sees kill trigger
 #
 # Thread-safe: todas las operaciones usan lock.
 # ============================================================================
@@ -34,7 +36,7 @@ logger = logging.getLogger("DmxState")
 DMX_CHANNELS = 512
 DMX_ON_VALUE = 255
 DMX_OFF_VALUE = 0
-DEFAULT_KILL_CHANNEL_OFFSET = 256
+DEFAULT_KILL_CHANNEL_OFFSET = 0  # 0 = auto-compute from max fire channel
 
 
 class DmxState:
@@ -62,7 +64,6 @@ class DmxState:
         self._lock = threading.Lock()
         self._on_value = max(0, min(255, on_value))
         self._off_value = max(0, min(255, off_value))
-        self._kill_channel_offset = kill_channel_offset
 
         # Pulse queue: set of 0-indexed channel indices pending auto-reset
         self._pending_resets: Set[int] = set()
@@ -72,13 +73,19 @@ class DmxState:
         if cue_channel_map:
             self._load_map(cue_channel_map)
 
+        # kill_channel_offset: 0 means auto-compute from max fire channel
+        if kill_channel_offset > 0:
+            self._kill_channel_offset = kill_channel_offset
+        else:
+            self._kill_channel_offset = self._compute_kill_offset()
+
         # Stats
         self._total_fire_pulses = 0
         self._total_kill_pulses = 0
 
         logger.info(
             f"[DmxState] v3.0 DUAL PULSE: {len(self._cue_map)} cues, "
-            f"kill_offset={kill_channel_offset}, on={self._on_value} off={self._off_value}"
+            f"kill_offset={self._kill_channel_offset}, on={self._on_value} off={self._off_value}"
         )
 
     def _load_map(self, raw_map: Dict) -> None:
@@ -91,6 +98,19 @@ class DmxState:
                 self._cue_map[cue_id] = channels
             else:
                 self._cue_map[cue_id] = [int(channels)]
+
+    def _compute_kill_offset(self) -> int:
+        """Compute kill offset = max fire channel from cue map.
+
+        With cues 1-82 on channels 1-82, offset = 82.
+        Kill channels: 83-164. Compact, no gaps.
+        """
+        max_ch = 0
+        for channels in self._cue_map.values():
+            for ch in channels:
+                if ch > max_ch:
+                    max_ch = ch
+        return max_ch if max_ch > 0 else 1
 
     @classmethod
     def from_json(
