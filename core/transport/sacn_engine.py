@@ -36,8 +36,9 @@ E131_VECTOR_ROOT = 0x00000004
 E131_VECTOR_FRAME = 0x00000002
 E131_VECTOR_DMP = 0x02
 
-# ACN packet identifiers
-ACN_PACKET_IDENTIFIER = b"\x00\x10\x00\x00\x41\x53\x43\x2d\x45\x31\x2e\x31\x37\x00\x00\x00"
+# ACN packet identifier: "ASC-E1.17" + 3 null bytes = 12 bytes
+# Per ANSI E1.31-2018 / E1.17. NOT 16 bytes — preamble/postamble are separate.
+ACN_PACKET_IDENTIFIER = b"\x41\x53\x43\x2d\x45\x31\x2e\x31\x37\x00\x00\x00"
 
 # Node identity
 NODE_SOURCE_NAME = "911 Fiesta sACN Engine"

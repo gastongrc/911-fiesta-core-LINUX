@@ -75,22 +75,23 @@ def test_build_sacn_packet_structure():
     assert struct.unpack(">H", packet[0:2])[0] == 0x0010
     # Postamble Size (2 bytes) = 0x0000
     assert struct.unpack(">H", packet[2:4])[0] == 0x0000
-    # ACN Packet Identifier (16 bytes at offset 4)
-    assert packet[4:20] == ACN_PACKET_IDENTIFIER
-    # Root Flags+Length at offset 20
-    # Root Vector at offset 22 = 0x00000004
-    root_vector = struct.unpack(">I", packet[22:26])[0]
+    # ACN Packet Identifier (12 bytes at offset 4)
+    assert packet[4:16] == ACN_PACKET_IDENTIFIER
+    assert len(ACN_PACKET_IDENTIFIER) == 12
+    # Root Flags+Length at offset 16
+    # Root Vector at offset 18 = 0x00000004
+    root_vector = struct.unpack(">I", packet[18:22])[0]
     assert root_vector == E131_VECTOR_ROOT
 
-    # CID at offset 26 (16 bytes)
-    assert packet[26:42] == cid
+    # CID at offset 22 (16 bytes)
+    assert packet[22:38] == cid
 
-    # Total packet size: 642 bytes
-    # Root: preamble(2) + postamble(2) + ACN_ID(16) + flags+len(2) + vector(4) + cid(16) = 42
+    # Total packet size: 638 bytes (per ANSI E1.31-2018)
+    # Root: preamble(2) + postamble(2) + ACN_ID(12) + flags+len(2) + vector(4) + cid(16) = 38
     # Frame: flags+len(2) + vector(4) + source_name(64) + priority(1) + sync(2) + seq(1) + options(1) + universe(2) = 77
     # DMP: flags+len(2) + vector(1) + addr_type(1) + first_addr(2) + incr(2) + count(2) + data(513) = 523
-    # Total = 42 + 77 + 523 = 642
-    assert len(packet) == 642
+    # Total = 38 + 77 + 523 = 638
+    assert len(packet) == 638
 
     print("[OK] test_build_sacn_packet_structure")
 
@@ -118,10 +119,10 @@ def test_build_sacn_packet_universe():
     packet = build_sacn_packet(dmx, universe=42)
 
     # Universe offset:
-    # Root layer: preamble(2) + postamble(2) + ACN_ID(16) + flags+len(2) + vector(4) + cid(16) = 42
+    # Root layer: preamble(2) + postamble(2) + ACN_ID(12) + flags+len(2) + vector(4) + cid(16) = 38
     # Framing: flags+len(2) + vector(4) + source_name(64) + priority(1) + sync(2) + seq(1) + options(1) = 75
-    # Universe at: 42 + 75 = 117
-    universe_offset = 117
+    # Universe at: 38 + 75 = 113
+    universe_offset = 113
     universe = struct.unpack(">H", packet[universe_offset:universe_offset+2])[0]
     assert universe == 42
 
