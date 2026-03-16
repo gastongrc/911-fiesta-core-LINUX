@@ -5,8 +5,8 @@
 # each generating a 1-frame pulse on separate DMX channels.
 #
 # Semántica:
-#   fire(cue_id) → pulse on fire channel(s)     [channels 1-256]
-#   kill(cue_id) → pulse on kill channel(s)      [channels 257-512]
+#   fire(cue_id) → pulse on fire channel(s)     [channels 1-82]
+#   kill(cue_id) → pulse on kill channel(s)      [channels 83-164]
 #   snapshot()   → atomic copy + auto-reset all pulsed channels
 #
 # Channel layout (kill_channel_offset = max fire channel):
@@ -49,7 +49,7 @@ class DmxState:
     Uso:
         state = DmxState(cue_channel_map={1: [1], 41: [41]})
         state.fire(41)           # pulse ch 41 = 255 for 1 frame
-        state.kill(41)           # pulse ch 297 = 255 for 1 frame (41 + 256)
+        state.kill(41)           # pulse ch 123 = 255 for 1 frame (41 + 82)
         frame = state.snapshot() # captures pulses, resets to 0
     """
 
@@ -65,7 +65,7 @@ class DmxState:
         self._on_value = max(0, min(255, on_value))
         self._off_value = max(0, min(255, off_value))
 
-        # Pulse queue: set of 0-indexed channel indices pending auto-reset
+        # Pending pulse resets: set of 0-indexed channel indices to clear on next snapshot
         self._pending_resets: Set[int] = set()
 
         # cue_id (int) → lista de fire channels DMX (1-indexed in config)
@@ -177,6 +177,8 @@ class DmxState:
         Returns:
             True si el cue tiene mapeo DMX, False si no está mapeado
         """
+        print(f"[KILL REQUEST] cue={cue_id}")
+
         channels = self._cue_map.get(cue_id)
         if not channels:
             print(f"[DmxState] kill(C{cue_id}): NO DMX MAPPING — cue not in cue_map")
@@ -184,6 +186,8 @@ class DmxState:
 
         kill_channels = [ch + self._kill_channel_offset for ch in channels]
         indices = [ch - 1 for ch in kill_channels]
+
+        print(f"[KILL DMX] fire_channel={channels} kill_channel={kill_channels}")
 
         with self._lock:
             self._pulse_channels(indices)
@@ -238,6 +242,10 @@ class DmxState:
         with self._lock:
             data = bytearray(self._channels)
             if self._pending_resets:
+                reset_channels = [idx + 1 for idx in sorted(self._pending_resets)]
+                kill_chs = [ch for ch in reset_channels if ch > self._kill_channel_offset]
+                if kill_chs:
+                    print(f"[KILL SNAPSHOT] channels={kill_chs} (resetting to 0)")
                 for idx in self._pending_resets:
                     self._channels[idx] = self._off_value
                 self._pending_resets.clear()

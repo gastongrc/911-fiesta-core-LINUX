@@ -36,7 +36,7 @@ class CueOutputAdapter:
     Uso:
         adapter = CueOutputAdapter(dmx_state)
         adapter.fire(41)   # pulse ch 41 = 255 for 1 frame
-        adapter.kill(41)   # pulse ch 297 = 255 for 1 frame (41 + 256)
+        adapter.kill(41)   # pulse ch 123 = 255 for 1 frame (41 + 82)
     """
 
     def __init__(self, dmx_state: DmxState):
@@ -77,6 +77,7 @@ class CueOutputAdapter:
         Returns:
             True si el cue tiene mapeo DMX
         """
+        print(f"[KILL ADAPTER] cue={cue_id}")
         result = self._dmx.kill(cue_id)
         if result:
             self._kills += 1

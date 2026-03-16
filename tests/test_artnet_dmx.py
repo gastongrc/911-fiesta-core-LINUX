@@ -67,10 +67,10 @@ def test_dmx_state_fire_kill():
     frame2 = state.snapshot()
     assert frame2[40] == 0
 
-    # KILL C41 — pulse on ch 297 (41 + 256)
+    # KILL C41 — pulse on kill channel (41 + offset)
     result = state.kill(41)
     assert result is True
-    kill_ch = 41 + offset  # 297
+    kill_ch = 41 + offset
     assert state.get_channel(kill_ch) == 255  # kill pulse pending
 
     frame3 = state.snapshot()
@@ -445,6 +445,104 @@ def test_adapter_stats():
 # TEST: Integration
 # ============================================================================
 
+def test_multi_cue_same_frame():
+    """Multiple fire/kill cues produce a single frame with all channels active.
+
+    DMX must NOT queue — all pulses accumulate in the same frame.
+    fire_cue(1), fire_cue(2), fire_cue(3) → one frame: ch1=255, ch2=255, ch3=255.
+    Next snapshot resets all to 0.
+    """
+    cue_map = {i: [i] for i in range(1, 83)}  # 82 cues, channels 1-82
+    state = DmxState(cue_channel_map=cue_map)
+    offset = state.get_kill_channel_offset()
+    assert offset == 82, f"Expected offset=82 for 82 cues, got {offset}"
+
+    # --- Multiple fires in one frame ---
+    state.fire(1)
+    state.fire(2)
+    state.fire(3)
+    frame = state.snapshot()
+    assert frame[0] == 255, "ch1 fire"
+    assert frame[1] == 255, "ch2 fire"
+    assert frame[2] == 255, "ch3 fire"
+    assert frame[3] == 0,   "ch4 not fired"
+
+    # All reset in next frame
+    frame2 = state.snapshot()
+    assert frame2[0] == 0
+    assert frame2[1] == 0
+    assert frame2[2] == 0
+
+    # --- Multiple kills in one frame ---
+    state.kill(1)
+    state.kill(2)
+    state.kill(3)
+    frame3 = state.snapshot()
+    assert frame3[82] == 255, "ch83 kill for cue 1 (1+82)"
+    assert frame3[83] == 255, "ch84 kill for cue 2 (2+82)"
+    assert frame3[84] == 255, "ch85 kill for cue 3 (3+82)"
+    assert frame3[0] == 0,    "fire channels stay 0"
+
+    # All kill channels reset
+    frame4 = state.snapshot()
+    assert frame4[82] == 0
+    assert frame4[83] == 0
+    assert frame4[84] == 0
+
+    # --- Mixed fire + kill in one frame ---
+    state.fire(41)
+    state.kill(42)
+    state.fire(1)
+    state.kill(1)
+    frame5 = state.snapshot()
+    assert frame5[40] == 255,  "ch41 fire cue 41"
+    assert frame5[123] == 255, "ch124 kill cue 42 (42+82)"
+    assert frame5[0] == 255,   "ch1 fire cue 1"
+    assert frame5[82] == 255,  "ch83 kill cue 1 (1+82)"
+
+    # All reset
+    frame6 = state.snapshot()
+    assert all(v == 0 for v in frame6), "All channels must reset after snapshot"
+
+    print("[OK] test_multi_cue_same_frame")
+
+
+def test_kill_channel_layout():
+    """Verify kill_offset = max(fire_channels) and channel layout is compact.
+
+    With 82 cues on channels 1-82:
+      fire cue 41 → ch 41
+      kill cue 41 → ch 123 (41 + 82)
+      Layout: 1-82 fire, 83-164 kill
+    """
+    cue_map = {i: [i] for i in range(1, 83)}
+    state = DmxState(cue_channel_map=cue_map)
+    offset = state.get_kill_channel_offset()
+
+    assert offset == 82, f"offset must be max fire channel (82), got {offset}"
+
+    # Verify specific cue mappings
+    state.fire(41)
+    frame = state.snapshot()
+    assert frame[40] == 255, "fire cue 41 → ch 41 (index 40)"
+
+    state.kill(41)
+    frame2 = state.snapshot()
+    assert frame2[122] == 255, "kill cue 41 → ch 123 (index 122)"
+
+    # First and last cue
+    state.fire(1)
+    state.kill(82)
+    frame3 = state.snapshot()
+    assert frame3[0] == 255,   "fire cue 1 → ch 1"
+    assert frame3[163] == 255, "kill cue 82 → ch 164 (82+82)"
+
+    # Nothing beyond 164
+    assert all(v == 0 for v in frame3[164:]), "No channels beyond 164 should be active"
+
+    print("[OK] test_kill_channel_layout")
+
+
 def test_full_pipeline():
     """
     Test end-to-end: Adapter → DmxState → ArtNetEngine (dual pulse).
@@ -690,6 +788,8 @@ if __name__ == "__main__":
         test_adapter_fire_kill,
         test_adapter_kill_pool,
         test_adapter_stats,
+        test_multi_cue_same_frame,
+        test_kill_channel_layout,
         test_full_pipeline,
     ]
 
