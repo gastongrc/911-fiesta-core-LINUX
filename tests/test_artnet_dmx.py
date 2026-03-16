@@ -29,7 +29,7 @@ transport_pkg = types.ModuleType("core.transport")
 transport_pkg.__path__ = [os.path.join(ROOT, "core", "transport")]
 sys.modules["core.transport"] = transport_pkg
 
-from core.transport.dmx_state import DmxState, DMX_CHANNELS
+from core.transport.dmx_state import DmxState, DMX_CHANNELS, DEFAULT_KILL_CHANNEL_OFFSET
 from core.transport.artnet_engine import (
     ArtNetEngine, build_artnet_dmx_packet, build_artpoll_reply,
     ARTNET_PORT, ARTNET_HEADER, ARTNET_OPCODE_POLL, _is_artpoll,
@@ -51,35 +51,48 @@ def test_dmx_state_init():
 
 
 def test_dmx_state_fire_kill():
-    """fire() pulses channel to 255 for 1 frame, auto-resets on snapshot."""
+    """fire() pulses fire channel, kill() pulses kill channel (fire + offset)."""
     state = DmxState(cue_channel_map={41: [41], 42: [42]})
+    offset = DEFAULT_KILL_CHANNEL_OFFSET  # 256
 
-    # FIRE C41 — pulse
+    # FIRE C41 — pulse on ch 41
     result = state.fire(41)
     assert result is True
-    assert state.get_channel(41) == 255  # pending
+    assert state.get_channel(41) == 255  # fire pulse pending
 
-    # First snapshot captures the pulse
     frame = state.snapshot()
-    assert frame[40] == 255  # canal 41 → index 40
+    assert frame[40] == 255  # fire ch 41 (index 40)
 
-    # Auto-reset: second snapshot sees 0
+    # Auto-reset
     frame2 = state.snapshot()
     assert frame2[40] == 0
 
-    # kill() is no-op in pulse mode
-    state.fire(42)
-    result = state.kill(42)
+    # KILL C41 — pulse on ch 297 (41 + 256)
+    result = state.kill(41)
     assert result is True
+    kill_ch = 41 + offset  # 297
+    assert state.get_channel(kill_ch) == 255  # kill pulse pending
+
+    frame3 = state.snapshot()
+    assert frame3[kill_ch - 1] == 255  # kill channel captured
+    assert frame3[40] == 0             # fire channel stays 0
+
+    # Auto-reset kill channel
+    frame4 = state.snapshot()
+    assert frame4[kill_ch - 1] == 0
 
     print("[OK] test_dmx_state_fire_kill")
 
 
 def test_dmx_state_unmapped_cue():
-    """Cue sin mapeo retorna False."""
+    """Cue sin mapeo retorna False for both fire and kill."""
     state = DmxState(cue_channel_map={1: [1]})
     assert state.fire(999) is False
     assert state.kill(999) is False
+
+    # Mapped cue works for both
+    assert state.fire(1) is True
+    assert state.kill(1) is True
     print("[OK] test_dmx_state_unmapped_cue")
 
 
@@ -115,28 +128,37 @@ def test_dmx_state_kill_all():
     print("[OK] test_dmx_state_kill_all")
 
 
-def test_dmx_state_pulse_mode():
-    """Pulse mode: no sustained active cues, auto-reset after snapshot."""
+def test_dmx_state_dual_pulse():
+    """Dual pulse: fire and kill generate separate pulses on different channels."""
     state = DmxState(cue_channel_map={41: [41], 42: [42]})
+    offset = DEFAULT_KILL_CHANNEL_OFFSET  # 256
 
-    # Pulse mode: get_active_cues() always empty
+    # No sustained active cues
     assert len(state.get_active_cues()) == 0
 
+    # Fire + kill same cue before snapshot — both channels pulsed
     state.fire(41)
-    assert len(state.get_active_cues()) == 0  # no sustained tracking
-
-    # Multiple fires before snapshot — both captured
-    state.fire(41)
-    state.fire(42)
+    state.kill(41)
     frame = state.snapshot()
-    assert frame[40] == 255
-    assert frame[41] == 255
+    assert frame[40] == 255              # fire ch 41
+    assert frame[41 + offset - 1] == 255 # kill ch 297
 
     # Both auto-reset
     frame2 = state.snapshot()
     assert frame2[40] == 0
-    assert frame2[41] == 0
-    print("[OK] test_dmx_state_pulse_mode")
+    assert frame2[41 + offset - 1] == 0
+
+    # Fire two cues, kill one — 3 channels pulsed
+    state.fire(41)
+    state.fire(42)
+    state.kill(42)
+    frame3 = state.snapshot()
+    assert frame3[40] == 255               # fire ch 41
+    assert frame3[41] == 255               # fire ch 42
+    assert frame3[42 + offset - 1] == 255  # kill ch 298
+    assert frame3[41 + offset - 1] == 0    # kill ch 297 NOT pulsed
+
+    print("[OK] test_dmx_state_dual_pulse")
 
 
 def test_dmx_state_thread_safety():
@@ -349,62 +371,73 @@ def test_artnet_engine_from_json():
 # ============================================================================
 
 def test_adapter_fire_kill():
-    """Adapter fires pulse, kill is no-op."""
+    """Adapter fire pulses fire channel, kill pulses kill channel."""
     state = DmxState(cue_channel_map={41: [41], 42: [42]})
     adapter = CueOutputAdapter(state)
+    offset = DEFAULT_KILL_CHANNEL_OFFSET  # 256
 
+    # Fire pulse
     adapter.fire(41)
-    assert state.get_channel(41) == 255  # pulse pending
-
+    assert state.get_channel(41) == 255  # fire pulse pending
     frame = state.snapshot()
-    assert frame[40] == 255              # captured
+    assert frame[40] == 255              # fire captured
     assert state.get_channel(41) == 0    # auto-reset
+
+    # Kill pulse — on kill channel
+    adapter.kill(41)
+    kill_ch = 41 + offset  # 297
+    assert state.get_channel(kill_ch) == 255  # kill pulse pending
+    frame2 = state.snapshot()
+    assert frame2[kill_ch - 1] == 255         # kill captured
+    assert state.get_channel(kill_ch) == 0    # auto-reset
 
     # is_active always False in pulse mode
     assert adapter.is_active(41) is False
 
-    # kill is no-op
-    adapter.kill(41)
     print("[OK] test_adapter_fire_kill")
 
 
 def test_adapter_kill_pool():
-    """Adapter kill_pool is no-op in pulse mode."""
+    """Adapter kill_pool generates kill pulses for all cues."""
     state = DmxState(cue_channel_map={1: [1], 2: [2], 3: [3]})
     adapter = CueOutputAdapter(state)
+    offset = DEFAULT_KILL_CHANNEL_OFFSET  # 256
 
+    # Fire 3 cues
     adapter.fire(1)
     adapter.fire(2)
     adapter.fire(3)
-
-    # Pulse mode: no active cues tracked
-    assert len(adapter.get_active_cues()) == 0
-
-    # Pulses captured in snapshot
     frame = state.snapshot()
     assert frame[0] == 255
     assert frame[1] == 255
     assert frame[2] == 255
 
-    # kill_pool is no-op but returns count
+    # kill_pool generates kill pulses on kill channels
     count = adapter.kill_pool([1, 2, 3])
     assert count == 3
+    frame2 = state.snapshot()
+    assert frame2[0 + offset] == 255  # kill ch 257
+    assert frame2[1 + offset] == 255  # kill ch 258
+    assert frame2[2 + offset] == 255  # kill ch 259
+    assert frame2[0] == 0             # fire channels untouched
+
     print("[OK] test_adapter_kill_pool")
 
 
 def test_adapter_stats():
-    """Stats del adaptador."""
+    """Stats del adaptador — fires, kills, and unmapped tracked separately."""
     state = DmxState(cue_channel_map={41: [41]})
     adapter = CueOutputAdapter(state)
 
     adapter.fire(41)
     adapter.kill(41)
-    adapter.fire(999)  # unmapped
+    adapter.fire(999)  # unmapped fire
+    adapter.kill(999)  # unmapped kill
 
     stats = adapter.get_stats()
     assert stats["fires"] == 1
     assert stats["kills"] == 1
-    assert stats["unmapped"] == 1
+    assert stats["unmapped"] == 2
     print("[OK] test_adapter_stats")
 
 
@@ -414,38 +447,47 @@ def test_adapter_stats():
 
 def test_full_pipeline():
     """
-    Test end-to-end: Adapter → DmxState → ArtNetEngine (pulse mode).
-    Simula el flujo completo como lo haría CueEngine.
+    Test end-to-end: Adapter → DmxState → ArtNetEngine (dual pulse).
+    Mirrors HTTP: fire = ON event, kill = OFF event, both as pulses.
     """
-    # Setup without engine to test pulse logic cleanly
     state = DmxState(cue_channel_map={41: [41], 42: [42], 37: [37]})
     adapter = CueOutputAdapter(state)
+    offset = DEFAULT_KILL_CHANNEL_OFFSET
 
-    # Pulse C41
+    # Fire C41 — pulse on fire channel
     adapter.fire(41)
     frame1 = state.snapshot()
-    assert frame1[40] == 255, "C41 pulse must be 255"
-    assert frame1[41] == 0,   "C42 must be 0"
+    assert frame1[40] == 255, "C41 fire pulse must be 255"
+    assert frame1[41] == 0,   "C42 fire channel must be 0"
 
-    # Auto-reset
+    # Kill C41 — pulse on kill channel
+    adapter.kill(41)
     frame2 = state.snapshot()
-    assert frame2[40] == 0, "C41 must auto-reset to 0"
+    assert frame2[40] == 0,                  "C41 fire channel must be 0"
+    assert frame2[40 + offset] == 255,       "C41 kill pulse must be 255"
 
-    # Pulse C42
-    adapter.fire(42)
+    # Auto-reset kill
     frame3 = state.snapshot()
-    assert frame3[40] == 0,   "C41 must stay 0"
-    assert frame3[41] == 255, "C42 pulse must be 255"
+    assert frame3[40 + offset] == 0, "C41 kill channel must auto-reset"
 
-    # Now test with engine
+    # Fire + Kill same frame (concurrent events)
+    adapter.fire(42)
+    adapter.kill(41)
+    frame4 = state.snapshot()
+    assert frame4[41] == 255,            "C42 fire pulse"
+    assert frame4[40 + offset] == 255,   "C41 kill pulse"
+
+    # With engine running
     engine = ArtNetEngine(state, target_ip="127.0.0.1", fps=40)
     engine.start()
 
     adapter.fire(37)
-    time.sleep(0.15)
+    time.sleep(0.1)
+    assert state.get_channel(37) == 0, "Fire pulse consumed"
 
-    # Pulse already consumed by engine
-    assert state.get_channel(37) == 0, "Pulse consumed by engine"
+    adapter.kill(37)
+    time.sleep(0.1)
+    assert state.get_channel(37 + offset) == 0, "Kill pulse consumed"
 
     engine_stats = engine.get_stats()
     assert engine_stats["frames_sent"] > 0
@@ -630,7 +672,7 @@ if __name__ == "__main__":
         test_dmx_state_unmapped_cue,
         test_dmx_state_multi_channel,
         test_dmx_state_kill_all,
-        test_dmx_state_pulse_mode,
+        test_dmx_state_dual_pulse,
         test_dmx_state_thread_safety,
         test_dmx_state_from_json,
         test_dmx_state_pulse_single_frame,

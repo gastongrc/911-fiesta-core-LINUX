@@ -165,29 +165,39 @@ def test_sacn_engine_start_stop():
 
 
 def test_sacn_engine_dmx_state_integration():
-    """Pulse mode: fire triggers 1-frame pulse, auto-resets via snapshot."""
+    """Dual pulse: fire and kill both generate pulses, consumed by engine."""
     dmx = DmxState(cue_channel_map={41: [41]})
+    offset = 256  # DEFAULT_KILL_CHANNEL_OFFSET
 
-    # Test pulse without engine: fire sets 255, snapshot captures and resets
+    # Fire pulse without engine
     dmx.fire(41)
-    assert dmx.get_channel(41) == 255  # Pulse is pending
-
+    assert dmx.get_channel(41) == 255
     frame1 = dmx.snapshot()
-    assert frame1[40] == 255           # Frame captured the pulse
+    assert frame1[40] == 255
+    assert dmx.get_channel(41) == 0
 
-    assert dmx.get_channel(41) == 0    # Auto-reset after snapshot
+    # Kill pulse without engine
+    dmx.kill(41)
+    kill_ch = 41 + offset  # 297
+    assert dmx.get_channel(kill_ch) == 255
     frame2 = dmx.snapshot()
-    assert frame2[40] == 0             # Next frame sees 0
+    assert frame2[kill_ch - 1] == 255
+    assert dmx.get_channel(kill_ch) == 0
 
-    # Test with engine running
+    # Both consumed by engine
     engine = SacnEngine(dmx, universe=1, fps=40)
     engine.start()
 
     dmx.fire(41)
-    time.sleep(0.15)  # ~6 frames — pulse consumed
+    time.sleep(0.1)
+    assert dmx.get_channel(41) == 0
+
+    dmx.kill(41)
+    time.sleep(0.1)
+    assert dmx.get_channel(kill_ch) == 0
+
     stats = engine.get_stats()
     assert stats["frames_sent"] > 3
-    assert dmx.get_channel(41) == 0  # Already auto-reset
 
     engine.stop()
     print("[OK] test_sacn_engine_dmx_state_integration")
@@ -231,20 +241,25 @@ def test_sacn_engine_update_config():
 
 
 def test_sacn_with_cue_output_adapter():
-    """CueOutputAdapter pulse mode with SacnEngine pipeline."""
+    """CueOutputAdapter dual pulse mode with SacnEngine pipeline."""
     dmx = DmxState(cue_channel_map={41: [41], 1: [1]})
     adapter = CueOutputAdapter(dmx)
+    offset = 256
 
-    # Test without engine to verify pulse logic
+    # Fire pulse
     assert adapter.fire(41) is True
-    assert dmx.get_channel(41) == 255  # Pulse pending
-
+    assert dmx.get_channel(41) == 255
     frame = dmx.snapshot()
-    assert frame[40] == 255            # Captured in frame
-    assert dmx.get_channel(41) == 0    # Auto-reset
+    assert frame[40] == 255
+    assert dmx.get_channel(41) == 0
 
-    # Kill is no-op in pulse mode
+    # Kill pulse — on kill channel
     assert adapter.kill(41) is True
+    kill_ch = 41 + offset
+    assert dmx.get_channel(kill_ch) == 255
+    frame2 = dmx.snapshot()
+    assert frame2[kill_ch - 1] == 255
+    assert dmx.get_channel(kill_ch) == 0
 
     # Unmapped cue
     assert adapter.fire(999) is False
@@ -260,7 +275,10 @@ def test_sacn_with_cue_output_adapter():
     engine.start()
     adapter.fire(1)
     time.sleep(0.1)
-    assert dmx.get_channel(1) == 0  # Already consumed by engine
+    assert dmx.get_channel(1) == 0
+    adapter.kill(1)
+    time.sleep(0.1)
+    assert dmx.get_channel(1 + offset) == 0
     engine.stop()
 
     print("[OK] test_sacn_with_cue_output_adapter")
@@ -292,23 +310,29 @@ def test_controller_switch_to_sacn():
 
 
 def test_controller_fire_kill_sacn_mode():
-    """fire_cue routes through DmxState pulse mode when in sacn mode."""
+    """fire_cue and kill_cue both generate pulses in sacn mode."""
     from avolites_config import AvolitesController
     ctrl = AvolitesController(verbose=False, auto_connect=False)
     ctrl.set_transport("sacn")
+    offset = 256
 
     # Stop engine briefly to test pulse without race condition
     ctrl._sacn_engine.stop()
 
+    # Fire pulse
     ctrl.fire_cue(41)
-    assert ctrl._dmx_state.get_channel(41) == 255  # Pulse pending
-
+    assert ctrl._dmx_state.get_channel(41) == 255
     frame = ctrl._dmx_state.snapshot()
-    assert frame[40] == 255                          # Captured
-    assert ctrl._dmx_state.get_channel(41) == 0     # Auto-reset
+    assert frame[40] == 255
+    assert ctrl._dmx_state.get_channel(41) == 0
 
-    # Pulse mode: no active cues
-    assert ctrl._dmx_state.get_active_cues() == set()
+    # Kill pulse — on kill channel
+    ctrl.kill_cue(41)
+    kill_ch = 41 + offset
+    assert ctrl._dmx_state.get_channel(kill_ch) == 255
+    frame2 = ctrl._dmx_state.snapshot()
+    assert frame2[kill_ch - 1] == 255
+    assert ctrl._dmx_state.get_channel(kill_ch) == 0
 
     print("[OK] test_controller_fire_kill_sacn_mode")
 

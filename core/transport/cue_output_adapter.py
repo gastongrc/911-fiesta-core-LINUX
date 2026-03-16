@@ -1,17 +1,19 @@
 # ============================================================================
-# cue_output_adapter.py v2.0 - ADAPTADOR CUE → DMX (PULSE MODE)
+# cue_output_adapter.py v3.0 - ADAPTADOR CUE → DMX (DUAL PULSE MODE)
 # ============================================================================
-# Traduce eventos del CueEngine (fire/kill) a operaciones DMX.
+# Traduce eventos del CueEngine (fire/kill) a pulsos DMX.
 #
 # CueEngine NO conoce DMX. Este adaptador es la capa intermedia:
 #   CueEngine → CueOutputAdapter → DmxState → SacnEngine/ArtNetEngine
 #
-# Pulse mode: fire() triggers a 1-frame pulse. kill() is a no-op.
+# Dual pulse mode mirrors HTTP transport semantics:
+#   fire(cue_id) → pulse on fire channel   (ch N)
+#   kill(cue_id) → pulse on kill channel   (ch N + offset)
 #
 # Interface idéntica a la que espera AvolitesController:
 #   adapter.fire(cue_id)
-#   adapter.kill(cue_id)      ← no-op in pulse mode
-#   adapter.kill_pool(cue_ids) ← no-op in pulse mode
+#   adapter.kill(cue_id)
+#   adapter.kill_pool(cue_ids)
 # ============================================================================
 
 from __future__ import annotations
@@ -26,15 +28,15 @@ logger = logging.getLogger("CueOutputAdapter")
 
 class CueOutputAdapter:
     """
-    Adaptador CueEngine → DMX (pulse mode).
+    Adaptador CueEngine → DMX (dual pulse mode).
 
-    Traduce fire de cues a pulsos DMX de 1 frame.
-    kill() is a no-op — channels auto-reset after snapshot.
+    Both fire() and kill() generate 1-frame pulses on separate channels.
+    Mirrors HTTP transport: fire = explicit ON event, kill = explicit OFF event.
 
     Uso:
         adapter = CueOutputAdapter(dmx_state)
-        adapter.fire(41)   # dmx_state channel 41 = 255 for 1 frame
-        adapter.kill(41)   # no-op (auto-reset)
+        adapter.fire(41)   # pulse ch 41 = 255 for 1 frame
+        adapter.kill(41)   # pulse ch 297 = 255 for 1 frame (41 + 256)
     """
 
     def __init__(self, dmx_state: DmxState):
@@ -45,11 +47,11 @@ class CueOutputAdapter:
         self._kills = 0
         self._unmapped = 0
 
-        logger.info("[CueOutputAdapter] Inicializado")
+        logger.info("[CueOutputAdapter] v3.0 DUAL PULSE mode")
 
     def fire(self, cue_id: int) -> bool:
         """
-        Pulse trigger: channel = 255 for 1 frame, then auto-reset to 0.
+        Pulse trigger for fire: channel = 255 for 1 frame, then auto-reset.
 
         Args:
             cue_id: ID del cue
@@ -66,8 +68,11 @@ class CueOutputAdapter:
 
     def kill(self, cue_id: int) -> bool:
         """
-        No-op in pulse mode. Channels auto-reset after 1 frame.
-        Kept for API compatibility.
+        Pulse trigger for kill: kill_channel = 255 for 1 frame, then auto-reset.
+        Kill channel = fire channel + kill_channel_offset.
+
+        Args:
+            cue_id: ID del cue
 
         Returns:
             True si el cue tiene mapeo DMX
@@ -75,11 +80,13 @@ class CueOutputAdapter:
         result = self._dmx.kill(cue_id)
         if result:
             self._kills += 1
+        else:
+            self._unmapped += 1
         return result
 
     def kill_pool(self, cue_ids: List[int]) -> int:
         """
-        Desactiva múltiples cues.
+        Kill pulse para múltiples cues.
 
         Args:
             cue_ids: Lista de IDs a desactivar
@@ -94,7 +101,7 @@ class CueOutputAdapter:
         return count
 
     def kill_all(self) -> None:
-        """Blackout: apaga todos los canales DMX."""
+        """Blackout: fuerza todos los canales a 0 inmediatamente."""
         self._dmx.kill_all()
         self._kills += 1
 
