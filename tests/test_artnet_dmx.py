@@ -1,5 +1,6 @@
 """
 Tests para el sistema Art-Net DMX: DmxState, ArtNetEngine, CueOutputAdapter.
+Single-channel toggle mode: fire and kill pulse the SAME channel.
 """
 import json
 import socket
@@ -51,9 +52,8 @@ def test_dmx_state_init():
 
 
 def test_dmx_state_fire_kill():
-    """fire() pulses fire channel, kill() pulses kill channel (fire + offset)."""
+    """fire() and kill() both pulse the SAME channel."""
     state = DmxState(cue_channel_map={41: [41], 42: [42]})
-    offset = state.get_kill_channel_offset()
 
     # FIRE C41 — pulse on ch 41
     result = state.fire(41)
@@ -67,19 +67,17 @@ def test_dmx_state_fire_kill():
     frame2 = state.snapshot()
     assert frame2[40] == 0
 
-    # KILL C41 — pulse on kill channel (41 + offset)
+    # KILL C41 — pulse on SAME channel 41 (toggle)
     result = state.kill(41)
     assert result is True
-    kill_ch = 41 + offset
-    assert state.get_channel(kill_ch) == 255  # kill pulse pending
+    assert state.get_channel(41) == 255  # kill pulse on same channel
 
     frame3 = state.snapshot()
-    assert frame3[kill_ch - 1] == 255  # kill channel captured
-    assert frame3[40] == 0             # fire channel stays 0
+    assert frame3[40] == 255  # same channel as fire
 
-    # Auto-reset kill channel
+    # Auto-reset
     frame4 = state.snapshot()
-    assert frame4[kill_ch - 1] == 0
+    assert frame4[40] == 0
 
     print("[OK] test_dmx_state_fire_kill")
 
@@ -128,37 +126,34 @@ def test_dmx_state_kill_all():
     print("[OK] test_dmx_state_kill_all")
 
 
-def test_dmx_state_dual_pulse():
-    """Dual pulse: fire and kill generate separate pulses on different channels."""
+def test_dmx_state_toggle_same_channel():
+    """Toggle: fire and kill use the same channel — both produce identical pulses."""
     state = DmxState(cue_channel_map={41: [41], 42: [42]})
-    offset = state.get_kill_channel_offset()
 
     # No sustained active cues
     assert len(state.get_active_cues()) == 0
 
-    # Fire + kill same cue before snapshot — both channels pulsed
+    # Fire + kill same cue before snapshot — same channel pulsed (not doubled)
     state.fire(41)
     state.kill(41)
     frame = state.snapshot()
-    assert frame[40] == 255              # fire ch 41
-    assert frame[41 + offset - 1] == 255 # kill ch 297
+    assert frame[40] == 255  # ch 41 pulsed
+    # No other channels affected
+    assert frame[41] == 0   # ch 42 not touched
 
-    # Both auto-reset
+    # Auto-reset
     frame2 = state.snapshot()
     assert frame2[40] == 0
-    assert frame2[41 + offset - 1] == 0
 
-    # Fire two cues, kill one — 3 channels pulsed
+    # Fire two cues, kill one — 2 channels pulsed (fire ch 41, kill ch 42 = same as fire ch 42)
     state.fire(41)
     state.fire(42)
-    state.kill(42)
+    state.kill(42)  # same channel as fire(42)
     frame3 = state.snapshot()
-    assert frame3[40] == 255               # fire ch 41
-    assert frame3[41] == 255               # fire ch 42
-    assert frame3[42 + offset - 1] == 255  # kill ch 298
-    assert frame3[41 + offset - 1] == 0    # kill ch 297 NOT pulsed
+    assert frame3[40] == 255  # ch 41
+    assert frame3[41] == 255  # ch 42 (fire and kill both pulsed it)
 
-    print("[OK] test_dmx_state_dual_pulse")
+    print("[OK] test_dmx_state_toggle_same_channel")
 
 
 def test_dmx_state_thread_safety():
@@ -371,10 +366,9 @@ def test_artnet_engine_from_json():
 # ============================================================================
 
 def test_adapter_fire_kill():
-    """Adapter fire pulses fire channel, kill pulses kill channel."""
+    """Adapter fire and kill both pulse the SAME channel."""
     state = DmxState(cue_channel_map={41: [41], 42: [42]})
     adapter = CueOutputAdapter(state)
-    offset = state.get_kill_channel_offset()
 
     # Fire pulse
     adapter.fire(41)
@@ -383,13 +377,12 @@ def test_adapter_fire_kill():
     assert frame[40] == 255              # fire captured
     assert state.get_channel(41) == 0    # auto-reset
 
-    # Kill pulse — on kill channel
+    # Kill pulse — on SAME channel
     adapter.kill(41)
-    kill_ch = 41 + offset  # 297
-    assert state.get_channel(kill_ch) == 255  # kill pulse pending
+    assert state.get_channel(41) == 255  # kill pulse on same channel
     frame2 = state.snapshot()
-    assert frame2[kill_ch - 1] == 255         # kill captured
-    assert state.get_channel(kill_ch) == 0    # auto-reset
+    assert frame2[40] == 255             # kill captured on same channel
+    assert state.get_channel(41) == 0    # auto-reset
 
     # is_active always False in pulse mode
     assert adapter.is_active(41) is False
@@ -398,10 +391,9 @@ def test_adapter_fire_kill():
 
 
 def test_adapter_kill_pool():
-    """Adapter kill_pool generates kill pulses for all cues."""
+    """Adapter kill_pool generates kill pulses on SAME channels as fire."""
     state = DmxState(cue_channel_map={1: [1], 2: [2], 3: [3]})
     adapter = CueOutputAdapter(state)
-    offset = state.get_kill_channel_offset()
 
     # Fire 3 cues
     adapter.fire(1)
@@ -412,14 +404,13 @@ def test_adapter_kill_pool():
     assert frame[1] == 255
     assert frame[2] == 255
 
-    # kill_pool generates kill pulses on kill channels
+    # kill_pool generates kill pulses on SAME channels
     count = adapter.kill_pool([1, 2, 3])
     assert count == 3
     frame2 = state.snapshot()
-    assert frame2[0 + offset] == 255  # kill ch 257
-    assert frame2[1 + offset] == 255  # kill ch 258
-    assert frame2[2 + offset] == 255  # kill ch 259
-    assert frame2[0] == 0             # fire channels untouched
+    assert frame2[0] == 255  # kill cue 1 → ch 1
+    assert frame2[1] == 255  # kill cue 2 → ch 2
+    assert frame2[2] == 255  # kill cue 3 → ch 3
 
     print("[OK] test_adapter_kill_pool")
 
@@ -454,8 +445,6 @@ def test_multi_cue_same_frame():
     """
     cue_map = {i: [i] for i in range(1, 83)}  # 82 cues, channels 1-82
     state = DmxState(cue_channel_map=cue_map)
-    offset = state.get_kill_channel_offset()
-    assert offset == 82, f"Expected offset=82 for 82 cues, got {offset}"
 
     # --- Multiple fires in one frame ---
     state.fire(1)
@@ -473,21 +462,20 @@ def test_multi_cue_same_frame():
     assert frame2[1] == 0
     assert frame2[2] == 0
 
-    # --- Multiple kills in one frame ---
+    # --- Multiple kills in one frame (same channels as fire) ---
     state.kill(1)
     state.kill(2)
     state.kill(3)
     frame3 = state.snapshot()
-    assert frame3[82] == 255, "ch83 kill for cue 1 (1+82)"
-    assert frame3[83] == 255, "ch84 kill for cue 2 (2+82)"
-    assert frame3[84] == 255, "ch85 kill for cue 3 (3+82)"
-    assert frame3[0] == 0,    "fire channels stay 0"
+    assert frame3[0] == 255, "ch1 kill (same channel as fire)"
+    assert frame3[1] == 255, "ch2 kill (same channel as fire)"
+    assert frame3[2] == 255, "ch3 kill (same channel as fire)"
 
-    # All kill channels reset
+    # All channels reset
     frame4 = state.snapshot()
-    assert frame4[82] == 0
-    assert frame4[83] == 0
-    assert frame4[84] == 0
+    assert frame4[0] == 0
+    assert frame4[1] == 0
+    assert frame4[2] == 0
 
     # --- Mixed fire + kill in one frame ---
     state.fire(41)
@@ -496,9 +484,8 @@ def test_multi_cue_same_frame():
     state.kill(1)
     frame5 = state.snapshot()
     assert frame5[40] == 255,  "ch41 fire cue 41"
-    assert frame5[123] == 255, "ch124 kill cue 42 (42+82)"
-    assert frame5[0] == 255,   "ch1 fire cue 1"
-    assert frame5[82] == 255,  "ch83 kill cue 1 (1+82)"
+    assert frame5[41] == 255,  "ch42 kill cue 42 (same channel)"
+    assert frame5[0] == 255,   "ch1 fire+kill cue 1 (same channel)"
 
     # All reset
     frame6 = state.snapshot()
@@ -507,73 +494,68 @@ def test_multi_cue_same_frame():
     print("[OK] test_multi_cue_same_frame")
 
 
-def test_kill_channel_layout():
-    """Verify kill_offset = max(fire_channels) and channel layout is compact.
+def test_single_channel_layout():
+    """Verify single-channel toggle: fire and kill use same channel.
 
     With 82 cues on channels 1-82:
       fire cue 41 → ch 41
-      kill cue 41 → ch 123 (41 + 82)
-      Layout: 1-82 fire, 83-164 kill
+      kill cue 41 → ch 41 (same!)
+      No channels beyond 82 used.
     """
     cue_map = {i: [i] for i in range(1, 83)}
     state = DmxState(cue_channel_map=cue_map)
-    offset = state.get_kill_channel_offset()
 
-    assert offset == 82, f"offset must be max fire channel (82), got {offset}"
-
-    # Verify specific cue mappings
+    # Fire and kill both use ch 41
     state.fire(41)
     frame = state.snapshot()
     assert frame[40] == 255, "fire cue 41 → ch 41 (index 40)"
 
     state.kill(41)
     frame2 = state.snapshot()
-    assert frame2[122] == 255, "kill cue 41 → ch 123 (index 122)"
+    assert frame2[40] == 255, "kill cue 41 → ch 41 (index 40) — same channel!"
 
     # First and last cue
     state.fire(1)
     state.kill(82)
     frame3 = state.snapshot()
-    assert frame3[0] == 255,   "fire cue 1 → ch 1"
-    assert frame3[163] == 255, "kill cue 82 → ch 164 (82+82)"
+    assert frame3[0] == 255,  "fire cue 1 → ch 1"
+    assert frame3[81] == 255, "kill cue 82 → ch 82"
 
-    # Nothing beyond 164
-    assert all(v == 0 for v in frame3[164:]), "No channels beyond 164 should be active"
+    # Nothing beyond 82
+    assert all(v == 0 for v in frame3[82:]), "No channels beyond 82 should be active"
 
-    print("[OK] test_kill_channel_layout")
+    print("[OK] test_single_channel_layout")
 
 
 def test_full_pipeline():
     """
-    Test end-to-end: Adapter → DmxState → ArtNetEngine (dual pulse).
-    Mirrors HTTP: fire = ON event, kill = OFF event, both as pulses.
+    Test end-to-end: Adapter → DmxState → ArtNetEngine (single-channel toggle).
+    Both fire and kill pulse the same channel.
     """
     state = DmxState(cue_channel_map={41: [41], 42: [42], 37: [37]})
     adapter = CueOutputAdapter(state)
-    offset = state.get_kill_channel_offset()
 
-    # Fire C41 — pulse on fire channel
+    # Fire C41 — pulse on ch 41
     adapter.fire(41)
     frame1 = state.snapshot()
     assert frame1[40] == 255, "C41 fire pulse must be 255"
-    assert frame1[41] == 0,   "C42 fire channel must be 0"
+    assert frame1[41] == 0,   "C42 channel must be 0"
 
-    # Kill C41 — pulse on kill channel
+    # Kill C41 — pulse on SAME ch 41
     adapter.kill(41)
     frame2 = state.snapshot()
-    assert frame2[40] == 0,                  "C41 fire channel must be 0"
-    assert frame2[40 + offset] == 255,       "C41 kill pulse must be 255"
+    assert frame2[40] == 255, "C41 kill pulse must be 255 (same channel)"
 
-    # Auto-reset kill
+    # Auto-reset
     frame3 = state.snapshot()
-    assert frame3[40 + offset] == 0, "C41 kill channel must auto-reset"
+    assert frame3[40] == 0, "C41 channel must auto-reset"
 
-    # Fire + Kill same frame (concurrent events)
+    # Fire + Kill same frame (concurrent events — same channel)
     adapter.fire(42)
     adapter.kill(41)
     frame4 = state.snapshot()
-    assert frame4[41] == 255,            "C42 fire pulse"
-    assert frame4[40 + offset] == 255,   "C41 kill pulse"
+    assert frame4[41] == 255, "C42 fire pulse"
+    assert frame4[40] == 255, "C41 kill pulse (same channel as fire)"
 
     # With engine running
     engine = ArtNetEngine(state, target_ip="127.0.0.1", fps=40)
@@ -585,7 +567,7 @@ def test_full_pipeline():
 
     adapter.kill(37)
     time.sleep(0.1)
-    assert state.get_channel(37 + offset) == 0, "Kill pulse consumed"
+    assert state.get_channel(37) == 0, "Kill pulse consumed (same channel)"
 
     engine_stats = engine.get_stats()
     assert engine_stats["frames_sent"] > 0
@@ -629,7 +611,6 @@ def test_artpoll_reply_structure():
     port = struct.unpack_from("<H", reply, 14)[0]
     assert port == 6454
 
-    # Short name starts at byte 26 (after header + opcode + ip + port + version + net + sub + oem + ubea + status1 + esta)
     # Find "911Fiesta" in the packet
     assert b"911Fiesta" in reply
     assert b"911 Fiesta DMX Engine" in reply
@@ -770,7 +751,7 @@ if __name__ == "__main__":
         test_dmx_state_unmapped_cue,
         test_dmx_state_multi_channel,
         test_dmx_state_kill_all,
-        test_dmx_state_dual_pulse,
+        test_dmx_state_toggle_same_channel,
         test_dmx_state_thread_safety,
         test_dmx_state_from_json,
         test_dmx_state_pulse_single_frame,
@@ -789,7 +770,7 @@ if __name__ == "__main__":
         test_adapter_kill_pool,
         test_adapter_stats,
         test_multi_cue_same_frame,
-        test_kill_channel_layout,
+        test_single_channel_layout,
         test_full_pipeline,
     ]
 

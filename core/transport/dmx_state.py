@@ -1,25 +1,21 @@
 # ============================================================================
-# dmx_state.py v3.0 - CONSOLA DMX VIRTUAL (DUAL PULSE MODE)
+# dmx_state.py v4.0 - CONSOLA DMX VIRTUAL (SINGLE-CHANNEL TOGGLE)
 # ============================================================================
-# Pulse-based DMX state for Titan. Both fire and kill are explicit events,
-# each generating a 1-frame pulse on separate DMX channels.
+# Pulse-based DMX state for Avolites Titan Remote.
 #
-# Semántica:
-#   fire(cue_id) → pulse on fire channel(s)     [channels 1-82]
-#   kill(cue_id) → pulse on kill channel(s)      [channels 83-164]
-#   snapshot()   → atomic copy + auto-reset all pulsed channels
+# Each DMX channel is a virtual button. A 1-frame pulse (255 → 0) toggles
+# the corresponding cue on the Titan console:
 #
-# Channel layout (kill_channel_offset = max fire channel):
-#   With 82 cues on channels 1-82:
-#     fire cue 41 → pulse ch 41  (fire channel)
-#     kill cue 41 → pulse ch 123 (kill channel = 41 + 82)
-#     Layout: 1-82 fire, 83-164 kill
+#   fire(cue_id) → pulse channel N → Titan toggles cue ON
+#   kill(cue_id) → pulse channel N → Titan toggles cue OFF
 #
-# Mirrors HTTP transport semantics exactly:
-#   HTTP fire_cue(41) → POST /fire  → cue ON
-#   HTTP kill_cue(41) → POST /kill  → cue OFF
-#   DMX  fire_cue(41) → pulse ch 41  → Titan sees fire trigger
-#   DMX  kill_cue(41) → pulse ch 123 → Titan sees kill trigger
+# Both fire and kill use the SAME channel — the pulse is identical.
+# Titan interprets each pulse as a button press (toggle).
+#
+# Channel layout (1 cue = 1 channel, up to 512 cues):
+#   cue 1  → ch 1
+#   cue 41 → ch 41
+#   cue 82 → ch 82
 #
 # Thread-safe: todas las operaciones usan lock.
 # ============================================================================
@@ -36,20 +32,19 @@ logger = logging.getLogger("DmxState")
 DMX_CHANNELS = 512
 DMX_ON_VALUE = 255
 DMX_OFF_VALUE = 0
-DEFAULT_KILL_CHANNEL_OFFSET = 0  # 0 = auto-compute from max fire channel
 
 
 class DmxState:
     """
-    Consola DMX virtual — dual pulse mode para Titan.
+    Consola DMX virtual — single-channel toggle mode para Titan.
 
-    fire() and kill() both generate 1-frame pulses on separate channels.
+    fire() and kill() both generate identical 1-frame pulses on the same channel.
     snapshot() returns current state and atomically resets all pulsed channels.
 
     Uso:
         state = DmxState(cue_channel_map={1: [1], 41: [41]})
         state.fire(41)           # pulse ch 41 = 255 for 1 frame
-        state.kill(41)           # pulse ch 123 = 255 for 1 frame (41 + 82)
+        state.kill(41)           # pulse ch 41 = 255 for 1 frame (same channel)
         frame = state.snapshot() # captures pulses, resets to 0
     """
 
@@ -58,7 +53,6 @@ class DmxState:
         cue_channel_map: Optional[Dict[int, List[int]]] = None,
         on_value: int = DMX_ON_VALUE,
         off_value: int = DMX_OFF_VALUE,
-        kill_channel_offset: int = DEFAULT_KILL_CHANNEL_OFFSET,
     ):
         self._channels = bytearray(DMX_CHANNELS)
         self._lock = threading.Lock()
@@ -68,24 +62,18 @@ class DmxState:
         # Pending pulse resets: set of 0-indexed channel indices to clear on next snapshot
         self._pending_resets: Set[int] = set()
 
-        # cue_id (int) → lista de fire channels DMX (1-indexed in config)
+        # cue_id (int) → lista de DMX channels (1-indexed in config)
         self._cue_map: Dict[int, List[int]] = {}
         if cue_channel_map:
             self._load_map(cue_channel_map)
-
-        # kill_channel_offset: 0 means auto-compute from max fire channel
-        if kill_channel_offset > 0:
-            self._kill_channel_offset = kill_channel_offset
-        else:
-            self._kill_channel_offset = self._compute_kill_offset()
 
         # Stats
         self._total_fire_pulses = 0
         self._total_kill_pulses = 0
 
         logger.info(
-            f"[DmxState] v3.0 DUAL PULSE: {len(self._cue_map)} cues, "
-            f"kill_offset={self._kill_channel_offset}, on={self._on_value} off={self._off_value}"
+            f"[DmxState] v4.0 TOGGLE: {len(self._cue_map)} cues, "
+            f"on={self._on_value} off={self._off_value}"
         )
 
     def _load_map(self, raw_map: Dict) -> None:
@@ -99,26 +87,12 @@ class DmxState:
             else:
                 self._cue_map[cue_id] = [int(channels)]
 
-    def _compute_kill_offset(self) -> int:
-        """Compute kill offset = max fire channel from cue map.
-
-        With cues 1-82 on channels 1-82, offset = 82.
-        Kill channels: 83-164. Compact, no gaps.
-        """
-        max_ch = 0
-        for channels in self._cue_map.values():
-            for ch in channels:
-                if ch > max_ch:
-                    max_ch = ch
-        return max_ch if max_ch > 0 else 1
-
     @classmethod
     def from_json(
         cls,
         path: str,
         on_value: int = DMX_ON_VALUE,
         off_value: int = DMX_OFF_VALUE,
-        kill_channel_offset: int = DEFAULT_KILL_CHANNEL_OFFSET,
     ) -> "DmxState":
         """Crea DmxState desde un archivo cue_map.json."""
         with open(path, "r") as f:
@@ -127,7 +101,6 @@ class DmxState:
             cue_channel_map=raw,
             on_value=on_value,
             off_value=off_value,
-            kill_channel_offset=kill_channel_offset,
         )
 
     def _pulse_channels(self, indices: List[int]) -> int:
@@ -142,7 +115,7 @@ class DmxState:
 
     def fire(self, cue_id: int) -> bool:
         """
-        Pulse trigger for fire event: sets fire channel(s) to 255 for 1 frame.
+        Pulse trigger for fire event: sets channel(s) to 255 for 1 frame.
         Channel resets to 0 automatically on next snapshot().
 
         Args:
@@ -168,8 +141,8 @@ class DmxState:
 
     def kill(self, cue_id: int) -> bool:
         """
-        Pulse trigger for kill event: sets kill channel(s) to 255 for 1 frame.
-        Kill channel = fire channel + kill_channel_offset.
+        Pulse trigger for kill event: sets channel(s) to 255 for 1 frame.
+        Uses the SAME channel as fire() — Titan treats the pulse as a toggle.
 
         Args:
             cue_id: ID del cue a matar
@@ -177,26 +150,19 @@ class DmxState:
         Returns:
             True si el cue tiene mapeo DMX, False si no está mapeado
         """
-        print(f"[KILL REQUEST] cue={cue_id}")
-
         channels = self._cue_map.get(cue_id)
         if not channels:
             print(f"[DmxState] kill(C{cue_id}): NO DMX MAPPING — cue not in cue_map")
             return False
 
-        kill_channels = [ch + self._kill_channel_offset for ch in channels]
-        indices = [ch - 1 for ch in kill_channels]
-
-        print(f"[KILL DMX] fire_channel={channels} kill_channel={kill_channels}")
+        indices = [ch - 1 for ch in channels]
 
         with self._lock:
             self._pulse_channels(indices)
             self._total_kill_pulses += 1
             pending = len(self._pending_resets)
 
-        print(
-            f"[DmxState] KILL PULSE C{cue_id} → ch{kill_channels} = {self._on_value} (1 frame) | pending={pending}"
-        )
+        print(f"[DmxState] KILL PULSE C{cue_id} → ch{channels} = {self._on_value} (1 frame) | pending={pending}")
         return True
 
     def kill_all(self) -> None:
@@ -242,10 +208,6 @@ class DmxState:
         with self._lock:
             data = bytearray(self._channels)
             if self._pending_resets:
-                reset_channels = [idx + 1 for idx in sorted(self._pending_resets)]
-                kill_chs = [ch for ch in reset_channels if ch > self._kill_channel_offset]
-                if kill_chs:
-                    print(f"[KILL SNAPSHOT] channels={kill_chs} (resetting to 0)")
                 for idx in self._pending_resets:
                     self._channels[idx] = self._off_value
                 self._pending_resets.clear()
@@ -259,12 +221,8 @@ class DmxState:
         return set()
 
     def get_cue_map(self) -> Dict[int, List[int]]:
-        """Retorna copia del mapeo cue→canales (fire channels)."""
+        """Retorna copia del mapeo cue→canales."""
         return dict(self._cue_map)
-
-    def get_kill_channel_offset(self) -> int:
-        """Retorna el offset usado para calcular kill channels."""
-        return self._kill_channel_offset
 
     def update_cue_map(self, cue_channel_map: Dict) -> None:
         """Actualiza el mapeo cue→canales en caliente."""
@@ -285,8 +243,7 @@ class DmxState:
         with self._lock:
             non_zero = sum(1 for v in self._channels if v > 0)
             return {
-                "mode": "dual_pulse",
-                "kill_channel_offset": self._kill_channel_offset,
+                "mode": "toggle",
                 "pending_resets": len(self._pending_resets),
                 "active_channels": non_zero,
                 "total_channels": DMX_CHANNELS,
@@ -301,5 +258,4 @@ __all__ = [
     "DMX_CHANNELS",
     "DMX_ON_VALUE",
     "DMX_OFF_VALUE",
-    "DEFAULT_KILL_CHANNEL_OFFSET",
 ]

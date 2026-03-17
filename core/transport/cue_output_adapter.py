@@ -1,14 +1,13 @@
 # ============================================================================
-# cue_output_adapter.py v3.0 - ADAPTADOR CUE → DMX (DUAL PULSE MODE)
+# cue_output_adapter.py v4.0 - ADAPTADOR CUE → DMX (SINGLE-CHANNEL TOGGLE)
 # ============================================================================
 # Traduce eventos del CueEngine (fire/kill) a pulsos DMX.
 #
 # CueEngine NO conoce DMX. Este adaptador es la capa intermedia:
 #   CueEngine → CueOutputAdapter → DmxState → SacnEngine/ArtNetEngine
 #
-# Dual pulse mode mirrors HTTP transport semantics:
-#   fire(cue_id) → pulse on fire channel   (ch N)
-#   kill(cue_id) → pulse on kill channel   (ch N + offset)
+# Single-channel toggle: both fire and kill pulse the SAME channel.
+# Each pulse is a virtual button press on the Avolites Titan console.
 #
 # Interface idéntica a la que espera AvolitesController:
 #   adapter.fire(cue_id)
@@ -28,15 +27,15 @@ logger = logging.getLogger("CueOutputAdapter")
 
 class CueOutputAdapter:
     """
-    Adaptador CueEngine → DMX (dual pulse mode).
+    Adaptador CueEngine → DMX (single-channel toggle).
 
-    Both fire() and kill() generate 1-frame pulses on separate channels.
-    Mirrors HTTP transport: fire = explicit ON event, kill = explicit OFF event.
+    Both fire() and kill() generate identical 1-frame pulses on the same channel.
+    Each pulse is a virtual button press — Titan toggles the cue.
 
     Uso:
         adapter = CueOutputAdapter(dmx_state)
-        adapter.fire(41)   # pulse ch 41 = 255 for 1 frame
-        adapter.kill(41)   # pulse ch 123 = 255 for 1 frame (41 + 82)
+        adapter.fire(41)   # pulse ch 41 = 255 for 1 frame (toggle ON)
+        adapter.kill(41)   # pulse ch 41 = 255 for 1 frame (toggle OFF)
     """
 
     def __init__(self, dmx_state: DmxState):
@@ -47,7 +46,7 @@ class CueOutputAdapter:
         self._kills = 0
         self._unmapped = 0
 
-        logger.info("[CueOutputAdapter] v3.0 DUAL PULSE mode")
+        logger.info("[CueOutputAdapter] v4.0 TOGGLE mode")
 
     def fire(self, cue_id: int) -> bool:
         """
@@ -68,8 +67,8 @@ class CueOutputAdapter:
 
     def kill(self, cue_id: int) -> bool:
         """
-        Pulse trigger for kill: kill_channel = 255 for 1 frame, then auto-reset.
-        Kill channel = fire channel + kill_channel_offset.
+        Pulse trigger for kill: channel = 255 for 1 frame, then auto-reset.
+        Uses the SAME channel as fire() — Titan treats the pulse as a toggle.
 
         Args:
             cue_id: ID del cue
@@ -77,7 +76,6 @@ class CueOutputAdapter:
         Returns:
             True si el cue tiene mapeo DMX
         """
-        print(f"[KILL ADAPTER] cue={cue_id}")
         result = self._dmx.kill(cue_id)
         if result:
             self._kills += 1
