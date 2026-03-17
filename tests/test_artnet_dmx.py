@@ -127,31 +127,41 @@ def test_dmx_state_kill_all():
 
 
 def test_dmx_state_toggle_same_channel():
-    """Toggle: fire and kill use the same channel — both produce identical pulses."""
+    """Toggle: fire and kill use the same channel — pulses are queued, not collapsed."""
     state = DmxState(cue_channel_map={41: [41], 42: [42]})
 
     # No sustained active cues
     assert len(state.get_active_cues()) == 0
 
-    # Fire + kill same cue before snapshot — same channel pulsed (not doubled)
+    # Fire + kill same cue before snapshot — 2 pulses queued on same channel
     state.fire(41)
     state.kill(41)
-    frame = state.snapshot()
-    assert frame[40] == 255  # ch 41 pulsed
-    # No other channels affected
-    assert frame[41] == 0   # ch 42 not touched
+    frame1 = state.snapshot()
+    assert frame1[40] == 255  # ch 41 first pulse
+    assert frame1[41] == 0    # ch 42 not touched
 
-    # Auto-reset
+    # Second pulse emitted in next frame
     frame2 = state.snapshot()
-    assert frame2[40] == 0
+    assert frame2[40] == 255  # ch 41 second pulse (kill)
 
-    # Fire two cues, kill one — 2 channels pulsed (fire ch 41, kill ch 42 = same as fire ch 42)
+    # Now fully consumed
+    frame3 = state.snapshot()
+    assert frame3[40] == 0
+
+    # Fire two cues, kill one — ch 41 has 1 pulse, ch 42 has 2 pulses
     state.fire(41)
     state.fire(42)
-    state.kill(42)  # same channel as fire(42)
-    frame3 = state.snapshot()
-    assert frame3[40] == 255  # ch 41
-    assert frame3[41] == 255  # ch 42 (fire and kill both pulsed it)
+    state.kill(42)  # second pulse on ch 42
+    frame4 = state.snapshot()
+    assert frame4[40] == 255  # ch 41 (1 pulse)
+    assert frame4[41] == 255  # ch 42 (first of 2 pulses)
+
+    frame5 = state.snapshot()
+    assert frame5[40] == 0    # ch 41 consumed
+    assert frame5[41] == 255  # ch 42 second pulse
+
+    frame6 = state.snapshot()
+    assert frame6[41] == 0    # ch 42 consumed
 
     print("[OK] test_dmx_state_toggle_same_channel")
 
@@ -485,11 +495,17 @@ def test_multi_cue_same_frame():
     frame5 = state.snapshot()
     assert frame5[40] == 255,  "ch41 fire cue 41"
     assert frame5[41] == 255,  "ch42 kill cue 42 (same channel)"
-    assert frame5[0] == 255,   "ch1 fire+kill cue 1 (same channel)"
+    assert frame5[0] == 255,   "ch1 fire+kill cue 1 (first of 2 pulses)"
+
+    # ch1 has 2 pulses (fire+kill), second pulse in next frame
+    frame6 = state.snapshot()
+    assert frame6[40] == 0,   "ch41 consumed"
+    assert frame6[41] == 0,   "ch42 consumed"
+    assert frame6[0] == 255,  "ch1 second pulse (kill)"
 
     # All reset
-    frame6 = state.snapshot()
-    assert all(v == 0 for v in frame6), "All channels must reset after snapshot"
+    frame7 = state.snapshot()
+    assert all(v == 0 for v in frame7), "All channels must reset after all pulses consumed"
 
     print("[OK] test_multi_cue_same_frame")
 
@@ -525,6 +541,91 @@ def test_single_channel_layout():
     assert all(v == 0 for v in frame3[82:]), "No channels beyond 82 should be active"
 
     print("[OK] test_single_channel_layout")
+
+
+def test_rapid_same_channel_pulses():
+    """Rapid fire+kill on same channel must produce 2 distinct pulses across 2 frames.
+
+    This is the critical pulse-queue test: without the pulse counter,
+    both events would collapse into a single pulse and the second toggle
+    would be lost by Titan.
+    """
+    state = DmxState(cue_channel_map={41: [41]})
+
+    # fire + kill before any snapshot
+    state.fire(41)
+    state.kill(41)
+
+    frame1 = state.snapshot()
+    frame2 = state.snapshot()
+    frame3 = state.snapshot()
+
+    assert frame1[40] == 255, "frame1: first pulse (fire)"
+    assert frame2[40] == 255, "frame2: second pulse (kill) — must NOT collapse"
+    assert frame3[40] == 0,   "frame3: both pulses consumed"
+
+    print("[OK] test_rapid_same_channel_pulses")
+
+
+def test_triple_rapid_pulse():
+    """3 rapid fires on same channel → 3 consecutive frames of 255."""
+    state = DmxState(cue_channel_map={41: [41]})
+
+    state.fire(41)
+    state.fire(41)
+    state.fire(41)
+
+    frames = [state.snapshot()[40] for _ in range(4)]
+    assert frames == [255, 255, 255, 0], f"Expected [255,255,255,0], got {frames}"
+
+    print("[OK] test_triple_rapid_pulse")
+
+
+def test_pulse_queue_mixed_channels():
+    """Pulse queue works independently per channel."""
+    state = DmxState(cue_channel_map={1: [1], 2: [2]})
+
+    # ch1 gets 3 pulses, ch2 gets 1 pulse
+    state.fire(1)
+    state.kill(1)
+    state.fire(1)
+    state.fire(2)
+
+    frame1 = state.snapshot()
+    assert frame1[0] == 255, "ch1 pulse 1/3"
+    assert frame1[1] == 255, "ch2 pulse 1/1"
+
+    frame2 = state.snapshot()
+    assert frame2[0] == 255, "ch1 pulse 2/3"
+    assert frame2[1] == 0,   "ch2 consumed"
+
+    frame3 = state.snapshot()
+    assert frame3[0] == 255, "ch1 pulse 3/3"
+
+    frame4 = state.snapshot()
+    assert frame4[0] == 0,   "ch1 consumed"
+
+    print("[OK] test_pulse_queue_mixed_channels")
+
+
+def test_pulse_queue_kill_all_clears_queue():
+    """kill_all() must clear the pulse queue — no lingering pulses."""
+    state = DmxState(cue_channel_map={41: [41]})
+
+    state.fire(41)
+    state.fire(41)
+    state.fire(41)
+    # 3 pulses queued
+
+    state.kill_all()
+    frame = state.snapshot()
+    assert frame[40] == 0, "kill_all must clear pulse queue"
+
+    # No lingering pulses
+    frame2 = state.snapshot()
+    assert frame2[40] == 0, "No pulses should remain after kill_all"
+
+    print("[OK] test_pulse_queue_kill_all_clears_queue")
 
 
 def test_full_pipeline():
@@ -771,6 +872,10 @@ if __name__ == "__main__":
         test_adapter_stats,
         test_multi_cue_same_frame,
         test_single_channel_layout,
+        test_rapid_same_channel_pulses,
+        test_triple_rapid_pulse,
+        test_pulse_queue_mixed_channels,
+        test_pulse_queue_kill_all_clears_queue,
         test_full_pipeline,
     ]
 

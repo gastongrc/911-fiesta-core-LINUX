@@ -1,5 +1,5 @@
 # ============================================================================
-# dmx_state.py v4.0 - CONSOLA DMX VIRTUAL (SINGLE-CHANNEL TOGGLE)
+# dmx_state.py v4.1 - CONSOLA DMX VIRTUAL (SINGLE-CHANNEL TOGGLE)
 # ============================================================================
 # Pulse-based DMX state for Avolites Titan Remote.
 #
@@ -11,6 +11,15 @@
 #
 # Both fire and kill use the SAME channel — the pulse is identical.
 # Titan interprets each pulse as a button press (toggle).
+#
+# Pulse queue: each channel has a pending pulse counter. Multiple rapid
+# triggers on the same channel are preserved across consecutive frames:
+#
+#   fire(41)  → _pulse_counts[40] = 1
+#   kill(41)  → _pulse_counts[40] = 2
+#   snapshot() → frame with ch41=255, counter decrements to 1, ch stays 255
+#   snapshot() → frame with ch41=255, counter decrements to 0, ch resets to 0
+#   snapshot() → frame with ch41=0
 #
 # Channel layout (1 cue = 1 channel, up to 512 cues):
 #   cue 1  → ch 1
@@ -25,7 +34,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional
 
 logger = logging.getLogger("DmxState")
 
@@ -39,13 +48,20 @@ class DmxState:
     Consola DMX virtual — single-channel toggle mode para Titan.
 
     fire() and kill() both generate identical 1-frame pulses on the same channel.
-    snapshot() returns current state and atomically resets all pulsed channels.
+    Multiple rapid pulses on the same channel are queued and emitted across
+    consecutive frames (one pulse per frame per channel).
+
+    snapshot() returns current state and decrements pulse counters. Channels
+    with remaining pulses stay at on_value; channels whose counter reaches 0
+    are reset to off_value.
 
     Uso:
         state = DmxState(cue_channel_map={1: [1], 41: [41]})
-        state.fire(41)           # pulse ch 41 = 255 for 1 frame
-        state.kill(41)           # pulse ch 41 = 255 for 1 frame (same channel)
-        frame = state.snapshot() # captures pulses, resets to 0
+        state.fire(41)           # pulse ch 41 = 255, counter = 1
+        state.kill(41)           # pulse ch 41 = 255, counter = 2
+        frame1 = state.snapshot() # ch41=255, counter → 1
+        frame2 = state.snapshot() # ch41=255, counter → 0, reset to 0
+        frame3 = state.snapshot() # ch41=0
     """
 
     def __init__(
@@ -59,8 +75,10 @@ class DmxState:
         self._on_value = max(0, min(255, on_value))
         self._off_value = max(0, min(255, off_value))
 
-        # Pending pulse resets: set of 0-indexed channel indices to clear on next snapshot
-        self._pending_resets: Set[int] = set()
+        # Per-channel pulse counter: index → remaining pulse count
+        # When > 0, channel emits on_value. Each snapshot() decrements by 1.
+        # When counter reaches 0, channel resets to off_value.
+        self._pulse_counts: Dict[int, int] = {}
 
         # cue_id (int) → lista de DMX channels (1-indexed in config)
         self._cue_map: Dict[int, List[int]] = {}
@@ -72,7 +90,7 @@ class DmxState:
         self._total_kill_pulses = 0
 
         logger.info(
-            f"[DmxState] v4.0 TOGGLE: {len(self._cue_map)} cues, "
+            f"[DmxState] v4.1 TOGGLE: {len(self._cue_map)} cues, "
             f"on={self._on_value} off={self._off_value}"
         )
 
@@ -104,19 +122,20 @@ class DmxState:
         )
 
     def _pulse_channels(self, indices: List[int]) -> int:
-        """Set channels to on_value and mark for auto-reset. Returns count pulsed."""
+        """Set channels to on_value and increment pulse counter. Returns count pulsed."""
         pulsed = 0
         for idx in indices:
             if 0 <= idx < DMX_CHANNELS:
                 self._channels[idx] = self._on_value
-                self._pending_resets.add(idx)
+                self._pulse_counts[idx] = self._pulse_counts.get(idx, 0) + 1
                 pulsed += 1
         return pulsed
 
     def fire(self, cue_id: int) -> bool:
         """
         Pulse trigger for fire event: sets channel(s) to 255 for 1 frame.
-        Channel resets to 0 automatically on next snapshot().
+        If channel already has a pending pulse, the new pulse is queued
+        and will be emitted in the next available frame.
 
         Args:
             cue_id: ID del cue a disparar
@@ -134,7 +153,7 @@ class DmxState:
         with self._lock:
             self._pulse_channels(indices)
             self._total_fire_pulses += 1
-            pending = len(self._pending_resets)
+            pending = sum(self._pulse_counts.values())
 
         print(f"[DmxState] FIRE PULSE C{cue_id} → ch{channels} = {self._on_value} (1 frame) | pending={pending}")
         return True
@@ -143,6 +162,7 @@ class DmxState:
         """
         Pulse trigger for kill event: sets channel(s) to 255 for 1 frame.
         Uses the SAME channel as fire() — Titan treats the pulse as a toggle.
+        If channel already has a pending pulse, the new pulse is queued.
 
         Args:
             cue_id: ID del cue a matar
@@ -160,7 +180,7 @@ class DmxState:
         with self._lock:
             self._pulse_channels(indices)
             self._total_kill_pulses += 1
-            pending = len(self._pending_resets)
+            pending = sum(self._pulse_counts.values())
 
         print(f"[DmxState] KILL PULSE C{cue_id} → ch{channels} = {self._on_value} (1 frame) | pending={pending}")
         return True
@@ -170,7 +190,7 @@ class DmxState:
         with self._lock:
             for i in range(DMX_CHANNELS):
                 self._channels[i] = self._off_value
-            self._pending_resets.clear()
+            self._pulse_counts.clear()
 
         print("[DmxState] KILL ALL (blackout) — all 512 channels → 0")
 
@@ -198,19 +218,32 @@ class DmxState:
 
     def snapshot(self) -> bytearray:
         """
-        Atomic snapshot + pulse reset.
+        Atomic snapshot + pulse decrement.
 
-        Returns the current 512-channel state, then resets all pulsed
-        channels to 0. This guarantees exactly 1 frame of 255 per pulse.
+        Returns the current 512-channel state, then processes pulse counters:
+        - Channels with counter > 1: decrement counter, channel stays at on_value
+          (next snapshot will emit another pulse frame)
+        - Channels with counter == 1: decrement to 0, reset channel to off_value
+          (pulse fully consumed)
+        - Channels with counter == 0: not in dict, no action
+
+        This guarantees exactly 1 frame of 255 per pulse event, with multiple
+        rapid pulses on the same channel spread across consecutive frames.
 
         Called by SacnEngine/ArtNetEngine every frame (~25ms at 40fps).
         """
         with self._lock:
             data = bytearray(self._channels)
-            if self._pending_resets:
-                for idx in self._pending_resets:
-                    self._channels[idx] = self._off_value
-                self._pending_resets.clear()
+            if self._pulse_counts:
+                done = []
+                for idx, count in self._pulse_counts.items():
+                    if count <= 1:
+                        self._channels[idx] = self._off_value
+                        done.append(idx)
+                    else:
+                        self._pulse_counts[idx] = count - 1
+                for idx in done:
+                    del self._pulse_counts[idx]
             return data
 
     def get_active_cues(self) -> set:
@@ -244,7 +277,7 @@ class DmxState:
             non_zero = sum(1 for v in self._channels if v > 0)
             return {
                 "mode": "toggle",
-                "pending_resets": len(self._pending_resets),
+                "pending_pulses": sum(self._pulse_counts.values()),
                 "active_channels": non_zero,
                 "total_channels": DMX_CHANNELS,
                 "mapped_cues": len(self._cue_map),
