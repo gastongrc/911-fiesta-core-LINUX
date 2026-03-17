@@ -41,7 +41,7 @@ for submod in ["dmx_state", "artnet_engine", "cue_output_adapter",
         sys.modules[full_name] = sub_mod
         sub_spec.loader.exec_module(sub_mod)
 
-from core.transport.dmx_state import DmxState, DMX_CHANNELS
+from core.transport.dmx_state import DmxState, DMX_CHANNELS, PULSE_FRAMES
 from core.transport.sacn_engine import (
     SacnEngine,
     build_sacn_packet,
@@ -162,21 +162,24 @@ def test_sacn_engine_start_stop():
 
 
 def test_sacn_engine_dmx_state_integration():
-    """Toggle mode: fire and kill both pulse same channel, consumed by engine."""
+    """Toggle mode: fire and kill both pulse same channel for PULSE_FRAMES, consumed by engine."""
+    P = PULSE_FRAMES
     dmx = DmxState(cue_channel_map={41: [41]})
 
-    # Fire pulse without engine
+    # Fire pulse without engine — P frames of 255
     dmx.fire(41)
     assert dmx.get_channel(41) == 255
-    frame1 = dmx.snapshot()
-    assert frame1[40] == 255
+    for _ in range(P):
+        frame = dmx.snapshot()
+        assert frame[40] == 255
     assert dmx.get_channel(41) == 0
 
-    # Kill pulse without engine — same channel
+    # Kill pulse without engine — same channel, P frames
     dmx.kill(41)
-    assert dmx.get_channel(41) == 255  # same channel as fire
-    frame2 = dmx.snapshot()
-    assert frame2[40] == 255  # same channel
+    assert dmx.get_channel(41) == 255
+    for _ in range(P):
+        frame = dmx.snapshot()
+        assert frame[40] == 255
     assert dmx.get_channel(41) == 0
 
     # Both consumed by engine
@@ -184,12 +187,12 @@ def test_sacn_engine_dmx_state_integration():
     engine.start()
 
     dmx.fire(41)
-    time.sleep(0.1)
+    time.sleep(0.2)  # engine consumes P frames
     assert dmx.get_channel(41) == 0
 
     dmx.kill(41)
-    time.sleep(0.1)
-    assert dmx.get_channel(41) == 0  # same channel, consumed
+    time.sleep(0.2)
+    assert dmx.get_channel(41) == 0
 
     stats = engine.get_stats()
     assert stats["frames_sent"] > 3
@@ -237,21 +240,24 @@ def test_sacn_engine_update_config():
 
 def test_sacn_with_cue_output_adapter():
     """CueOutputAdapter toggle mode with SacnEngine pipeline."""
+    P = PULSE_FRAMES
     dmx = DmxState(cue_channel_map={41: [41], 1: [1]})
     adapter = CueOutputAdapter(dmx)
 
-    # Fire pulse
+    # Fire pulse — P frames of 255
     assert adapter.fire(41) is True
     assert dmx.get_channel(41) == 255
-    frame = dmx.snapshot()
-    assert frame[40] == 255
+    for _ in range(P):
+        frame = dmx.snapshot()
+        assert frame[40] == 255
     assert dmx.get_channel(41) == 0
 
-    # Kill pulse — same channel
+    # Kill pulse — same channel, P frames
     assert adapter.kill(41) is True
-    assert dmx.get_channel(41) == 255  # same channel
-    frame2 = dmx.snapshot()
-    assert frame2[40] == 255  # same channel
+    assert dmx.get_channel(41) == 255
+    for _ in range(P):
+        frame = dmx.snapshot()
+        assert frame[40] == 255
     assert dmx.get_channel(41) == 0
 
     # Unmapped cue
@@ -267,11 +273,11 @@ def test_sacn_with_cue_output_adapter():
     engine = SacnEngine(dmx, universe=1, fps=40)
     engine.start()
     adapter.fire(1)
-    time.sleep(0.1)
+    time.sleep(0.2)  # engine consumes P frames
     assert dmx.get_channel(1) == 0
     adapter.kill(1)
-    time.sleep(0.1)
-    assert dmx.get_channel(1) == 0  # same channel, consumed
+    time.sleep(0.2)
+    assert dmx.get_channel(1) == 0
     engine.stop()
 
     print("[OK] test_sacn_with_cue_output_adapter")
@@ -304,6 +310,7 @@ def test_controller_switch_to_sacn():
 
 def test_controller_fire_kill_sacn_mode():
     """fire_cue and kill_cue both pulse same channel in sacn mode."""
+    P = PULSE_FRAMES
     from avolites_config import AvolitesController
     ctrl = AvolitesController(verbose=False, auto_connect=False)
     ctrl.set_transport("sacn")
@@ -311,18 +318,20 @@ def test_controller_fire_kill_sacn_mode():
     # Stop engine briefly to test pulse without race condition
     ctrl._sacn_engine.stop()
 
-    # Fire pulse
+    # Fire pulse — P frames of 255
     ctrl.fire_cue(41)
     assert ctrl._dmx_state.get_channel(41) == 255
-    frame = ctrl._dmx_state.snapshot()
-    assert frame[40] == 255
+    for _ in range(P):
+        frame = ctrl._dmx_state.snapshot()
+        assert frame[40] == 255
     assert ctrl._dmx_state.get_channel(41) == 0
 
-    # Kill pulse — same channel
+    # Kill pulse — same channel, P frames
     ctrl.kill_cue(41)
-    assert ctrl._dmx_state.get_channel(41) == 255  # same channel
-    frame2 = ctrl._dmx_state.snapshot()
-    assert frame2[40] == 255  # same channel
+    assert ctrl._dmx_state.get_channel(41) == 255
+    for _ in range(P):
+        frame = ctrl._dmx_state.snapshot()
+        assert frame[40] == 255
     assert ctrl._dmx_state.get_channel(41) == 0
 
     print("[OK] test_controller_fire_kill_sacn_mode")

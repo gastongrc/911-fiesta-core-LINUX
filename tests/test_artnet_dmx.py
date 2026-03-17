@@ -1,6 +1,7 @@
 """
 Tests para el sistema Art-Net DMX: DmxState, ArtNetEngine, CueOutputAdapter.
 Single-channel toggle mode: fire and kill pulse the SAME channel.
+PULSE_FRAMES=2: each pulse holds 255 for 2 consecutive frames.
 """
 import json
 import socket
@@ -30,12 +31,27 @@ transport_pkg = types.ModuleType("core.transport")
 transport_pkg.__path__ = [os.path.join(ROOT, "core", "transport")]
 sys.modules["core.transport"] = transport_pkg
 
-from core.transport.dmx_state import DmxState, DMX_CHANNELS
+from core.transport.dmx_state import DmxState, DMX_CHANNELS, PULSE_FRAMES
 from core.transport.artnet_engine import (
     ArtNetEngine, build_artnet_dmx_packet, build_artpoll_reply,
     ARTNET_PORT, ARTNET_HEADER, ARTNET_OPCODE_POLL, _is_artpoll,
 )
 from core.transport.cue_output_adapter import CueOutputAdapter
+
+P = PULSE_FRAMES  # shorthand for assertions
+
+
+def drain(state, channel_idx, expected_on_frames):
+    """Helper: consume expected_on_frames of 255 then verify reset to 0."""
+    for i in range(expected_on_frames):
+        frame = state.snapshot()
+        assert frame[channel_idx] == 255, (
+            f"frame {i+1}/{expected_on_frames}: ch[{channel_idx}] expected 255, got {frame[channel_idx]}"
+        )
+    final = state.snapshot()
+    assert final[channel_idx] == 0, (
+        f"frame {expected_on_frames+1}: ch[{channel_idx}] expected 0 (reset), got {final[channel_idx]}"
+    )
 
 
 # ============================================================================
@@ -52,32 +68,22 @@ def test_dmx_state_init():
 
 
 def test_dmx_state_fire_kill():
-    """fire() and kill() both pulse the SAME channel."""
+    """fire() and kill() both pulse the SAME channel for PULSE_FRAMES frames."""
     state = DmxState(cue_channel_map={41: [41], 42: [42]})
 
-    # FIRE C41 — pulse on ch 41
+    # FIRE C41 — pulse on ch 41 for P frames
     result = state.fire(41)
     assert result is True
-    assert state.get_channel(41) == 255  # fire pulse pending
+    assert state.get_channel(41) == 255
 
-    frame = state.snapshot()
-    assert frame[40] == 255  # fire ch 41 (index 40)
+    drain(state, 40, P)  # P frames of 255, then 0
 
-    # Auto-reset
-    frame2 = state.snapshot()
-    assert frame2[40] == 0
-
-    # KILL C41 — pulse on SAME channel 41 (toggle)
+    # KILL C41 — pulse on SAME channel 41 for P frames
     result = state.kill(41)
     assert result is True
-    assert state.get_channel(41) == 255  # kill pulse on same channel
+    assert state.get_channel(41) == 255
 
-    frame3 = state.snapshot()
-    assert frame3[40] == 255  # same channel as fire
-
-    # Auto-reset
-    frame4 = state.snapshot()
-    assert frame4[40] == 0
+    drain(state, 40, P)
 
     print("[OK] test_dmx_state_fire_kill")
 
@@ -95,20 +101,23 @@ def test_dmx_state_unmapped_cue():
 
 
 def test_dmx_state_multi_channel():
-    """Un cue puede controlar múltiples canales — all pulse in 1 frame."""
+    """Un cue puede controlar múltiples canales — all pulse for P frames."""
     state = DmxState(cue_channel_map={1: [1, 2, 3]})
     state.fire(1)
-    frame = state.snapshot()
-    assert frame[0] == 255
-    assert frame[1] == 255
-    assert frame[2] == 255
-    assert frame[3] == 0  # canal 4 no afectado
 
-    # Auto-reset after snapshot
-    frame2 = state.snapshot()
-    assert frame2[0] == 0
-    assert frame2[1] == 0
-    assert frame2[2] == 0
+    # All 3 channels hold 255 for P frames
+    for i in range(P):
+        frame = state.snapshot()
+        assert frame[0] == 255, f"ch1 frame {i+1}"
+        assert frame[1] == 255, f"ch2 frame {i+1}"
+        assert frame[2] == 255, f"ch3 frame {i+1}"
+        assert frame[3] == 0,   f"ch4 not fired frame {i+1}"
+
+    # Auto-reset after P frames
+    frame_after = state.snapshot()
+    assert frame_after[0] == 0
+    assert frame_after[1] == 0
+    assert frame_after[2] == 0
     print("[OK] test_dmx_state_multi_channel")
 
 
@@ -133,35 +142,40 @@ def test_dmx_state_toggle_same_channel():
     # No sustained active cues
     assert len(state.get_active_cues()) == 0
 
-    # Fire + kill same cue before snapshot — 2 pulses queued on same channel
+    # Fire + kill same cue before snapshot — 2 pulses queued = 2*P frames total
     state.fire(41)
     state.kill(41)
-    frame1 = state.snapshot()
-    assert frame1[40] == 255  # ch 41 first pulse
-    assert frame1[41] == 0    # ch 42 not touched
 
-    # Second pulse emitted in next frame
-    frame2 = state.snapshot()
-    assert frame2[40] == 255  # ch 41 second pulse (kill)
+    total_frames = 2 * P
+    for i in range(total_frames):
+        frame = state.snapshot()
+        assert frame[40] == 255, f"ch41 frame {i+1}/{total_frames}"
+        assert frame[41] == 0,   f"ch42 must not be touched"
 
     # Now fully consumed
-    frame3 = state.snapshot()
-    assert frame3[40] == 0
+    frame_after = state.snapshot()
+    assert frame_after[40] == 0
 
-    # Fire two cues, kill one — ch 41 has 1 pulse, ch 42 has 2 pulses
+    # Fire two cues, kill one — ch 41 has P frames, ch 42 has 2*P frames
     state.fire(41)
     state.fire(42)
     state.kill(42)  # second pulse on ch 42
-    frame4 = state.snapshot()
-    assert frame4[40] == 255  # ch 41 (1 pulse)
-    assert frame4[41] == 255  # ch 42 (first of 2 pulses)
 
-    frame5 = state.snapshot()
-    assert frame5[40] == 0    # ch 41 consumed
-    assert frame5[41] == 255  # ch 42 second pulse
+    # First P frames: both channels active
+    for i in range(P):
+        frame = state.snapshot()
+        assert frame[40] == 255, f"ch41 frame {i+1}/{P}"
+        assert frame[41] == 255, f"ch42 frame {i+1}/{2*P}"
 
-    frame6 = state.snapshot()
-    assert frame6[41] == 0    # ch 42 consumed
+    # Next P frames: ch 41 consumed, ch 42 still active
+    for i in range(P):
+        frame = state.snapshot()
+        assert frame[40] == 0,   f"ch41 consumed at frame {P+i+1}"
+        assert frame[41] == 255, f"ch42 frame {P+i+1}/{2*P}"
+
+    # ch 42 now consumed
+    frame_final = state.snapshot()
+    assert frame_final[41] == 0
 
     print("[OK] test_dmx_state_toggle_same_channel")
 
@@ -222,25 +236,31 @@ def test_dmx_state_from_json():
     assert state.get_channel(41) == 255  # pending
     frame = state.snapshot()
     assert frame[40] == 255              # captured
-    assert state.get_channel(41) == 0    # auto-reset
+
+    # Drain remaining frames
+    for _ in range(P - 1):
+        state.snapshot()
+    assert state.get_channel(41) == 0    # auto-reset after P frames
+
     print("[OK] test_dmx_state_from_json")
 
 
-def test_dmx_state_pulse_single_frame():
-    """Pulse lasts exactly 1 frame — value present in first snapshot only."""
+def test_dmx_state_pulse_width():
+    """Pulse lasts exactly PULSE_FRAMES frames — value present in first P snapshots only."""
     state = DmxState(cue_channel_map={41: [41]})
     state.fire(41)
 
-    # First snapshot captures the pulse
-    frame1 = state.snapshot()
-    assert frame1[40] == 255, "First frame must have pulse value"
+    # First P snapshots capture the pulse
+    for i in range(P):
+        frame = state.snapshot()
+        assert frame[40] == 255, f"Frame {i+1} must have pulse value"
 
     # All subsequent snapshots must be 0
     for i in range(10):
         frame = state.snapshot()
-        assert frame[40] == 0, f"Frame {i+2} must be 0 after pulse"
+        assert frame[40] == 0, f"Frame {P+i+1} must be 0 after pulse"
 
-    print("[OK] test_dmx_state_pulse_single_frame")
+    print("[OK] test_dmx_state_pulse_width")
 
 
 # ============================================================================
@@ -338,16 +358,16 @@ def test_artnet_engine_start_stop():
 
 
 def test_artnet_engine_sends_pulse():
-    """Engine sends pulse and auto-resets — channel is 0 after first frame."""
+    """Engine sends pulse and auto-resets — channel is 0 after P frames consumed."""
     state = DmxState(cue_channel_map={41: [41]})
     engine = ArtNetEngine(state, target_ip="127.0.0.1", fps=40)
     engine.start()
 
-    state.fire(41)  # ch41 = 255 for 1 frame
-    time.sleep(0.2)  # Engine consumes pulse via snapshot
+    state.fire(41)  # ch41 = 255 for P frames
+    time.sleep(0.2)  # Engine consumes pulse via snapshot (~8 frames at 40fps)
 
-    # After engine consumed the pulse, channel must be 0
-    assert state.get_channel(41) == 0, "Pulse must auto-reset after engine snapshot"
+    # After engine consumed all P frames, channel must be 0
+    assert state.get_channel(41) == 0, "Pulse must auto-reset after engine snapshots"
 
     stats = engine.get_stats()
     assert stats["frames_sent"] > 5
@@ -376,23 +396,19 @@ def test_artnet_engine_from_json():
 # ============================================================================
 
 def test_adapter_fire_kill():
-    """Adapter fire and kill both pulse the SAME channel."""
+    """Adapter fire and kill both pulse the SAME channel for P frames."""
     state = DmxState(cue_channel_map={41: [41], 42: [42]})
     adapter = CueOutputAdapter(state)
 
-    # Fire pulse
+    # Fire pulse — P frames of 255
     adapter.fire(41)
-    assert state.get_channel(41) == 255  # fire pulse pending
-    frame = state.snapshot()
-    assert frame[40] == 255              # fire captured
-    assert state.get_channel(41) == 0    # auto-reset
+    assert state.get_channel(41) == 255
+    drain(state, 40, P)
 
-    # Kill pulse — on SAME channel
+    # Kill pulse — on SAME channel, P frames of 255
     adapter.kill(41)
-    assert state.get_channel(41) == 255  # kill pulse on same channel
-    frame2 = state.snapshot()
-    assert frame2[40] == 255             # kill captured on same channel
-    assert state.get_channel(41) == 0    # auto-reset
+    assert state.get_channel(41) == 255
+    drain(state, 40, P)
 
     # is_active always False in pulse mode
     assert adapter.is_active(41) is False
@@ -405,7 +421,7 @@ def test_adapter_kill_pool():
     state = DmxState(cue_channel_map={1: [1], 2: [2], 3: [3]})
     adapter = CueOutputAdapter(state)
 
-    # Fire 3 cues
+    # Fire 3 cues — each gets P frames
     adapter.fire(1)
     adapter.fire(2)
     adapter.fire(3)
@@ -413,6 +429,10 @@ def test_adapter_kill_pool():
     assert frame[0] == 255
     assert frame[1] == 255
     assert frame[2] == 255
+
+    # Drain remaining fire frames
+    for _ in range(P - 1):
+        state.snapshot()
 
     # kill_pool generates kill pulses on SAME channels
     count = adapter.kill_pool([1, 2, 3])
@@ -447,11 +467,10 @@ def test_adapter_stats():
 # ============================================================================
 
 def test_multi_cue_same_frame():
-    """Multiple fire/kill cues produce a single frame with all channels active.
+    """Multiple fire/kill cues in one frame — all channels active for P frames.
 
-    DMX must NOT queue — all pulses accumulate in the same frame.
-    fire_cue(1), fire_cue(2), fire_cue(3) → one frame: ch1=255, ch2=255, ch3=255.
-    Next snapshot resets all to 0.
+    fire_cue(1), fire_cue(2), fire_cue(3) → P frames: ch1=255, ch2=255, ch3=255.
+    After P snapshots, all reset to 0.
     """
     cue_map = {i: [i] for i in range(1, 83)}  # 82 cues, channels 1-82
     state = DmxState(cue_channel_map=cue_map)
@@ -460,52 +479,59 @@ def test_multi_cue_same_frame():
     state.fire(1)
     state.fire(2)
     state.fire(3)
-    frame = state.snapshot()
-    assert frame[0] == 255, "ch1 fire"
-    assert frame[1] == 255, "ch2 fire"
-    assert frame[2] == 255, "ch3 fire"
-    assert frame[3] == 0,   "ch4 not fired"
 
-    # All reset in next frame
-    frame2 = state.snapshot()
-    assert frame2[0] == 0
-    assert frame2[1] == 0
-    assert frame2[2] == 0
+    for i in range(P):
+        frame = state.snapshot()
+        assert frame[0] == 255, f"ch1 fire frame {i+1}"
+        assert frame[1] == 255, f"ch2 fire frame {i+1}"
+        assert frame[2] == 255, f"ch3 fire frame {i+1}"
+        assert frame[3] == 0,   f"ch4 not fired"
+
+    # All reset after P frames
+    frame_after = state.snapshot()
+    assert frame_after[0] == 0
+    assert frame_after[1] == 0
+    assert frame_after[2] == 0
 
     # --- Multiple kills in one frame (same channels as fire) ---
     state.kill(1)
     state.kill(2)
     state.kill(3)
-    frame3 = state.snapshot()
-    assert frame3[0] == 255, "ch1 kill (same channel as fire)"
-    assert frame3[1] == 255, "ch2 kill (same channel as fire)"
-    assert frame3[2] == 255, "ch3 kill (same channel as fire)"
 
-    # All channels reset
-    frame4 = state.snapshot()
-    assert frame4[0] == 0
-    assert frame4[1] == 0
-    assert frame4[2] == 0
+    for i in range(P):
+        frame = state.snapshot()
+        assert frame[0] == 255, f"ch1 kill frame {i+1}"
+        assert frame[1] == 255, f"ch2 kill frame {i+1}"
+        assert frame[2] == 255, f"ch3 kill frame {i+1}"
 
-    # --- Mixed fire + kill in one frame ---
+    frame_after2 = state.snapshot()
+    assert frame_after2[0] == 0
+    assert frame_after2[1] == 0
+    assert frame_after2[2] == 0
+
+    # --- Mixed fire + kill on different channels in one frame ---
     state.fire(41)
     state.kill(42)
+
+    for i in range(P):
+        frame = state.snapshot()
+        assert frame[40] == 255, f"ch41 fire frame {i+1}"
+        assert frame[41] == 255, f"ch42 kill frame {i+1}"
+
+    frame_after3 = state.snapshot()
+    assert frame_after3[40] == 0
+    assert frame_after3[41] == 0
+
+    # --- fire + kill SAME cue in one frame → 2*P frames ---
     state.fire(1)
     state.kill(1)
-    frame5 = state.snapshot()
-    assert frame5[40] == 255,  "ch41 fire cue 41"
-    assert frame5[41] == 255,  "ch42 kill cue 42 (same channel)"
-    assert frame5[0] == 255,   "ch1 fire+kill cue 1 (first of 2 pulses)"
 
-    # ch1 has 2 pulses (fire+kill), second pulse in next frame
-    frame6 = state.snapshot()
-    assert frame6[40] == 0,   "ch41 consumed"
-    assert frame6[41] == 0,   "ch42 consumed"
-    assert frame6[0] == 255,  "ch1 second pulse (kill)"
+    for i in range(2 * P):
+        frame = state.snapshot()
+        assert frame[0] == 255, f"ch1 fire+kill frame {i+1}/{2*P}"
 
-    # All reset
-    frame7 = state.snapshot()
-    assert all(v == 0 for v in frame7), "All channels must reset after all pulses consumed"
+    frame_final = state.snapshot()
+    assert frame_final[0] == 0, "ch1 must reset after 2*P frames"
 
     print("[OK] test_multi_cue_same_frame")
 
@@ -526,9 +552,17 @@ def test_single_channel_layout():
     frame = state.snapshot()
     assert frame[40] == 255, "fire cue 41 → ch 41 (index 40)"
 
+    # Drain remaining fire frames
+    for _ in range(P - 1):
+        state.snapshot()
+
     state.kill(41)
     frame2 = state.snapshot()
     assert frame2[40] == 255, "kill cue 41 → ch 41 (index 40) — same channel!"
+
+    # Drain remaining kill frames
+    for _ in range(P - 1):
+        state.snapshot()
 
     # First and last cue
     state.fire(1)
@@ -544,11 +578,10 @@ def test_single_channel_layout():
 
 
 def test_rapid_same_channel_pulses():
-    """Rapid fire+kill on same channel must produce 2 distinct pulses across 2 frames.
+    """Rapid fire+kill on same channel → 2*P frames of 255.
 
-    This is the critical pulse-queue test: without the pulse counter,
-    both events would collapse into a single pulse and the second toggle
-    would be lost by Titan.
+    Each pulse event adds PULSE_FRAMES to the counter.
+    fire(41) + kill(41) = 2*P = 4 frames of 255, then 0.
     """
     state = DmxState(cue_channel_map={41: [41]})
 
@@ -556,27 +589,29 @@ def test_rapid_same_channel_pulses():
     state.fire(41)
     state.kill(41)
 
-    frame1 = state.snapshot()
-    frame2 = state.snapshot()
-    frame3 = state.snapshot()
+    total = 2 * P
+    for i in range(total):
+        frame = state.snapshot()
+        assert frame[40] == 255, f"frame {i+1}/{total}: must be 255"
 
-    assert frame1[40] == 255, "frame1: first pulse (fire)"
-    assert frame2[40] == 255, "frame2: second pulse (kill) — must NOT collapse"
-    assert frame3[40] == 0,   "frame3: both pulses consumed"
+    frame_after = state.snapshot()
+    assert frame_after[40] == 0, f"frame {total+1}: must be 0 (consumed)"
 
     print("[OK] test_rapid_same_channel_pulses")
 
 
 def test_triple_rapid_pulse():
-    """3 rapid fires on same channel → 3 consecutive frames of 255."""
+    """3 rapid fires on same channel → 3*P consecutive frames of 255."""
     state = DmxState(cue_channel_map={41: [41]})
 
     state.fire(41)
     state.fire(41)
     state.fire(41)
 
-    frames = [state.snapshot()[40] for _ in range(4)]
-    assert frames == [255, 255, 255, 0], f"Expected [255,255,255,0], got {frames}"
+    total = 3 * P
+    frames = [state.snapshot()[40] for _ in range(total + 1)]
+    expected = [255] * total + [0]
+    assert frames == expected, f"Expected {expected}, got {frames}"
 
     print("[OK] test_triple_rapid_pulse")
 
@@ -585,25 +620,27 @@ def test_pulse_queue_mixed_channels():
     """Pulse queue works independently per channel."""
     state = DmxState(cue_channel_map={1: [1], 2: [2]})
 
-    # ch1 gets 3 pulses, ch2 gets 1 pulse
+    # ch1 gets 3 pulses = 3*P frames, ch2 gets 1 pulse = P frames
     state.fire(1)
     state.kill(1)
     state.fire(1)
     state.fire(2)
 
-    frame1 = state.snapshot()
-    assert frame1[0] == 255, "ch1 pulse 1/3"
-    assert frame1[1] == 255, "ch2 pulse 1/1"
+    # First P frames: both channels active
+    for i in range(P):
+        frame = state.snapshot()
+        assert frame[0] == 255, f"ch1 frame {i+1} (of {3*P})"
+        assert frame[1] == 255, f"ch2 frame {i+1} (of {P})"
 
-    frame2 = state.snapshot()
-    assert frame2[0] == 255, "ch1 pulse 2/3"
-    assert frame2[1] == 0,   "ch2 consumed"
+    # Next frames: ch2 consumed, ch1 still active
+    for i in range(2 * P):
+        frame = state.snapshot()
+        assert frame[0] == 255, f"ch1 frame {P+i+1} (of {3*P})"
+        assert frame[1] == 0,   f"ch2 consumed at frame {P+i+1}"
 
-    frame3 = state.snapshot()
-    assert frame3[0] == 255, "ch1 pulse 3/3"
-
-    frame4 = state.snapshot()
-    assert frame4[0] == 0,   "ch1 consumed"
+    # ch1 now consumed
+    frame_final = state.snapshot()
+    assert frame_final[0] == 0, "ch1 consumed"
 
     print("[OK] test_pulse_queue_mixed_channels")
 
@@ -615,7 +652,7 @@ def test_pulse_queue_kill_all_clears_queue():
     state.fire(41)
     state.fire(41)
     state.fire(41)
-    # 3 pulses queued
+    # 3*P frames queued
 
     state.kill_all()
     frame = state.snapshot()
@@ -631,43 +668,55 @@ def test_pulse_queue_kill_all_clears_queue():
 def test_full_pipeline():
     """
     Test end-to-end: Adapter → DmxState → ArtNetEngine (single-channel toggle).
-    Both fire and kill pulse the same channel.
+    Both fire and kill pulse the same channel for P frames.
     """
     state = DmxState(cue_channel_map={41: [41], 42: [42], 37: [37]})
     adapter = CueOutputAdapter(state)
 
-    # Fire C41 — pulse on ch 41
+    # Fire C41 — pulse on ch 41 for P frames
     adapter.fire(41)
     frame1 = state.snapshot()
     assert frame1[40] == 255, "C41 fire pulse must be 255"
     assert frame1[41] == 0,   "C42 channel must be 0"
+
+    # Drain remaining fire frames
+    for _ in range(P - 1):
+        state.snapshot()
 
     # Kill C41 — pulse on SAME ch 41
     adapter.kill(41)
     frame2 = state.snapshot()
     assert frame2[40] == 255, "C41 kill pulse must be 255 (same channel)"
 
+    # Drain remaining kill frames
+    for _ in range(P - 1):
+        state.snapshot()
+
     # Auto-reset
     frame3 = state.snapshot()
     assert frame3[40] == 0, "C41 channel must auto-reset"
 
-    # Fire + Kill same frame (concurrent events — same channel)
+    # Fire + Kill different cues same frame
     adapter.fire(42)
     adapter.kill(41)
     frame4 = state.snapshot()
     assert frame4[41] == 255, "C42 fire pulse"
     assert frame4[40] == 255, "C41 kill pulse (same channel as fire)"
 
+    # Drain
+    for _ in range(P - 1):
+        state.snapshot()
+
     # With engine running
     engine = ArtNetEngine(state, target_ip="127.0.0.1", fps=40)
     engine.start()
 
     adapter.fire(37)
-    time.sleep(0.1)
+    time.sleep(0.2)  # Engine consumes P frames
     assert state.get_channel(37) == 0, "Fire pulse consumed"
 
     adapter.kill(37)
-    time.sleep(0.1)
+    time.sleep(0.2)
     assert state.get_channel(37) == 0, "Kill pulse consumed (same channel)"
 
     engine_stats = engine.get_stats()
@@ -855,7 +904,7 @@ if __name__ == "__main__":
         test_dmx_state_toggle_same_channel,
         test_dmx_state_thread_safety,
         test_dmx_state_from_json,
-        test_dmx_state_pulse_single_frame,
+        test_dmx_state_pulse_width,
         test_artnet_packet_structure,
         test_artnet_packet_universe_encoding,
         test_artpoll_reply_structure,
