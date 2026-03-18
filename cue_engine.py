@@ -21,7 +21,7 @@ import time
 import threading
 from typing import Optional, Dict, Any, List, Set
 
-# Phase 0: Decision Engine — SHADOW MODE (observability only, zero behavior change)
+# Phase 1: Decision Engine — ATAQUE as evidence-driven overlay
 from core.decision_engine import DecisionEngine
 
 # Módulos nuevos (deben existir en el mismo directorio)
@@ -182,10 +182,10 @@ class CueEngine:
         self._auto_update_running = False
         self._thr: Optional[threading.Thread] = None
 
-        # Phase 0: Decision Engine — SHADOW MODE (read-only, zero side effects)
+        # Phase 1: Decision Engine — ATAQUE as evidence-driven overlay
         try:
             self._decision_engine = DecisionEngine(log_path="logs/decision_engine_shadow.log")
-            print("[CueEngine] DecisionEngine Phase 0 (SHADOW MODE) initialized")
+            print("[CueEngine] DecisionEngine Phase 1 (ATAQUE overlay) initialized")
         except Exception as e:
             self._decision_engine = None
             print(f"[CueEngine] DecisionEngine init failed (non-fatal): {e}")
@@ -697,27 +697,62 @@ class CueEngine:
 
             # Si el estado actual está deshabilitado por el calendario,
             # tratarlo como BAJADA (estado seguro por defecto)
-            effective_state = current_state
+            calendar_state = current_state
             if self.is_state_disabled(current_state):
-                effective_state = "BAJADA"
-                # Log solo la primera vez que se bloquea
+                calendar_state = "BAJADA"
                 if not hasattr(self, '_last_blocked_state') or self._last_blocked_state != current_state:
                     print(f"[CueEngine] Estado {current_state} BLOQUEADO por calendario → usando BAJADA")
                     self._last_blocked_state = current_state
             else:
                 self._last_blocked_state = None
 
+            # ===== PHASE 1: DECISION ENGINE — CONTEXT/EVENT SPLIT =====
+            # DecisionEngine separates ATAQUE (event overlay) from context.
+            # Context modules see the underlying context, never "ATAQUE".
+            # ATAQUE module is driven independently by the event layer.
+            ataque_event_active = False
+            effective_state = calendar_state
+
+            if self._decision_engine is not None:
+                try:
+                    sm_state = {
+                        "current_state": calendar_state,
+                        "energy": current_energy,
+                        "scores": dict(self.sm.stats.get("last_scores", {})) if hasattr(self.sm, "stats") else {},
+                        "time_in_state": time.time() - getattr(self.sm, "state_start_time", time.time()),
+                    }
+                    de_decision = self._decision_engine.tick(
+                        real_state=calendar_state,
+                        real_energy=current_energy,
+                        sm_state=sm_state,
+                    )
+                    effective_state = de_decision.get("context_state", calendar_state)
+                    ataque_event_active = (de_decision.get("event_state") == "ATAQUE")
+
+                    # Log context/event output (throttled: every 20 ticks)
+                    if self.stats.get("updates", 0) % 20 == 0:
+                        print(f"[DE OUT] ctx={effective_state} event={'ATAQUE' if ataque_event_active else 'None'} sm_raw={calendar_state}")
+                except Exception as e:
+                    # DecisionEngine failure is non-fatal — fall back to raw state
+                    effective_state = calendar_state
+                    ataque_event_active = False
+
             state_changed = (effective_state != self.last_state)
             energy_changed = (current_energy != self.last_energy)
 
-            # ===== PASO 2: KILL FAMILIA SALIENTE PRIMERO (si cambió estado) =====
-            # KILL antes de FIRE: garantiza máximo 1 cue por familia en todo momento
+            # ===== PASO 2: KILL FAMILIA SALIENTE PRIMERO (si cambió CONTEXT) =====
+            # Only kills CONTEXT families. ATAQUE family is managed separately.
             if state_changed and self.last_state is not None:
                 t_change_ms = time.time() * 1000
-                # Log active cues BEFORE kill for diagnostics
                 active_before = self.av.get_active_cues() if hasattr(self.av, 'get_active_cues') else set()
-                print(f"t={t_change_ms:.0f} [ENGINE] STATE CHANGE: {self.last_state} → {effective_state} | active_before_kill={sorted(active_before)}")
-                self.off_now_for_state(self.last_state)
+                print(f"t={t_change_ms:.0f} [ENGINE] CONTEXT CHANGE: {self.last_state} → {effective_state} | active_before_kill={sorted(active_before)}")
+
+                # Kill outgoing CONTEXT families only (not ATAQUE C37-39)
+                # ATAQUE cleanup is handled by run_overlay() via DecisionEngine
+                last_ctx = self.last_state
+                if last_ctx and last_ctx != "ATAQUE":
+                    self.off_now_for_state(last_ctx)
+
                 active_after = self.av.get_active_cues() if hasattr(self.av, 'get_active_cues') else set()
                 if active_before != active_after:
                     killed = active_before - active_after
@@ -732,20 +767,19 @@ class CueEngine:
             self.last_state = effective_state
             self.last_energy = current_energy
 
-            # ===== PASO 3: EJECUTAR MÓDULOS EN ORDEN ESTRICTO =====
-            # Cada módulo recibe (state, energy) y decide qué hacer con SU familia
-            # FIRE del nuevo estado DESPUÉS del KILL (sin overlap)
-            modules_in_order = [
+            # ===== PASO 3: EJECUTAR MÓDULOS CONTEXT EN ORDEN ESTRICTO =====
+            # Context modules receive the DE context_state (never "ATAQUE").
+            # ATAQUE module is excluded — it runs separately below.
+            context_modules_in_order = [
                 ("control_dimmer", self.m_control),
                 ("break", self.m_break),
-                ("ataque", self.m_ataque),
                 ("base_golpe", self.m_bg),
                 ("bajada", self.m_bajada),
                 ("movimiento", self.m_move),
                 ("timed", self.m_timed)
             ]
 
-            for name, module in modules_in_order:
+            for name, module in context_modules_in_order:
                 try:
                     if hasattr(module, 'run'):
                         self.stats["specialist_calls"] = self.stats.get("specialist_calls", 0) + 1
@@ -755,7 +789,19 @@ class CueEngine:
                     self.stats["specialist_errors"] = self.stats.get("specialist_errors", 0) + 1
                     self.last_error = str(e)
                     print(f"[CueEngine] Error en módulo {name}: {e}")
-            
+
+            # ===== PASO 3b: ATAQUE OVERLAY (event layer, independent) =====
+            # Driven by DecisionEngine event_state, NOT by context state.
+            # Fires/kills ATAQUE cues without affecting context families.
+            try:
+                self.stats["specialist_calls"] = self.stats.get("specialist_calls", 0) + 1
+                self.m_ataque.run_overlay(ataque_event_active, current_energy)
+                self.last_specialist = "ataque_overlay"
+            except Exception as e:
+                self.stats["specialist_errors"] = self.stats.get("specialist_errors", 0) + 1
+                self.last_error = str(e)
+                print(f"[CueEngine] Error en módulo ataque_overlay: {e}")
+
             # ===== FAMILY EXCLUSIVITY CHECK (every 20 ticks = ~1s) =====
             self.stats["updates"] = self.stats.get("updates", 0) + 1
             if self.stats["updates"] % 20 == 0:
@@ -763,37 +809,6 @@ class CueEngine:
 
             self.stats["total_updates"] = self.stats.get("total_updates", 0) + 1
             self.last_update_time = time.time()
-
-            # ===== PHASE 0: DECISION ENGINE SHADOW TICK (read-only) =====
-            # Collects state snapshots and logs what DE would decide.
-            # ZERO side effects — no fire, no kill, no state mutation.
-            if self._decision_engine is not None:
-                try:
-                    # Collect MSE state (read-only snapshot)
-                    _mse_raw = self.sm.get_mse_state() if hasattr(self.sm, "get_mse_state") else None
-                    mse_state = {
-                        "P_bajada": getattr(_mse_raw, "P_bajada", 0.0),
-                        "P_base": getattr(_mse_raw, "P_base", 0.0),
-                        "P_ataque": getattr(_mse_raw, "P_ataque", 0.0),
-                        "P_brake": getattr(_mse_raw, "P_brake", 0.0),
-                        "confidence": getattr(_mse_raw, "confidence", 0.0),
-                        "energy_trend": getattr(_mse_raw, "energy_trend", None),
-                    }
-                    # Collect SM state (read-only snapshot)
-                    sm_state = {
-                        "current_state": current_state,
-                        "energy": current_energy,
-                        "scores": dict(self.sm.stats.get("last_scores", {})) if hasattr(self.sm, "stats") else {},
-                        "time_in_state": time.time() - getattr(self.sm, "state_start_time", time.time()),
-                    }
-                    self._decision_engine.shadow_tick(
-                        real_state=effective_state,
-                        real_energy=current_energy,
-                        mse_state=mse_state,
-                        sm_state=sm_state,
-                    )
-                except Exception:
-                    pass  # Shadow mode must NEVER affect the real system
 
             # C41 WATCHDOG: DISABLED for DMX toggle mode.
             # In toggle mode, redundant fire_cue(41) toggles the dimmer OFF.

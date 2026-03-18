@@ -1,22 +1,21 @@
-# mod_ataque.py — ATAQUE: STATEFUL CANONICAL IMPLEMENTATION
+# mod_ataque.py — ATAQUE: OVERLAY EVENT MODULE
 # ===========================================================================
 # BIBLIA 911 FIESTA — CANON ABSOLUTO
 #
-# NATURALEZA:
-#   - ATAQUE es STATEFUL
-#   - Tiene HOLD (2.0s)
-#   - Tiene ENTRY / RUN / EXIT
-#   - Puede cambiar cue solo si energía cambia Y HOLD expiró
+# PHASE 1 CHANGE:
+#   - ATAQUE is now an EVENT OVERLAY, not a persistent state
+#   - run_overlay(active, energy) drives fire/kill based on DecisionEngine
+#   - Original run() kept for backwards compatibility (not used in overlay mode)
 #
 # CUES (MAPEO FIJO):
 #   BAJA  → C37
 #   MEDIA → C38
 #   ALTA  → C39
 #
-# PRIORIDAD:
-#   - ATAQUE mata BASE_GOLPE (CueEngine lo hace via off_now_for_state)
-#   - ATAQUE NO mata: MOVIMIENTO, AUX, CONTROL_DIMMER
-#   - BRAKE siempre puede matar ATAQUE
+# OVERLAY RULES:
+#   - ATAQUE fires ON TOP of current context (no context kill)
+#   - ATAQUE only kills its own family cues (C37-39)
+#   - BRAKE always blocks/clears ATAQUE
 #
 # PROHIBICIONES:
 #   - NO reassert
@@ -152,6 +151,65 @@ class AtaqueModule:
 
         print(f"[ATAQUE] ENERGY CHANGE {prev_energy}→{energy} → FIRE C{target}")
         return target
+
+    # ==================================================================
+    # OVERLAY MODE — Phase 1: Evidence-driven ATAQUE event
+    # Called by CueEngine when DecisionEngine controls ATAQUE lifecycle.
+    # Does NOT depend on state string — only on active flag from DE.
+    # ==================================================================
+
+    def run_overlay(self, active: bool, energy: str) -> Optional[int]:
+        """
+        Overlay-mode tick. Fires/kills ATAQUE cues based on DecisionEngine signal.
+
+        Args:
+            active: True if ATAQUE event is active (from DecisionEngine)
+            energy: Current energy level for cue selection
+
+        Returns:
+            Active cue ID or None
+        """
+        energy = (energy or "MEDIA").upper()
+        energy = {"LOW": "BAJA", "MEDIUM": "MEDIA", "HIGH": "ALTA"}.get(energy, energy)
+        if energy not in ("BAJA", "MEDIA", "ALTA"):
+            energy = "MEDIA"
+
+        was_active = self.current_cue is not None
+
+        # --- EXIT: event no longer active ---
+        if not active:
+            if was_active:
+                self.av.kill_cue(self.current_cue)
+                print(f"[ATAQUE] OVERLAY EXIT → KILL C{self.current_cue}")
+                self.current_cue = None
+                self.current_energy = None
+                self.hold_until = 0.0
+            return None
+
+        # --- ENTRY: event just became active ---
+        if not was_active:
+            target = ENERGY_TO_CUE.get(energy, 38)
+            self.av.fire_cue(target)
+            self.current_cue = target
+            self.current_energy = energy
+            self.hold_until = time.time() + HOLD_DURATION_S
+            print(f"[ATAQUE] OVERLAY ENTRY energy={energy} → FIRE C{target}")
+            return target
+
+        # --- SUSTAIN: already active, check energy change ---
+        now = time.time()
+        if energy != self.current_energy and now >= self.hold_until:
+            prev_cue = self.current_cue
+            target = ENERGY_TO_CUE.get(energy, 38)
+            if target != prev_cue:
+                self.av.fire_cue(target)
+                self.av.kill_cue(prev_cue)
+                self.current_cue = target
+                self.current_energy = energy
+                self.hold_until = time.time() + HOLD_DURATION_S
+                print(f"[ATAQUE] OVERLAY ENERGY {self.current_energy}→{energy} → FIRE C{target}")
+
+        return self.current_cue
 
     def get_active_cues(self) -> List[int]:
         """Retorna cue actual si existe."""
