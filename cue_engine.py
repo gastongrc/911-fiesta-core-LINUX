@@ -21,6 +21,9 @@ import time
 import threading
 from typing import Optional, Dict, Any, List, Set
 
+# Phase 0: Decision Engine — SHADOW MODE (observability only, zero behavior change)
+from core.decision_engine import DecisionEngine
+
 # Módulos nuevos (deben existir en el mismo directorio)
 from mod_control_dimmer import ControlDimmerModule
 from mod_break import BreakModule
@@ -178,6 +181,14 @@ class CueEngine:
         self._running = False
         self._auto_update_running = False
         self._thr: Optional[threading.Thread] = None
+
+        # Phase 0: Decision Engine — SHADOW MODE (read-only, zero side effects)
+        try:
+            self._decision_engine = DecisionEngine(log_path="logs/decision_engine_shadow.log")
+            print("[CueEngine] DecisionEngine Phase 0 (SHADOW MODE) initialized")
+        except Exception as e:
+            self._decision_engine = None
+            print(f"[CueEngine] DecisionEngine init failed (non-fatal): {e}")
 
         print("[CueEngine] v6.0 listo - DETERMINÍSTICO + AUX-V2 (tabla de estado)")
         if self._auto:
@@ -753,6 +764,37 @@ class CueEngine:
             self.stats["total_updates"] = self.stats.get("total_updates", 0) + 1
             self.last_update_time = time.time()
 
+            # ===== PHASE 0: DECISION ENGINE SHADOW TICK (read-only) =====
+            # Collects state snapshots and logs what DE would decide.
+            # ZERO side effects — no fire, no kill, no state mutation.
+            if self._decision_engine is not None:
+                try:
+                    # Collect MSE state (read-only snapshot)
+                    _mse_raw = self.sm.get_mse_state() if hasattr(self.sm, "get_mse_state") else None
+                    mse_state = {
+                        "P_bajada": getattr(_mse_raw, "P_bajada", 0.0),
+                        "P_base": getattr(_mse_raw, "P_base", 0.0),
+                        "P_ataque": getattr(_mse_raw, "P_ataque", 0.0),
+                        "P_brake": getattr(_mse_raw, "P_brake", 0.0),
+                        "confidence": getattr(_mse_raw, "confidence", 0.0),
+                        "energy_trend": getattr(_mse_raw, "energy_trend", None),
+                    }
+                    # Collect SM state (read-only snapshot)
+                    sm_state = {
+                        "current_state": current_state,
+                        "energy": current_energy,
+                        "scores": dict(self.sm.stats.get("last_scores", {})) if hasattr(self.sm, "stats") else {},
+                        "time_in_state": time.time() - getattr(self.sm, "state_start_time", time.time()),
+                    }
+                    self._decision_engine.shadow_tick(
+                        real_state=effective_state,
+                        real_energy=current_energy,
+                        mse_state=mse_state,
+                        sm_state=sm_state,
+                    )
+                except Exception:
+                    pass  # Shadow mode must NEVER affect the real system
+
             # C41 WATCHDOG: DISABLED for DMX toggle mode.
             # In toggle mode, redundant fire_cue(41) toggles the dimmer OFF.
             # ControlDimmerModule handles C41 transitions via request/release_dim_off.
@@ -803,6 +845,13 @@ class CueEngine:
         if self._thr and self._thr.is_alive():
             self._thr.join(timeout=2.0)
         
+        # Flush DecisionEngine shadow log on shutdown
+        if self._decision_engine is not None:
+            try:
+                self._decision_engine.flush()
+            except Exception:
+                pass
+
         print("[CueEngine] Auto-update detenido")
 
     def get_status(self) -> Dict[str, Any]:
