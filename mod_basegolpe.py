@@ -101,6 +101,10 @@ class BaseGolpeModule:
         # ÚNICO estado permitido: tracking técnico para detectar ENTRY
         self._last_state_seen: Optional[str] = None
 
+        # Track fired cue for explicit kill on EXIT (DMX toggle-safe lifecycle)
+        self._fired_cue: Optional[int] = None
+        self._fire_ts: float = 0.0
+
         # Flag interno para saber si estamos en BASE_GOLPE (para release en EXIT)
         self._dimmer_requested: bool = False
 
@@ -138,7 +142,7 @@ class BaseGolpeModule:
         self._kick_baseline_alpha = 0.02  # Slow baseline adaptation
         self._kick_peak_alpha = 0.1       # Faster peak tracking
 
-        print("[BASE_GOLPE] init (EVENT-DRIVEN canonical + V11 voting + V12 kick_pulse)")
+        print("[BASE_GOLPE] init (EVENT-DRIVEN canonical + explicit kill on EXIT + V11 voting + V12 kick_pulse)")
 
     def _select_cue(self, cues: List[int], energy: str) -> int:
         """
@@ -225,12 +229,26 @@ class BaseGolpeModule:
         is_exit = (prev_state == "BASE_GOLPE" and state != "BASE_GOLPE")
 
         # =====================================================================
-        # EXIT: Solo release_dim_off
+        # EXIT: KILL fired cue + release_dim_off
         # =====================================================================
         if is_exit:
+            hold_ms = (time.monotonic() - self._fire_ts) * 1000.0 if self._fire_ts > 0 else 0.0
+
+            # EXPLICIT KILL: Kill the fired cue BEFORE releasing dimmer
+            # This is the PRIMARY kill mechanism — CueEngine's off_now_for_state
+            # serves as safety net. kill_cue() has toggle-safe guard.
+            if self._fired_cue is not None:
+                self.av.kill_cue(self._fired_cue)
+                print(f"[KILL] cue={self._fired_cue} source=BASE_GOLPE_EXIT (held {hold_ms:.0f}ms)")
+                self._fired_cue = None
+                self._fire_ts = 0.0
+            else:
+                print(f"[BASE_GOLPE DECISION] EXIT → no fired cue to kill")
+
             if self._dimmer_requested and self.dim is not None:
                 self.dim.release_dim_off(REASON_FX_DIMMER)
                 self._dimmer_requested = False
+                print(f"[BASE_GOLPE DECISION] EXIT → C41 released")
             return None
 
         # =====================================================================
@@ -248,18 +266,21 @@ class BaseGolpeModule:
             cue = self._select_cue(cues, energy)
 
             if cue is None:
-                print(f"[BASE_GOLPE] ENTRY energy={energy} family={family} — NO CUES")
+                print(f"[BASE_GOLPE DECISION] ENTRY energy={energy} family={family} — NO CUES")
                 return None
 
-            # FIRE
+            # FIRE + track for explicit kill on EXIT
             self.av.fire_cue(cue)
-            print(f"[BASE_GOLPE] ENTRY energy={energy} family={family} cue=C{cue}")
+            self._fired_cue = cue
+            self._fire_ts = time.monotonic()
+            print(f"[FIRE] cue={cue} source=BASE_GOLPE (ENTRY, energy={energy}, family={family}, prev={prev_state})")
+            print(f"[BASE_GOLPE DECISION] ENTRY → C{cue} energy={energy} family={family}")
 
             # C41: SOLO cues de FX_DIMMER solicitan dim_off (verificación directa)
             if cue in FX_DIMMER_CUES and self.dim is not None:
                 self.dim.request_dim_off(REASON_FX_DIMMER)
                 self._dimmer_requested = True
-                print(f"[BASE_GOLPE] C41 OFF (cue C{cue} in FX_DIMMER_CUES)")
+                print(f"[BASE_GOLPE DECISION] C41 OFF (cue C{cue} in FX_DIMMER_CUES)")
 
             return cue
 
@@ -298,7 +319,14 @@ class BaseGolpeModule:
         }
 
     def reset(self) -> None:
-        """Reset del módulo."""
+        """Reset del módulo — kills fired cue before resetting."""
+        # Kill fired cue before reset (toggle-safe)
+        if self._fired_cue is not None:
+            self.av.kill_cue(self._fired_cue)
+            print(f"[KILL] cue={self._fired_cue} source=BASE_GOLPE_RESET")
+            self._fired_cue = None
+            self._fire_ts = 0.0
+
         if self._dimmer_requested and self.dim is not None:
             self.dim.release_dim_off(REASON_FX_DIMMER)
 

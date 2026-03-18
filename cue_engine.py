@@ -569,7 +569,7 @@ class CueEngine:
         
         # Si no hay nada activo, salir temprano
         if not ids_to_kill:
-            print(f"[ENGINE] OFF_NOW family={family} → nada activo (skip)")
+            print(f"[ENGINE] OFF_NOW family={family} → nada activo (skip) — module EXIT will handle kills")
             return
         
         # 2) Llamar a kill_pool inmediatamente (sin dedupe, con flush)
@@ -703,8 +703,14 @@ class CueEngine:
             # KILL antes de FIRE: garantiza máximo 1 cue por familia en todo momento
             if state_changed and self.last_state is not None:
                 t_change_ms = time.time() * 1000
-                print(f"t={t_change_ms:.0f} [ENGINE] STATE CHANGE: {self.last_state} → {effective_state}")
+                # Log active cues BEFORE kill for diagnostics
+                active_before = self.av.get_active_cues() if hasattr(self.av, 'get_active_cues') else set()
+                print(f"t={t_change_ms:.0f} [ENGINE] STATE CHANGE: {self.last_state} → {effective_state} | active_before_kill={sorted(active_before)}")
                 self.off_now_for_state(self.last_state)
+                active_after = self.av.get_active_cues() if hasattr(self.av, 'get_active_cues') else set()
+                if active_before != active_after:
+                    killed = active_before - active_after
+                    print(f"t={time.time()*1000:.0f} [ENGINE] POST-KILL: killed={sorted(killed)} remaining={sorted(active_after)}")
 
             # Actualizar tracking
             if state_changed:
@@ -1017,6 +1023,8 @@ class CueEngine:
         if self.m_bg:
             self.m_bg._last_state_seen = None
             self.m_bg._dimmer_requested = False
+            self.m_bg._fired_cue = None
+            self.m_bg._fire_ts = 0.0
 
         # bajada
         if self.m_bajada:
@@ -1024,6 +1032,10 @@ class CueEngine:
                 self.m_bajada.last_state_seen = None
             if hasattr(self.m_bajada, '_last_state_seen'):
                 self.m_bajada._last_state_seen = None
+            self.m_bajada.latched_pos = None
+            self.m_bajada.latched_col = None
+            self.m_bajada.in_bajada = False
+            self.m_bajada._entry_ts = 0.0
 
         # movimiento
         if self.m_move:

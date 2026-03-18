@@ -31,6 +31,7 @@
 
 import json
 import os
+import time
 from typing import Dict, Any, List, Optional
 
 
@@ -66,11 +67,14 @@ class BajadaModule:
         self.latched_col: Optional[int] = None
         self.last_state_seen: Optional[str] = None
 
+        # Timestamps for logging/diagnostics
+        self._entry_ts: float = 0.0
+
         # Fair RR (persistente)
         self._load_color_usage()
         self._load_pos_usage()
 
-        print("[BAJADA] init (STATEFUL canonical)")
+        print("[BAJADA] init (STATEFUL canonical + explicit kill on EXIT)")
 
     def set_movement_controller(self, movement_module):
         """Conecta referencia a MOVIMIENTO."""
@@ -198,9 +202,25 @@ class BajadaModule:
         is_exit = (prev_state == "BAJADA" and state != "BAJADA")
 
         # =====================================================================
-        # EXIT: Restore MOVIMIENTO + reset latches
+        # EXIT: KILL latched cues + Restore MOVIMIENTO + reset latches
         # =====================================================================
         if is_exit:
+            hold_ms = (time.monotonic() - self._entry_ts) * 1000.0 if self._entry_ts > 0 else 0.0
+
+            # EXPLICIT KILL: Kill latched cues BEFORE resetting latches
+            # This is the PRIMARY kill mechanism — CueEngine's off_now_for_state
+            # serves as a safety net. kill_cue() has toggle-safe guard:
+            # if CueEngine already killed it, this is a no-op.
+            if self.latched_pos is not None:
+                self.av.kill_cue(self.latched_pos)
+                print(f"[BAJADA DECISION] EXIT → KILL POS C{self.latched_pos} (held {hold_ms:.0f}ms)")
+            if self.latched_col is not None:
+                self.av.kill_cue(self.latched_col)
+                print(f"[BAJADA DECISION] EXIT → KILL COL C{self.latched_col} (held {hold_ms:.0f}ms)")
+
+            if self.latched_pos is None and self.latched_col is None:
+                print(f"[BAJADA DECISION] EXIT → no latched cues to kill (held {hold_ms:.0f}ms)")
+
             # Restaurar MOVIMIENTO (una sola vez)
             if self.movement is not None:
                 try:
@@ -212,8 +232,9 @@ class BajadaModule:
             self.latched_pos = None
             self.latched_col = None
             self.in_bajada = False
+            self._entry_ts = 0.0
 
-            print("[BAJADA] EXIT → restore MOVIMIENTO")
+            print(f"[BAJADA] EXIT → restore MOVIMIENTO (prev={prev_state} → {state})")
             return None
 
         # =====================================================================
@@ -226,6 +247,8 @@ class BajadaModule:
         # ENTRY: Pausa MOVIMIENTO + fire cues
         # =====================================================================
         if is_entry:
+            self._entry_ts = time.monotonic()
+
             # Pausar MOVIMIENTO (una sola vez)
             if self.movement is not None:
                 try:
@@ -241,15 +264,16 @@ class BajadaModule:
             if pos is not None:
                 self.av.fire_cue(pos)
                 self.latched_pos = pos
-                print(f"[BAJADA] ENTRY → POS C{pos}")
+                print(f"[FIRE] cue={pos} source=BAJADA_POS (ENTRY, prev={prev_state})")
 
             # FIRE color
             if col is not None:
                 self.av.fire_cue(col)
                 self.latched_col = col
-                print(f"[BAJADA] ENTRY → COL C{col}")
+                print(f"[FIRE] cue={col} source=BAJADA_COL (ENTRY, prev={prev_state})")
 
             self.in_bajada = True
+            print(f"[BAJADA DECISION] ENTRY → POS=C{pos} COL=C{col} energy={energy}")
             return self.latched_pos or self.latched_col
 
         # =====================================================================
@@ -284,7 +308,15 @@ class BajadaModule:
         }
 
     def reset(self) -> None:
-        """Reset del módulo."""
+        """Reset del módulo — kills latched cues before resetting."""
+        # Kill latched cues before reset (toggle-safe)
+        if self.latched_pos is not None:
+            self.av.kill_cue(self.latched_pos)
+            print(f"[KILL] cue={self.latched_pos} source=BAJADA_RESET")
+        if self.latched_col is not None:
+            self.av.kill_cue(self.latched_col)
+            print(f"[KILL] cue={self.latched_col} source=BAJADA_RESET")
+
         # Restaurar MOVIMIENTO si estaba pausado
         if self.in_bajada and self.movement is not None:
             try:
@@ -296,5 +328,6 @@ class BajadaModule:
         self.latched_pos = None
         self.latched_col = None
         self.last_state_seen = None
+        self._entry_ts = 0.0
 
         print("[BAJADA] Reset")
