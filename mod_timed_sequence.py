@@ -274,14 +274,15 @@ class TimedSequenceModule:
     def force_exit(self) -> None:
         """
         SALIDA FORZADA DEFINITIVA.
-        Mata TODOS los cues auxiliares SIN CONDICIONES.
+        Mata SOLO el cue activo (DMX toggle: killing inactive cues toggles them ON).
         Reset TOTAL del módulo.
         """
-        # Kill incondicional de TODOS los cues de la secuencia
-        for cue in self.cues:
+        # Kill ONLY the active cue (DMX toggle-safe)
+        if self.last_fired_cue is not None:
             try:
-                self.av.kill_cue(cue)
-            except:
+                self.av.kill_cue(int(self.last_fired_cue))
+                print(f"[TIMED_SEQ] force_exit: killed C{self.last_fired_cue}")
+            except Exception:
                 pass
 
         # Reset TOTAL del módulo

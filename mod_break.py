@@ -201,13 +201,12 @@ class BreakModule:
             print(f"[BRAKE] EXIT → RESTORE {self.freeze_snapshot}")
             self.freeze_snapshot = None
 
-        # Kill pool C42-44
+        # Kill ONLY current cue (DMX toggle: killing inactive cues toggles them ON)
         if self.current_cue is not None:
             print(f"[BRAKE] EXIT → KILL C{self.current_cue}")
-        for c in CUE_SET:
             try:
-                self.av.kill_cue(c)
-            except:
+                self.av.kill_cue(self.current_cue)
+            except Exception:
                 pass
 
         # Release dimmer

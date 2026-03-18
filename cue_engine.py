@@ -472,12 +472,13 @@ class CueEngine:
             if active:
                 self.av.kill_pool(active, priority_boost=True)
                 print(f"[CueEngine] HARD OFF: killed musical {active}")
-            # 2) Kill C41 (dimmer) — not in FAMILY_CUE_RANGES
-            try:
-                self.av.kill_cue(41)
-            except Exception:
-                pass
-            # 3) Kill AUX C45-C50 via force_exit
+            # 2) Kill C41 (dimmer) — only if software says active (DMX toggle-safe)
+            if self.av.is_active(41):
+                try:
+                    self.av.kill_cue(41)
+                except Exception:
+                    pass
+            # 3) Kill AUX C45-C50 via force_exit (only kills active cue, toggle-safe)
             try:
                 self.m_timed.force_exit()
             except Exception:
@@ -654,6 +655,7 @@ class CueEngine:
             # HARD OFF: "ALL" disabled = kill everything, skip ALL module execution
             if "ALL" in self._disabled_states:
                 # Kill any remaining cues (periodic enforcement every ~2s)
+                # DMX toggle-safe: only kill cues tracked as active in software
                 if self.stats.get("updates", 0) % 40 == 0:
                     all_musical_cues = []
                     for family_cues in FAMILY_CUE_RANGES.values():
@@ -662,11 +664,13 @@ class CueEngine:
                     if active:
                         self.av.kill_pool(active, priority_boost=True)
                         print(f"[CueEngine] HARD OFF: killed residual cues {active}")
-                    # Also enforce C41 off and AUX off
-                    try:
-                        self.av.kill_cue(41)
-                    except Exception:
-                        pass
+                    # C41: only kill if software says it's active (DMX toggle-safe)
+                    if self.av.is_active(41):
+                        try:
+                            self.av.kill_cue(41)
+                        except Exception:
+                            pass
+                    # AUX: only kill if timed has an active cue
                     try:
                         if self.m_timed.last_fired_cue is not None:
                             self.m_timed.force_exit()
@@ -743,12 +747,10 @@ class CueEngine:
             self.stats["total_updates"] = self.stats.get("total_updates", 0) + 1
             self.last_update_time = time.time()
 
-            # C41 WATCHDOG: every 200 ticks (~10s at 50ms interval)
-            if self.stats["updates"] % 200 == 0:
-                try:
-                    self.m_control.ensure_c41_on()
-                except Exception:
-                    pass
+            # C41 WATCHDOG: DISABLED for DMX toggle mode.
+            # In toggle mode, redundant fire_cue(41) toggles the dimmer OFF.
+            # ControlDimmerModule handles C41 transitions via request/release_dim_off.
+            # ensure_c41_on() uses is_active() which cannot track Titan hardware state.
             
         except Exception as e:
             self.last_error = str(e)

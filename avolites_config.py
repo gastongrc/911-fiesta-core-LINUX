@@ -1046,14 +1046,20 @@ class AvolitesController:
     def fire_cue(self, cue_id: int) -> bool:
         """
         Dispara un cue.
+        DMX toggle-safe: skips pulse if cue already tracked as active.
         Rutas: ARTNET → CueOutputAdapter → DmxState
                HTTP   → TitanQueue → TitanTransport
         """
-        print(f"[AvolitesBridge] FIRE cue={cue_id}")
-
         with self._active_lock:
+            was_active = cue_id in self._active_cues
             self._active_cues.add(cue_id)
 
+        # DMX toggle guard: redundant fire would toggle cue OFF
+        if was_active and (self._artnet_active or self._sacn_active):
+            print(f"[FIRE] cue={cue_id} → SKIP (DMX toggle-safe: already active)")
+            return True
+
+        print(f"[FIRE] cue={cue_id}")
         self._last_fire_ts = time.time()
 
         if (self._artnet_active or self._sacn_active) and self._cue_adapter:
@@ -1064,13 +1070,20 @@ class AvolitesController:
     def kill_cue(self, cue_id: int) -> bool:
         """
         Mata un cue.
+        DMX toggle-safe: skips pulse if cue already tracked as inactive.
         Rutas: ARTNET → CueOutputAdapter → DmxState
                HTTP   → TitanQueue → TitanTransport
         """
-        print(f"[AvolitesBridge] KILL cue={cue_id}")
-
         with self._active_lock:
+            was_active = cue_id in self._active_cues
             self._active_cues.discard(cue_id)
+
+        # DMX toggle guard: redundant kill would toggle cue ON
+        if not was_active and (self._artnet_active or self._sacn_active):
+            print(f"[KILL] cue={cue_id} → SKIP (DMX toggle-safe: already inactive)")
+            return True
+
+        print(f"[KILL] cue={cue_id}")
 
         if (self._artnet_active or self._sacn_active) and self._cue_adapter:
             return self._cue_adapter.kill(cue_id)
