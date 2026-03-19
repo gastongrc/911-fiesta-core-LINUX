@@ -1,5 +1,15 @@
-# state_manager.py - V13 FAST BASELINE + Override ATAQUE 80% + CALIBRACIÓN DE PRECISIÓN + FEED STATE/ENERGY
+# state_manager.py - V14 PERSISTENCE TUNING + Override ATAQUE 80% + CALIBRACIÓN DE PRECISIÓN + FEED STATE/ENERGY
 # ========================================================================================================
+# V14 CHANGES (Precision tuning — no redesign):
+# - Exit thresholds: states persist while above exit threshold unless strong challenger
+# - Hold multipliers increased: BAJADA 0.7s, BASE_GOLPE 0.9s, ATAQUE 1.5s, BRAKE 1.8s
+# - Hysteresis margin: 0.04 -> 0.08 (doubles transition resistance)
+# - EMA alpha: 0.5 -> 0.35 (heavier smoothing, less noise pass-through)
+# - Stability window: 120ms -> 250ms (candidate must persist ~5 frames)
+# - Buffer size: 2 -> 3 (raw score averaging over 3 frames)
+# - Universal cooldown: all state exits now apply cooldown (50% for soft states)
+# - Global lock re-enabled at 0.25s (prevents rapid back-and-forth)
+# - Entry thresholds: BRAKE 0.65->0.68, ATAQUE 0.60->0.62
 # V13 CHANGES:
 # - FAST BASELINE: Default values optimized for low-latency state changes
 # - Lag instrumentation (t_score, t_candidate, t_commit)
@@ -21,25 +31,25 @@ _STATE_DEBUG_INTERVAL = int(os.environ.get("STATE_DEBUG_INTERVAL", "10"))
 _STATE_DEBUG_VERBOSE = os.environ.get("STATE_DEBUG_VERBOSE", "0") == "1"
 
 
-# V13: Presets for optional tuning (FAST is now the default baseline)
+# V14: Presets tuned for persistence + musical continuity (no redesign)
 PRESETS = {
     "FAST": {
-        "min_hold_seconds": 0.8,
-        "cooldown_seconds": 0.2,
-        "hysteresis_margin": 0.04,
-        "stability_window_ms": 120,
+        "min_hold_seconds": 1.0,
+        "cooldown_seconds": 0.4,
+        "hysteresis_margin": 0.08,
+        "stability_window_ms": 250,
         "inter_state_cooldown_ms": 0,
-        "ema_alpha": 0.5,
-        "buffer_size": 2,
+        "ema_alpha": 0.35,
+        "buffer_size": 3,
     },
     "STABLE": {
-        "min_hold_seconds": 1.2,
+        "min_hold_seconds": 1.5,
         "cooldown_seconds": 2.0,
-        "hysteresis_margin": 0.07,
-        "stability_window_ms": 180,
+        "hysteresis_margin": 0.10,
+        "stability_window_ms": 350,
         "inter_state_cooldown_ms": 0,
-        "ema_alpha": 0.3,
-        "buffer_size": 4,
+        "ema_alpha": 0.25,
+        "buffer_size": 5,
     },
 }
 
@@ -63,14 +73,14 @@ class StateManager:
     STATE_ATAQUE = "ATAQUE"
     STATE_BRAKE = "BRAKE"
 
-    # V13: FAST BASELINE - stability parameters for low-latency response
-    STABILITY_WINDOW_MS = 120  # V13: Fast baseline (was 180)
+    # V14: Tuned stability parameters for persistence + responsiveness
+    STABILITY_WINDOW_MS = 250  # V14: Increased for persistence (was 120)
     INTER_STATE_COOLDOWN_MS = 0  # No cooldown for musical flow
 
     # V13: ATAQUE margin requirement (prevent false ATAQUE when close to BAJADA)
     ATAQUE_MARGIN_MIN = 0.12  # ATAQUE needs 12% margin over second score
 
-    def __init__(self, energy_detector, min_hold_seconds=0.8, hysteresis_margin=0.04, cooldown_seconds=0.2):
+    def __init__(self, energy_detector, min_hold_seconds=1.0, hysteresis_margin=0.08, cooldown_seconds=0.4):
         """
         V13: Inicializa con FAST BASELINE por defecto (sin necesidad de preset).
         Lag típico esperado: 120-250ms.
@@ -84,7 +94,7 @@ class StateManager:
         self._energy_history = deque(maxlen=3)
         self._current_energy = "MEDIA"
         self._scores_smooth = {"bajada": 0.0, "base_golpe": 0.0, "ataque": 0.0, "brake": 0.0}
-        self._ema_alpha = 0.5  # V13: Fast baseline (was 0.3)
+        self._ema_alpha = 0.35  # V14: Heavier smoothing for persistence (was 0.5)
 
         # ✅ SPRINT 2: Histéresis adaptativa + BRAKE real + Holds
         self._hysteresis_matrix = {
@@ -139,9 +149,9 @@ class StateManager:
         self.ataque_timer = 0.0
         self.brake_timer = 0.0
         
-        # V13: Sistema de estabilización FAST BASELINE
+        # V14: Estabilización tuned for persistence
         self.stability_buffer = []
-        self.buffer_size = 2  # V13: Fast baseline (was 4)
+        self.buffer_size = 3  # V14: 3-frame averaging (was 2)
         self.min_confidence = 0.50
         
         # Historial para tie-breaker
@@ -202,7 +212,7 @@ class StateManager:
         # AUDIT: Debug tick counter
         self._debug_tick = 0
 
-        print(f"[StateManager] V13 FAST BASELINE - hold={min_hold_seconds}s, cooldown={cooldown_seconds}s, hysteresis={hysteresis_margin}, stability={self.STABILITY_WINDOW_MS}ms, ema={self._ema_alpha}, buffer={self.buffer_size}")
+        print(f"[StateManager] V14 PERSISTENCE TUNING - hold={min_hold_seconds}s, cooldown={cooldown_seconds}s, hysteresis={hysteresis_margin}, stability={self.STABILITY_WINDOW_MS}ms, ema={self._ema_alpha}, buffer={self.buffer_size}")
         if _STATE_DEBUG:
             print(f"[StateManager] STATE_DEBUG ENABLED (interval={_STATE_DEBUG_INTERVAL}, verbose={_STATE_DEBUG_VERBOSE})")
     
@@ -614,10 +624,18 @@ class StateManager:
         - Estados en _disabled_states tienen effective_score = 0.0
         - NUNCA pueden ser elegidos como winner
         """
-        BRAKE_THRESHOLD = 0.65
-        ATAQUE_THRESHOLD = 0.60
-        GOLPE_THRESHOLD = 0.45  # Raised: require real analyzer support, not MSE alone
+        BRAKE_THRESHOLD = 0.68   # V14: raised for decisive BRAKE entry
+        ATAQUE_THRESHOLD = 0.62  # V14: slightly raised, clean rise still gates
+        GOLPE_THRESHOLD = 0.45   # Raised: require real analyzer support, not MSE alone
         BAJADA_THRESHOLD = 0.35  # V12: Slightly lowered for stability
+
+        # V14: Exit thresholds — current state persists while above these
+        EXIT_THRESHOLDS = {
+            "brake": 0.50,
+            "ataque": 0.45,
+            "base_golpe": 0.32,
+            "bajada": 0.22,
+        }
 
         # ✅ CALENDAR BRIDGE: Crear effective_scores (disabled = 0.0)
         effective_scores = scores.copy()
@@ -637,6 +655,33 @@ class StateManager:
         if max_score > 0.7:
             disabled_str = f" disabled={sorted(self._disabled_states)}" if self._disabled_states else ""
             print(f"[StateManager] HIGH_SCORES: Brake={scores['brake']:.2f}, Ataque={scores['ataque']:.2f}, Golpe={scores['base_golpe']:.2f}, Bajada={scores['bajada']:.2f}{disabled_str}")
+
+        # V14: Current-state persistence — remain in current state while above exit threshold
+        # This creates a hysteresis band between entry and exit, preventing premature exits
+        current_score_key = self._state_to_score_key(self.current_state)
+        current_score_val = effective_scores.get(current_score_key, 0.0)
+        exit_thresh = EXIT_THRESHOLDS.get(current_score_key, 0.0)
+        if (self.current_state.upper() not in self._disabled_states
+                and current_score_val >= exit_thresh):
+            # Current state still has sufficient support — check if any challenger
+            # has a significantly higher score (entry threshold + hysteresis margin)
+            has_strong_challenger = False
+            for chal_state, chal_thresh in [
+                (self.STATE_BRAKE, BRAKE_THRESHOLD),
+                (self.STATE_ATAQUE, ATAQUE_THRESHOLD),
+                (self.STATE_BASE_GOLPE, GOLPE_THRESHOLD),
+                (self.STATE_BAJADA, BAJADA_THRESHOLD),
+            ]:
+                if chal_state == self.current_state:
+                    continue
+                chal_key = self._state_to_score_key(chal_state)
+                chal_score = effective_scores.get(chal_key, 0.0)
+                # Challenger must exceed its entry threshold AND beat current by margin
+                if chal_score >= chal_thresh and chal_score > current_score_val + self.hysteresis_margin:
+                    has_strong_challenger = True
+                    break
+            if not has_strong_challenger:
+                return self.current_state
 
         # ✅ SPRINT 3: Mantener ATAQUE si hay persistencia (≥2 frames activos de últimos 3)
         # PERO solo si ATAQUE no está deshabilitado
@@ -762,21 +807,11 @@ class StateManager:
             if new_state != self.STATE_BRAKE:
                 return False
 
-        # ✅ SPRINT 6: Ultra Stability Layer - TEMPORALMENTE DESACTIVADO
-        # MOTIVO: Los bloqueos globales causan retención falsa del estado BAJADA
-        # cuando los scores reales indican GOLPE/ATAQUE (scores 0.60-0.90).
-        # La exigencia de count >= 2 en historial de 4 frames impide transiciones
-        # legítimas, especialmente cuando BAJADA tiene smoothing alto.
-        # Sprints 1-5 ya proveen suficiente estabilidad (EMA, persistencia, clean rise).
-
-        # Bloqueo 1: Global lock activo (post-cambio de estado)
-        # if self._global_lock > 0 and new_state != self.STATE_BRAKE:
-        #     return False
-
-        # Bloqueo 2: El nuevo estado debe aparecer al menos 2 veces en el historial de 4
-        # if len(self._global_state_buffer) == 4:
-        #     if self._global_state_buffer.count(new_state) < 2 and new_state != self.STATE_BRAKE:
-        #         return False
+        # V14: Re-enabled global lock (tuned) — prevents rapid transitions
+        # Only Bloqueo 1 re-enabled; Bloqueo 2 (history count) remains disabled
+        # to avoid false retention of BAJADA as noted in original Sprint 6 analysis.
+        if self._global_lock > 0 and new_state != self.STATE_BRAKE:
+            return False
 
         # Validación normal para todos los estados
         if self.bypass_hold:
@@ -867,30 +902,34 @@ class StateManager:
 
         self.stats["transitions"] += 1
 
-        # ✅ SPRINT 6: Establecer global lock al cambiar de estado
+        # V14: Global lock tuned for persistence (was 0.12s, now 0.25s)
         if new_state != old_state:
-            self._global_lock = 0.12
+            self._global_lock = 0.25
         
-        # Holds diferenciados CALIBRADOS
+        # V14: Hold multipliers tuned for musical persistence
         if new_state == self.STATE_ATAQUE:
-            self.hold_remaining = self.min_hold_seconds * 1.2
+            self.hold_remaining = self.min_hold_seconds * 1.5  # V14: 1.5s (was 0.96s)
             self.ataque_timer = 8.0
             # ✅ SPRINT 4: Establecer peak lock al entrar a ATAQUE
             self._atk_peak_lock = 0.18
         elif new_state == self.STATE_BRAKE:
-            self.hold_remaining = self.min_hold_seconds * 1.2
+            self.hold_remaining = self.min_hold_seconds * 1.8  # V14: 1.8s (was 0.96s)
             self.brake_timer = 4.0
         elif new_state == self.STATE_BASE_GOLPE:
-            self.hold_remaining = self.min_hold_seconds * 0.6
+            self.hold_remaining = self.min_hold_seconds * 0.9  # V14: 0.9s (was 0.48s)
         elif new_state == self.STATE_BAJADA:
-            self.hold_remaining = self.min_hold_seconds * 0.4
+            self.hold_remaining = self.min_hold_seconds * 0.7  # V14: 0.7s (was 0.32s)
         
+        # V14: Universal cooldown — all state exits apply cooldown (scaled)
         if old_state in [self.STATE_ATAQUE, self.STATE_BRAKE]:
-            self.cooldown_remaining = self.cooldown_seconds
+            self.cooldown_remaining = self.cooldown_seconds  # Full cooldown for high-energy exits
             if old_state == self.STATE_ATAQUE:
                 self.stats["ataque_interrupts"] += 1
             else:
                 self.stats["brake_interrupts"] += 1
+        else:
+            # Reduced cooldown for BAJADA/BASE_GOLPE exits (50% of full)
+            self.cooldown_remaining = self.cooldown_seconds * 0.5
         
         self.stability_buffer.clear()
 
